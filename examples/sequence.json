@@ -1,0 +1,52 @@
+{
+  "id": "demo_sequence_001",
+  "transition": {
+    "type": "crossfade",
+    "duration_seconds": 0.3
+  },
+  "shots": [
+    {
+      "id": "pixel_intro",
+      "mode": "t2v",
+      "prompt": "Pixel style, retro video game, a cheerful explorer crosses a neon forest, smooth side-scrolling camera",
+      "negative_prompt": "text, watermark, static frame, deformed anatomy",
+      "width": 832,
+      "height": 480,
+      "frames": 121,
+      "fps": 24,
+      "turbo_mode": false,
+      "seed": 101,
+      "loras": [
+        {"id": "pixel_gamegirl_wan22_t2v_high", "weight": 0.9},
+        {"id": "pixel_gamegirl_wan22_t2v_low", "weight": 0.9}
+      ]
+    },
+    {
+      "id": "spatial_bridge",
+      "mode": "t+i2v",
+      "prompt": "kjmf magic, the mountain splits smoothly into two halves and reveals a luminous bridge, cinematic wide shot",
+      "negative_prompt": "text, watermark, abrupt cut, broken geometry",
+      "start_image": {"path": "mountain.png"},
+      "width": 832,
+      "height": 480,
+      "frames": 121,
+      "fps": 24,
+      "seed": 202,
+      "loras": [
+        {"id": "spatial_magic_v2_wan22_i2v_high", "weight": 1.0}
+      ]
+    },
+    {
+      "id": "keyframe_finale",
+      "mode": "t+i(keyframe)2v",
+      "prompt": "the camera slowly moves forward while day turns into a starry night, continuous transformation",
+      "start_image": {"path": "city_day.png"},
+      "end_image": {"path": "city_night.png"},
+      "width": 832,
+      "height": 480,
+      "frames": 121,
+      "fps": 24,
+      "seed": 303
+    }
+  ]
+}

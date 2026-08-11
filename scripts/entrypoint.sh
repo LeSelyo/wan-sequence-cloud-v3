@@ -1,0 +1,176 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+INVOCATION_CWD="$PWD"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+ENTRYPOINT_PATH="$SCRIPT_DIR/$(basename -- "${BASH_SOURCE[0]}")"
+APP_ROOT="${APP_ROOT:-$(cd -- "$SCRIPT_DIR/.." && pwd -P)}"
+cd "$APP_ROOT"
+
+VENV_BIN="${VENV_BIN:-/opt/venv/bin}"
+PYTHON_BIN="$VENV_BIN/python"
+UVICORN_BIN="$VENV_BIN/uvicorn"
+PYTHON_BIN="${ENTRYPOINT_PYTHON_BIN:-$PYTHON_BIN}"
+UVICORN_BIN="${ENTRYPOINT_UVICORN_BIN:-$UVICORN_BIN}"
+export PATH="$VENV_BIN:${PATH:-/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin}"
+
+for executable in "$PYTHON_BIN" "$UVICORN_BIN"; do
+  if [[ ! -x "$executable" ]]; then
+    echo "required executable is missing: $executable" >&2
+    exit 69
+  fi
+done
+
+DATA_ROOT="${DATA_ROOT:-/workspace}"
+PORT="${PORT:-8000}"
+COMFYUI_HOST="${COMFYUI_HOST:-127.0.0.1}"
+COMFYUI_PORT="${COMFYUI_PORT:-8188}"
+GPU_CONCURRENCY="${GPU_CONCURRENCY:-1}"
+export DATA_ROOT PORT COMFYUI_HOST COMFYUI_PORT GPU_CONCURRENCY
+export WORKFLOW_DIR="${WORKFLOW_DIR:-${DATA_ROOT}/cache/workflows}"
+export UI_WORKFLOW_DIR="${UI_WORKFLOW_DIR:-${APP_ROOT}/ui_workflows}"
+BUNDLE_MANIFEST="${BUNDLED_MODEL_MANIFEST:-/opt/wan-model-parts/manifest.json}"
+export BUNDLED_MODEL_MANIFEST="$BUNDLE_MANIFEST"
+
+echo "[entrypoint] starting"
+echo "[entrypoint] uid=$(id -u) invocation_cwd=$INVOCATION_CWD cwd=$PWD"
+echo "[entrypoint] app_root=$APP_ROOT data_root=$DATA_ROOT"
+echo "[entrypoint] readiness_profile=${READINESS_PROFILE:-backend} require_api_token=${REQUIRE_API_TOKEN:-0}"
+echo "[entrypoint] api_token=$([[ -n "${API_TOKEN:-}" ]] && echo set || echo unset)"
+echo "[entrypoint] bundle_manifest=$BUNDLE_MANIFEST"
+DATA_DIRECTORIES=(
+  "$DATA_ROOT"
+  "$DATA_ROOT/models"
+  "$DATA_ROOT/models/diffusion_models"
+  "$DATA_ROOT/models/text_encoders"
+  "$DATA_ROOT/models/vae"
+  "$DATA_ROOT/models/checkpoints"
+  "$DATA_ROOT/models/loras"
+  "$DATA_ROOT/inputs"
+  "$DATA_ROOT/inputs/comfy"
+  "$DATA_ROOT/outputs"
+  "$DATA_ROOT/outputs/images"
+  "$DATA_ROOT/outputs/comfy"
+  "$DATA_ROOT/jobs"
+  "$DATA_ROOT/cache"
+  "$DATA_ROOT/downloads"
+  "$WORKFLOW_DIR"
+)
+
+if [[ "$GPU_CONCURRENCY" != "1" ]]; then
+  echo "GPU_CONCURRENCY must be 1" >&2
+  exit 64
+fi
+
+if [[ "$(id -u)" == "0" ]]; then
+  for directory in "${DATA_DIRECTORIES[@]}"; do
+    install -d -o appuser -g appuser -m 775 "$directory"
+  done
+  for directory in /opt/ComfyUI/user /opt/ComfyUI/temp; do
+    install -d -o appuser -g appuser -m 775 "$directory"
+  done
+  exec gosu appuser "$ENTRYPOINT_PATH" "$@"
+fi
+
+for directory in "${DATA_DIRECTORIES[@]}"; do
+  [[ -d "$directory" ]] || mkdir -p "$directory"
+done
+
+for directory in "${DATA_DIRECTORIES[@]}"; do
+  if [[ ! -d "$directory" || ! -w "$directory" ]]; then
+    echo "runtime directory is not writable: $directory" >&2
+    exit 73
+  fi
+done
+
+WRITE_TEST="$DATA_ROOT/jobs/.write-test-$$"
+if ! touch "$WRITE_TEST"; then
+  echo "DATA_ROOT is not writable: $DATA_ROOT" >&2
+  exit 73
+fi
+rm -f "$WRITE_TEST"
+
+if [[ -e "$BUNDLE_MANIFEST" ]]; then
+  "$PYTHON_BIN" "$APP_ROOT/scripts/preflight_bundle_access.py" \
+    --manifest "$BUNDLE_MANIFEST"
+  echo "[entrypoint] bundle_access=ok"
+else
+  echo "[entrypoint] bundle_manifest=absent"
+fi
+
+if [[ "${ENTRYPOINT_PREFLIGHT_ONLY:-0}" == "1" ]]; then
+  "$PYTHON_BIN" -c "import app.main; import os; assert os.environ.get('DATA_ROOT'); print('[entrypoint] python_app_import=ok')"
+  if [[ -n "${ENTRYPOINT_PREFLIGHT_EXPECT_API_TOKEN:-}" && "${API_TOKEN:-}" != "$ENTRYPOINT_PREFLIGHT_EXPECT_API_TOKEN" ]]; then
+    echo "[entrypoint] environment propagation failed" >&2
+    exit 78
+  fi
+  echo "[entrypoint] environment_propagation=ok"
+  exit 0
+fi
+
+for directory in /opt/ComfyUI/user /opt/ComfyUI/temp; do
+  if [[ ! -d "$directory" || ! -w "$directory" ]]; then
+    echo "runtime directory is not writable: $directory" >&2
+    exit 73
+  fi
+done
+
+echo "[entrypoint] materialization starting"
+"$PYTHON_BIN" "$APP_ROOT/scripts/materialize_bundled_models.py"
+
+RUNTIME_MODEL_CONFIG="$DATA_ROOT/cache/extra_model_paths.yaml"
+sed "s|__DATA_ROOT__|$DATA_ROOT|g" "$APP_ROOT/config/extra_model_paths.yaml" > "$RUNTIME_MODEL_CONFIG"
+
+COMFY_PID=""
+API_PID=""
+
+cleanup() {
+  trap - EXIT INT TERM
+  [[ -n "$API_PID" ]] && kill -TERM "$API_PID" 2>/dev/null || true
+  [[ -n "$COMFY_PID" ]] && kill -TERM "$COMFY_PID" 2>/dev/null || true
+  [[ -n "$API_PID" ]] && wait "$API_PID" 2>/dev/null || true
+  [[ -n "$COMFY_PID" ]] && wait "$COMFY_PID" 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
+
+if [[ "${APP_TEST_MODE:-0}" != "1" ]]; then
+  echo "[entrypoint] starting ComfyUI"
+  "$PYTHON_BIN" /opt/ComfyUI/main.py \
+    --listen "$COMFYUI_HOST" \
+    --port "$COMFYUI_PORT" \
+    --extra-model-paths-config "$RUNTIME_MODEL_CONFIG" \
+    --input-directory "$DATA_ROOT/inputs/comfy" \
+    --output-directory "$DATA_ROOT/outputs/comfy" &
+  COMFY_PID=$!
+
+  for _ in $(seq 1 120); do
+    if ! kill -0 "$COMFY_PID" 2>/dev/null; then
+      wait "$COMFY_PID"
+      exit $?
+    fi
+    if curl -fsS "http://${COMFYUI_HOST}:${COMFYUI_PORT}/system_stats" >/dev/null; then
+      break
+    fi
+    sleep 1
+  done
+  curl -fsS "http://${COMFYUI_HOST}:${COMFYUI_PORT}/system_stats" >/dev/null
+  echo "[entrypoint] ComfyUI ready"
+  "$PYTHON_BIN" "$APP_ROOT/scripts/prepare_workflows.py"
+  install -m 0644 "$APP_ROOT/workflows/image_flux_schnell.api.json" \
+    "$WORKFLOW_DIR/image_flux_schnell.api.json"
+fi
+
+echo "[entrypoint] starting API"
+"$UVICORN_BIN" --app-dir "$APP_ROOT" app.main:app --host 0.0.0.0 --port "$PORT" --workers 1 &
+API_PID=$!
+
+set +e
+wait -n "$API_PID" ${COMFY_PID:+"$COMFY_PID"}
+EXIT_CODE=$?
+set -e
+cleanup
+if [[ "$EXIT_CODE" == "0" ]]; then
+  echo "a supervised process exited unexpectedly" >&2
+  EXIT_CODE=1
+fi
+exit "$EXIT_CODE"

@@ -1,0 +1,18 @@
+{
+  "id": "i2v_from_generated_image",
+  "shots": [
+    {
+      "id": "coast",
+      "mode": "t+i2v",
+      "prompt": "slow aerial camera movement above the futuristic coast",
+      "start_image": {
+        "image_id": "img_0123456789abcdef0123456789abcdef"
+      },
+      "width": 832,
+      "height": 480,
+      "frames": 121,
+      "steps": 20,
+      "cfg": 5.0
+    }
+  ]
+}

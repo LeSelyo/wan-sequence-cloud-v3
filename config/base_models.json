@@ -1,0 +1,219 @@
+{
+  "schema_version": 2,
+  "profiles": {
+    "t2v": ["wan22_t2v_high", "wan22_t2v_low", "umt5_xxl", "wan21_vae"],
+    "t2v-turbo": ["wan22_t2v_high", "wan22_t2v_low", "umt5_xxl", "wan21_vae", "wan22_t2v_lightx_high", "wan22_t2v_lightx_low"],
+    "i2v": ["wan22_i2v_high", "wan22_i2v_low", "umt5_xxl", "wan21_vae"],
+    "i2v-turbo": ["wan22_i2v_high", "wan22_i2v_low", "umt5_xxl", "wan21_vae", "wan22_i2v_lightx_high", "wan22_i2v_lightx_low"],
+    "flf2v": ["wan22_i2v_high", "wan22_i2v_low", "umt5_xxl", "wan21_vae"],
+    "all-video": ["wan22_t2v_high", "wan22_t2v_low", "wan22_i2v_high", "wan22_i2v_low", "umt5_xxl", "wan21_vae"],
+    "flux-schnell": ["flux_schnell_diffusion", "flux_clip_l", "flux_t5xxl_fp8", "flux_ae"],
+    "image": ["flux_schnell_diffusion", "flux_clip_l", "flux_t5xxl_fp8", "flux_ae"],
+    "all": ["wan22_t2v_high", "wan22_t2v_low", "wan22_i2v_high", "wan22_i2v_low", "umt5_xxl", "wan21_vae", "flux_schnell_diffusion", "flux_clip_l", "flux_t5xxl_fp8", "flux_ae"],
+    "all-turbo": ["wan22_t2v_high", "wan22_t2v_low", "wan22_i2v_high", "wan22_i2v_low", "umt5_xxl", "wan21_vae", "wan22_t2v_lightx_high", "wan22_t2v_lightx_low", "wan22_i2v_lightx_high", "wan22_i2v_lightx_low"]
+  },
+  "profile_capabilities": {
+    "t2v": ["t2v"],
+    "t2v-turbo": ["t2v"],
+    "i2v": ["i2v"],
+    "i2v-turbo": ["i2v"],
+    "flf2v": ["flf2v"],
+    "all-video": ["t2v", "i2v", "flf2v"],
+    "flux-schnell": ["image_generation"],
+    "image": ["image_generation"],
+    "all": ["t2v", "i2v", "flf2v", "image_generation"],
+    "all-turbo": ["t2v", "i2v", "flf2v"]
+  },
+  "image_engines": {
+    "flux_schnell": {
+      "workflow": "image_flux_schnell.api.json",
+      "model_ids": ["flux_schnell_diffusion", "flux_clip_l", "flux_t5xxl_fp8", "flux_ae"],
+      "supported": true
+    },
+    "sd15": {
+      "workflow": "image_sd15.api.json",
+      "model_ids": [],
+      "supported": false,
+      "reason": "No pinned API workflow or verified base checkpoint is defined by this repository."
+    },
+    "illustrious": {
+      "workflow": "image_illustrious.api.json",
+      "model_ids": [],
+      "supported": false,
+      "reason": "No pinned API workflow or verified base checkpoint is defined by this repository."
+    },
+    "pony": {
+      "workflow": "image_pony.api.json",
+      "model_ids": [],
+      "supported": false,
+      "reason": "No pinned API workflow or verified base checkpoint is defined by this repository."
+    },
+    "anima": {
+      "workflow": "image_anima.api.json",
+      "model_ids": [],
+      "supported": false,
+      "reason": "The schema name exists, but no pinned API workflow or verified base checkpoint is defined."
+    }
+  },
+  "items": {
+    "flux_schnell_diffusion": {
+      "kind": "base_model",
+      "engine": "flux_schnell",
+      "family": "flux1",
+      "role": "diffusion_model",
+      "source": "huggingface",
+      "filename": "flux1-schnell.safetensors",
+      "relative_path": "diffusion_models/flux1-schnell.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/flux1-schnell/resolve/f757664cb3ff8b19ff99e064a2387a5f547ad9e8/flux1-schnell.safetensors",
+      "size_bytes": 23782506688,
+      "sha256": "9403429e0052277ac2a87ad800adece5481eecefd9ed334e1f348723621d2a0a",
+      "xet_hash": "df5d997365ef3f1e30100e6ce56e0c4e1dcc34e7caa59d1cf46aa61bb8b048d7",
+      "revision": "f757664cb3ff8b19ff99e064a2387a5f547ad9e8"
+    },
+    "flux_clip_l": {
+      "kind": "base_model",
+      "engine": "flux_schnell",
+      "family": "flux1",
+      "role": "clip_l_text_encoder",
+      "source": "huggingface",
+      "filename": "clip_l.safetensors",
+      "relative_path": "text_encoders/clip_l.safetensors",
+      "url": "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/2f74b39c0606dae3b2196d79c18c2a40b71f3250/clip_l.safetensors",
+      "size_bytes": 246144152,
+      "sha256": "660c6f5b1abae9dc498ac2d21e1347d2abdb0cf6c0c0c8576cd796491d9a6cdd",
+      "xet_hash": "645ba23540a1ce97d9c44332759ded7c2b5b8449914b8890eefd73d88e6e0229",
+      "revision": "2f74b39c0606dae3b2196d79c18c2a40b71f3250"
+    },
+    "flux_t5xxl_fp8": {
+      "kind": "base_model",
+      "engine": "flux_schnell",
+      "family": "flux1",
+      "role": "t5xxl_text_encoder",
+      "source": "huggingface",
+      "filename": "t5xxl_fp8_e4m3fn.safetensors",
+      "relative_path": "text_encoders/t5xxl_fp8_e4m3fn.safetensors",
+      "url": "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/2f74b39c0606dae3b2196d79c18c2a40b71f3250/t5xxl_fp8_e4m3fn.safetensors",
+      "size_bytes": 4893934904,
+      "sha256": "7d330da4816157540d6bb7838bf63a0f02f573fc48ca4d8de34bb0cbfd514f09",
+      "xet_hash": "ca49b49b9b4ef106396a18f76600a52b6a07cd1322408c83337483ce56b803ba",
+      "revision": "2f74b39c0606dae3b2196d79c18c2a40b71f3250"
+    },
+    "flux_ae": {
+      "kind": "base_model",
+      "engine": "flux_schnell",
+      "family": "flux1",
+      "role": "ae_vae",
+      "source": "huggingface",
+      "filename": "ae.safetensors",
+      "relative_path": "vae/ae.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Lumina_Image_2.0_Repackaged/resolve/817f3ba14d96a306cf0cbed49ef9eea037991381/split_files/vae/ae.safetensors",
+      "size_bytes": 335304388,
+      "sha256": "afc8e28272cd15db3919bacdb6918ce9c1ed22e96cb12c4d5ed0fba823529e38",
+      "xet_hash": "f73eecf7c469ff442523dc712cc161d631df071bf4d9d793494fbf00cdd80a82",
+      "revision": "817f3ba14d96a306cf0cbed49ef9eea037991381"
+    },
+    "wan22_t2v_high": {
+      "kind": "base_model",
+      "family": "wan22_t2v",
+      "role": "high_noise_diffusion",
+      "source": "huggingface",
+      "relative_path": "diffusion_models/wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/fb1388adc906ab39ffc26ee40e96b22886b56bc4/split_files/diffusion_models/wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors",
+      "size_bytes": 14293923632,
+      "sha256": "cad711ae211c8b23455ec68cd6a190a33a3d874234a77eb57266d73f8f0e6c9f",
+      "xet_hash": "05df25aaee6f71de8b854f1be0ae5c029484ddaf26292fa9c59bd2d6a6bdad97",
+      "revision": "fb1388adc906ab39ffc26ee40e96b22886b56bc4"
+    },
+    "wan22_t2v_low": {
+      "kind": "base_model",
+      "family": "wan22_t2v",
+      "role": "low_noise_diffusion",
+      "source": "huggingface",
+      "relative_path": "diffusion_models/wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/fb1388adc906ab39ffc26ee40e96b22886b56bc4/split_files/diffusion_models/wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors",
+      "size_bytes": 14293923632,
+      "sha256": "e71b96d7c82e638694c5e7fb98fac4bfb0e4ddc5fbbb4b1df40da8f0f1278a97",
+      "xet_hash": "d5de0e4fafbf5a545fbed060aee18ac0615a8c06ed571e3bbc77126de683cbc9",
+      "revision": "fb1388adc906ab39ffc26ee40e96b22886b56bc4"
+    },
+    "wan22_i2v_high": {
+      "kind": "base_model",
+      "family": "wan22_i2v",
+      "role": "high_noise_diffusion",
+      "source": "huggingface",
+      "relative_path": "diffusion_models/wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/fb1388adc906ab39ffc26ee40e96b22886b56bc4/split_files/diffusion_models/wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors",
+      "size_bytes": 14294742832,
+      "sha256": "6122e79d55e0f235698d11d657f3b196c5273c830da00b2b013c5a048d5e6a42",
+      "xet_hash": "a3b85dbaa71e6cc50f15f9e5aae0b1734595b5bd720251c46ca988eea509f699",
+      "revision": "fb1388adc906ab39ffc26ee40e96b22886b56bc4"
+    },
+    "wan22_i2v_low": {
+      "kind": "base_model",
+      "family": "wan22_i2v",
+      "role": "low_noise_diffusion",
+      "source": "huggingface",
+      "relative_path": "diffusion_models/wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/fb1388adc906ab39ffc26ee40e96b22886b56bc4/split_files/diffusion_models/wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors",
+      "size_bytes": 14294742832,
+      "sha256": "5471a457b6ac404202a5fbe6c11595a3d5641fc766b00f38763f72303fffc21e",
+      "xet_hash": "7e7b214449e44842a4095b91106575aa88510e42108111493afd918590b08324",
+      "revision": "fb1388adc906ab39ffc26ee40e96b22886b56bc4"
+    },
+    "wan22_t2v_lightx_high": {
+      "relative_path": "loras/wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/fb1388adc906ab39ffc26ee40e96b22886b56bc4/split_files/loras/wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise.safetensors",
+      "size_bytes": 1226977424,
+      "sha256": "698321cb86bd30c4af06c9b84e656a1048c8cb54e06d50694536fb5de37fde41",
+      "xet_hash": "899e3479db9f13951436e8bf624c968b7a57260caf7fa64555c524585c64485b",
+      "revision": "fb1388adc906ab39ffc26ee40e96b22886b56bc4"
+    },
+    "wan22_t2v_lightx_low": {
+      "relative_path": "loras/wan2.2_t2v_lightx2v_4steps_lora_v1.1_low_noise.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/fb1388adc906ab39ffc26ee40e96b22886b56bc4/split_files/loras/wan2.2_t2v_lightx2v_4steps_lora_v1.1_low_noise.safetensors",
+      "size_bytes": 1226977424,
+      "sha256": "ec95216e614b3c132c11bfb387b11feedf62163150ccc9068bca8a189771e75a",
+      "revision": "fb1388adc906ab39ffc26ee40e96b22886b56bc4"
+    },
+    "wan22_i2v_lightx_high": {
+      "relative_path": "loras/wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/fb1388adc906ab39ffc26ee40e96b22886b56bc4/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors",
+      "size_bytes": 1226977424,
+      "sha256": "d176c808d6fc461999b68e321efcb7501b20b8c3797523ed0df14f7d1deff11e",
+      "xet_hash": "debd6bee365cc943792b108a77b3048bfd8c34e37dff8f53346669f678c79ba6",
+      "revision": "fb1388adc906ab39ffc26ee40e96b22886b56bc4"
+    },
+    "wan22_i2v_lightx_low": {
+      "relative_path": "loras/wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/fb1388adc906ab39ffc26ee40e96b22886b56bc4/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors",
+      "size_bytes": 1226977424,
+      "sha256": "024f21de095bc8fad9809ded3e9e49a2e170dcf27075da8145ba7d60d8aab7f9",
+      "xet_hash": "141d36a39e0f55754081935753786b29eaca240f534454748b173d8d2b199506",
+      "revision": "fb1388adc906ab39ffc26ee40e96b22886b56bc4"
+    },
+    "umt5_xxl": {
+      "kind": "base_model",
+      "family": "wan",
+      "role": "text_encoder",
+      "source": "huggingface",
+      "relative_path": "text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/06e001fc51048fb03433a6fb25334de7836704a5/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "size_bytes": 6735906897,
+      "sha256": "c3355d30191f1f066b26d93fba017ae9809dce6c627dda5f6a66eaa651204f68",
+      "xet_hash": "b94ab462ac11c85e60e2e9bd4045d8eaad6f38186936cb6f8909ca43f6bdd348",
+      "revision": "06e001fc51048fb03433a6fb25334de7836704a5"
+    },
+    "wan21_vae": {
+      "kind": "base_model",
+      "family": "wan",
+      "role": "vae",
+      "source": "huggingface",
+      "relative_path": "vae/wan_2.1_vae.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/fb1388adc906ab39ffc26ee40e96b22886b56bc4/split_files/vae/wan_2.1_vae.safetensors",
+      "size_bytes": 253815318,
+      "sha256": "2fc39d31359a4b0a64f55876d8ff7fa8d780956ae2cb13463b0223e15148976b",
+      "xet_hash": "2e358d90f91ce658dc1be053d44cf2d6437e5f517c71ae89fcb2c89fd54ca67e",
+      "revision": "fb1388adc906ab39ffc26ee40e96b22886b56bc4"
+    }
+  }
+}

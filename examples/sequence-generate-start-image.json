@@ -1,0 +1,23 @@
+{
+  "id": "keyframe_to_i2v_example",
+  "shots": [
+    {
+      "id": "generated_keyframe_i2v",
+      "mode": "t+i2v",
+      "prompt": "the camera slowly approaches the character",
+      "generate_start_image": {
+        "engine": "flux_schnell",
+        "prompt": "a cinematic portrait in a sunlit garden",
+        "negative_prompt": "text, watermark",
+        "seed": 42,
+        "steps": 4,
+        "guidance": 3.5
+      },
+      "width": 832,
+      "height": 480,
+      "frames": 121,
+      "steps": 20,
+      "cfg": 5.0
+    }
+  ]
+}

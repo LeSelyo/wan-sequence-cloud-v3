@@ -1,0 +1,16 @@
+{
+  "id": "i2v_from_external_image",
+  "shots": [
+    {
+      "id": "coast",
+      "mode": "t+i2v",
+      "prompt": "slow aerial camera movement above the coast",
+      "start_image": {
+        "path": "coast.png"
+      },
+      "width": 832,
+      "height": 480,
+      "frames": 121
+    }
+  ]
+}

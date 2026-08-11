@@ -1,0 +1,9 @@
+{
+  "engine": "flux_schnell",
+  "prompt": "cinematic futuristic coastal city at sunrise",
+  "width": 832,
+  "height": 480,
+  "seed": 42,
+  "steps": 4,
+  "guidance": 3.5
+}

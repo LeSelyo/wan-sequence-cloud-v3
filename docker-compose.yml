@@ -1,0 +1,38 @@
+services:
+  wan-sequence:
+    build:
+      context: .
+      args:
+        COMFYUI_COMMIT: 2881e6161081439b1c3fb3b6c1f51b3d272da710
+        WORKFLOW_TEMPLATES_COMMIT: 1b3bdd46c945d54d893a3b43692d5963608fb7d4
+    ports:
+      - "8000:8000"
+    environment:
+      DATA_ROOT: /workspace
+      PORT: "8000"
+      COMFYUI_HOST: 127.0.0.1
+      COMFYUI_PORT: "8188"
+      GPU_CONCURRENCY: "1"
+      READINESS_PROFILE: ${READINESS_PROFILE:-backend}
+      MAX_SHOTS_PER_JOB: ${MAX_SHOTS_PER_JOB:-8}
+      MAX_PENDING_JOBS: ${MAX_PENDING_JOBS:-2}
+      MAX_TOTAL_FRAMES: ${MAX_TOTAL_FRAMES:-968}
+      MAX_OUTPUT_DISK_GB: ${MAX_OUTPUT_DISK_GB:-50}
+      MIN_FREE_DISK_GB: ${MIN_FREE_DISK_GB:-10}
+      MAX_JOB_COST_UNITS: ${MAX_JOB_COST_UNITS:-8}
+      APP_TEST_MODE: ${APP_TEST_MODE:-0}
+      API_TOKEN: ${API_TOKEN:-}
+      REQUIRE_API_TOKEN: ${REQUIRE_API_TOKEN:-0}
+      HF_TOKEN: ${HF_TOKEN:-}
+      CIVITAI_API_TOKEN: ${CIVITAI_API_TOKEN:-}
+      AUTO_DOWNLOAD_LORAS: ${AUTO_DOWNLOAD_LORAS:-1}
+    volumes:
+      - ./data:/workspace
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
