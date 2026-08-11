@@ -39,10 +39,14 @@ def _digest(data: bytes) -> str:
 def _docker_available() -> bool:
     if shutil.which("docker") is None:
         return False
-    result = subprocess.run(
-        ["docker", "info"], capture_output=True, text=True, timeout=15
+    subprocess.run(
+        ["docker", "info"],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=15,
     )
-    return result.returncode == 0
+    return True
 
 
 def _run_docker_check(root: Path, dockerfile: Path, part_count: int) -> str:
@@ -50,6 +54,7 @@ def _run_docker_check(root: Path, dockerfile: Path, part_count: int) -> str:
         print("Mini Docker image: NOT RUN — Docker unavailable")
         return "not_run"
     tag = f"wan-sequence-mini-preflight:{uuid.uuid4().hex}"
+    image_built = False
     try:
         subprocess.run(
             ["docker", "build", "--file", str(dockerfile), "--tag", tag, "."],
@@ -57,11 +62,14 @@ def _run_docker_check(root: Path, dockerfile: Path, part_count: int) -> str:
             check=True,
             timeout=300,
         )
+        image_built = True
         check = (
             "test \"$(stat -c %a /opt/wan-model-parts/manifest.json)\" = 444; "
             "test -z \"$(find /opt/wan-model-parts -type d ! -perm 555 -print -quit)\"; "
-            "find /opt/wan-model-parts -type f -exec test -r {} \\;; "
-            "test -z \"$(find /opt/wan-model-parts -type f -writable -print -quit)\"; "
+            "find /opt/wan-model-parts -type d -exec sh -c "
+            "'test -x \"$1\" && test ! -w \"$1\"' sh {} \\;; "
+            "find /opt/wan-model-parts -type f -exec sh -c "
+            "'test -r \"$1\" && test ! -w \"$1\"' sh {} \\;; "
             f"test \"$(find /opt/wan-model-parts/models -type f | wc -l)\" -eq {part_count}"
         )
         subprocess.run(
@@ -69,15 +77,17 @@ def _run_docker_check(root: Path, dockerfile: Path, part_count: int) -> str:
             check=True,
             timeout=60,
         )
-        print("Mini Docker image: PASS")
-        return "pass"
     finally:
-        subprocess.run(
-            ["docker", "image", "rm", "--force", tag],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            timeout=60,
-        )
+        if image_built:
+            subprocess.run(
+                ["docker", "image", "rm", "--force", tag],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=60,
+            )
+    print("Mini Docker image: PASS")
+    return "pass"
 
 
 def run_fixture(root: Path, *, docker: bool) -> dict:

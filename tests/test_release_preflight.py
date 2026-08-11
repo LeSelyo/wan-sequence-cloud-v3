@@ -6,9 +6,17 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
+from unittest import mock
 
-from scripts.mini_bundle_preflight import MODEL_TARGETS, run_fixture
+from scripts.mini_bundle_preflight import (
+    MODEL_TARGETS,
+    _docker_available,
+    _run_docker_check,
+    run_fixture,
+)
 from scripts.prepare_bundled_models import DEFAULT_CHUNK_SIZE
 
 
@@ -58,6 +66,42 @@ class BundleReleasePreflightTests(unittest.TestCase):
         self.assertIn(
             "find /opt/wan-model-parts -type d -exec chmod 0555", dockerfile
         )
+
+    def test_failed_container_validation_is_nonzero_and_never_prints_pass(self):
+        completed = subprocess.CompletedProcess([], 0)
+        container_failure = subprocess.CalledProcessError(41, ["docker", "run"])
+        output = StringIO()
+        with (
+            mock.patch("scripts.mini_bundle_preflight._docker_available", return_value=True),
+            mock.patch(
+                "scripts.mini_bundle_preflight.subprocess.run",
+                side_effect=[completed, container_failure, completed],
+            ),
+            redirect_stdout(output),
+            self.assertRaises(subprocess.CalledProcessError) as raised,
+        ):
+            _run_docker_check(Path("fixture"), Path("Dockerfile.bundled"), 2)
+        self.assertEqual(raised.exception.returncode, 41)
+        self.assertNotIn("Mini Docker image: PASS", output.getvalue())
+
+    def test_failed_docker_info_is_not_reported_as_unavailable(self):
+        failure = subprocess.CalledProcessError(1, ["docker", "info"])
+        with (
+            mock.patch("scripts.mini_bundle_preflight.shutil.which", return_value="docker"),
+            mock.patch(
+                "scripts.mini_bundle_preflight.subprocess.run", side_effect=failure
+            ),
+            self.assertRaises(subprocess.CalledProcessError),
+        ):
+            _docker_available()
+
+    def test_release_preflight_preserves_active_virtualenv_path(self):
+        script = (PROJECT_ROOT / "scripts/preflight-release.sh").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn('export PATH="/usr/local/bin:/usr/bin:/bin:', script)
+        self.assertIn('if [[ -n "${VIRTUAL_ENV:-}" ]]', script)
+        self.assertIn('PYTHON_BIN="$(command -v python || true)"', script)
 
 
 class EntrypointReleasePreflightTests(unittest.TestCase):
