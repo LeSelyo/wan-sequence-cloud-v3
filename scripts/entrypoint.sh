@@ -32,6 +32,17 @@ export UI_WORKFLOW_DIR="${UI_WORKFLOW_DIR:-${APP_ROOT}/ui_workflows}"
 BUNDLE_MANIFEST="${BUNDLED_MODEL_MANIFEST:-/opt/wan-model-parts/manifest.json}"
 export BUNDLED_MODEL_MANIFEST="$BUNDLE_MANIFEST"
 
+# ComfyUI performance knobs (infra-level only; the workflow is untouched).
+# Triton JIT-compiles the SageAttention kernels on first use; pointing its cache at
+# the persistent data volume means that one-off cost is paid once, not per restart.
+export TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-${DATA_ROOT}/cache/triton}"
+COMFY_USE_SAGE_ATTENTION="${COMFY_USE_SAGE_ATTENTION:-1}"
+COMFY_FAST_FP8_MATRIX_MULT="${COMFY_FAST_FP8_MATRIX_MULT:-1}"
+# Leave COMFY_VRAM_MODE empty on a 24 GB card: the two 14B FP8 UNets are ~13.3 GiB
+# each (~26.6 GiB together, before the 6.3 GiB T5), so --highvram/--gpu-only OOM on
+# the high->low switch. The default NORMAL_VRAM mode swaps one UNet at a time.
+COMFY_VRAM_MODE="${COMFY_VRAM_MODE:-}"
+
 echo "[entrypoint] starting"
 echo "[entrypoint] uid=$(id -u) invocation_cwd=$INVOCATION_CWD cwd=$PWD"
 echo "[entrypoint] app_root=$APP_ROOT data_root=$DATA_ROOT"
@@ -135,12 +146,29 @@ trap cleanup EXIT INT TERM
 
 if [[ "${APP_TEST_MODE:-0}" != "1" ]]; then
   echo "[entrypoint] starting ComfyUI"
-  "$PYTHON_BIN" /opt/ComfyUI/main.py \
-    --listen "$COMFYUI_HOST" \
-    --port "$COMFYUI_PORT" \
-    --extra-model-paths-config "$RUNTIME_MODEL_CONFIG" \
-    --input-directory "$DATA_ROOT/inputs/comfy" \
-    --output-directory "$DATA_ROOT/outputs/comfy" &
+  COMFY_ARGS=(
+    --listen "$COMFYUI_HOST"
+    --port "$COMFYUI_PORT"
+    --extra-model-paths-config "$RUNTIME_MODEL_CONFIG"
+    --input-directory "$DATA_ROOT/inputs/comfy"
+    --output-directory "$DATA_ROOT/outputs/comfy"
+  )
+  if [[ "$COMFY_USE_SAGE_ATTENTION" == "1" ]]; then
+    COMFY_ARGS+=(--use-sage-attention)
+  fi
+  if [[ "$COMFY_FAST_FP8_MATRIX_MULT" == "1" ]]; then
+    COMFY_ARGS+=(--fast fp8_matrix_mult)
+  fi
+  case "$COMFY_VRAM_MODE" in
+    ""|default|normal|normalvram) : ;;
+    highvram) COMFY_ARGS+=(--highvram) ;;
+    gpu-only|gpu_only) COMFY_ARGS+=(--gpu-only) ;;
+    lowvram) COMFY_ARGS+=(--lowvram) ;;
+    novram) COMFY_ARGS+=(--novram) ;;
+    *) echo "[entrypoint] ignoring unknown COMFY_VRAM_MODE=$COMFY_VRAM_MODE" >&2 ;;
+  esac
+  echo "[entrypoint] ComfyUI args: ${COMFY_ARGS[*]}"
+  "$PYTHON_BIN" /opt/ComfyUI/main.py "${COMFY_ARGS[@]}" &
   COMFY_PID=$!
 
   for _ in $(seq 1 120); do

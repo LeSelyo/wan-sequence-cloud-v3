@@ -9,6 +9,13 @@ ARG WORKFLOW_TEMPLATES_COMMIT=1b3bdd46c945d54d893a3b43692d5963608fb7d4
 ARG PYTORCH_VERSION=2.5.1
 ARG TORCHVISION_VERSION=0.20.1
 ARG TORCHAUDIO_VERSION=2.5.1
+# SageAttention 1.0.6 is a pure-Python / Triton-kernel wheel (py3-none-any): no nvcc,
+# no compile step, so it installs on the cuda:*-runtime base image as-is. It is the
+# last release on PyPI; 2.x only ships as source needing a CUDA-devel toolchain.
+# Its sageattn() already accepts tensor_layout=/sm_scale=, matching the call site in
+# the pinned ComfyUI commit. Hash-pinned to match the rest of this build.
+ARG SAGEATTENTION_VERSION=1.0.6
+ARG SAGEATTENTION_SHA256=fafc66569bed62a16839e820c2612141b5a20accf55b876d941bab9c0ac5d888
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
@@ -34,6 +41,19 @@ RUN --mount=type=cache,target=/root/.cache/git \
 
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install -r /opt/ComfyUI/requirements.txt
+
+# SageAttention: INT8 attention kernels for the Wan 2.2 sampling passes. Triton
+# (3.1.0) is already provided by the torch 2.5.1 cu124 wheels, so --no-deps keeps
+# the install to the single 20 KB pure-python wheel. The import + signature check
+# fails the build early if the wheel is ever incompatible with the pinned ComfyUI.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    printf 'sageattention==%s --hash=sha256:%s\n' \
+      "${SAGEATTENTION_VERSION}" "${SAGEATTENTION_SHA256}" > /tmp/sageattention.txt && \
+    pip install --no-deps --require-hashes -r /tmp/sageattention.txt && \
+    python -c "import inspect; from sageattention import sageattn; \
+p = inspect.signature(sageattn).parameters; \
+assert 'tensor_layout' in p and 'sm_scale' in p, sorted(p); \
+print('sageattention', '${SAGEATTENTION_VERSION}', 'import OK', sorted(p))"
 
 WORKDIR /app
 COPY requirements.txt /app/requirements.txt
