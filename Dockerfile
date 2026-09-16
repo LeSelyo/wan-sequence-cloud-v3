@@ -74,10 +74,19 @@ RUN mkdir -p /app/ui_workflows && \
 FROM --platform=linux/amd64 ${CUDA_IMAGE} AS runtime
 
 ARG DEBIAN_FRONTEND=noninteractive
+# build-essential (gcc/g++) + python3-dev: required at *runtime*, not build time.
+# Triton JIT-compiles both the SageAttention kernels and, when --enable-triton-backend
+# is passed to ComfyUI, its own comfy_kitchen CUDA-utils launcher (which embeds a
+# CPython extension and needs Python.h). Without a C compiler, SageAttention silently
+# falls back to plain PyTorch attention (logs "Failed to find C compiler... using
+# pytorch attention instead", no crash) — confirmed on a real 24 GB RTX 4090. Without
+# python3-dev specifically, --enable-triton-backend does NOT fall back: it crashes the
+# generation with subprocess.CalledProcessError (missing Python.h at link time). Both
+# packages must ship together with COMFY_ENABLE_TRITON_BACKEND below.
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
-      ca-certificates curl ffmpeg gosu python3 libgl1 libglib2.0-0 && \
+      build-essential ca-certificates curl ffmpeg gosu python3 python3-dev libgl1 libglib2.0-0 && \
     apt-get clean
 
 COPY --from=python-builder /opt/venv /opt/venv

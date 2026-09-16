@@ -37,11 +37,35 @@ export BUNDLED_MODEL_MANIFEST="$BUNDLE_MANIFEST"
 # the persistent data volume means that one-off cost is paid once, not per restart.
 export TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-${DATA_ROOT}/cache/triton}"
 COMFY_USE_SAGE_ATTENTION="${COMFY_USE_SAGE_ATTENTION:-1}"
-COMFY_FAST_FP8_MATRIX_MULT="${COMFY_FAST_FP8_MATRIX_MULT:-1}"
-# Leave COMFY_VRAM_MODE empty on a 24 GB card: the two 14B FP8 UNets are ~13.3 GiB
-# each (~26.6 GiB together, before the 6.3 GiB T5), so --highvram/--gpu-only OOM on
-# the high->low switch. The default NORMAL_VRAM mode swaps one UNet at a time.
-COMFY_VRAM_MODE="${COMFY_VRAM_MODE:-}"
+# Enables comfy_kitchen's Triton backend (apply_rope, quantize_per_tensor_fp8, ...).
+# Requires build-essential + python3-dev in the image (see Dockerfile) — without them
+# this flag makes ComfyUI crash the job instead of degrading gracefully, confirmed on
+# a real RTX 4090. Do not flip this on without also confirming those packages exist.
+COMFY_ENABLE_TRITON_BACKEND="${COMFY_ENABLE_TRITON_BACKEND:-1}"
+# Verified 2026-09-16 on a real RTX 4090: the pinned ComfyUI's fp8-quantization path
+# (comfy_kitchen) only has a fast CUDA backend for torch cu130+; we're pinned to
+# cu124 for SageAttention 1.0.6, so it silently falls back to comfy_kitchen's "eager"
+# Python backend for every fp8 weight. That backend is fine for a plain load, but
+# merging a LoRA onto an fp8_scaled weight (stochastic_rounding_fp8 dequant/requant)
+# allocates ~10-15 full-size temporary tensors per weight with no chunking. Loading a
+# 14B UNet "all at once" (the default NORMAL_VRAM path when the model fits in VRAM)
+# runs this on every weight back-to-back and reliably OOMs on 24 GB the moment any
+# LoRA is attached — reproduced 4/4 times, independent of turbo_mode or LoRA count.
+# --novram forces every weight through the lazy per-layer patch path instead (one
+# small tensor patched, used, and freed at a time), which keeps the same code path's
+# peak memory bounded to a single layer. Confirmed fix: with --novram, LoRA
+# generations that previously OOM'd in <20s completed successfully (non-turbo and
+# turbo_mode alike). No meaningful slowdown was observed on the same hardware for
+# non-LoRA jobs either. Override to "" (empty/normal) only if you don't use LoRAs and
+# want to test whether the default NORMAL_VRAM path is faster for your workload.
+COMFY_VRAM_MODE="${COMFY_VRAM_MODE:-novram}"
+# NOT re-validated together with --novram/--enable-triton-backend above: earlier
+# testing (pre-novram-fix, normal VRAM mode) showed --fast fp8_matrix_mult loads and
+# runs without error on a 4090, but every successful LoRA/benchmark run that led to
+# the --novram fix was done with this OFF (dropped while iterating and never re-added
+# together with the fix). Default is now off; flip on and re-test if you want the
+# extra fp8 matmul speed and are willing to verify it doesn't reintroduce the OOM.
+COMFY_FAST_FP8_MATRIX_MULT="${COMFY_FAST_FP8_MATRIX_MULT:-0}"
 
 echo "[entrypoint] starting"
 echo "[entrypoint] uid=$(id -u) invocation_cwd=$INVOCATION_CWD cwd=$PWD"
@@ -155,6 +179,9 @@ if [[ "${APP_TEST_MODE:-0}" != "1" ]]; then
   )
   if [[ "$COMFY_USE_SAGE_ATTENTION" == "1" ]]; then
     COMFY_ARGS+=(--use-sage-attention)
+  fi
+  if [[ "$COMFY_ENABLE_TRITON_BACKEND" == "1" ]]; then
+    COMFY_ARGS+=(--enable-triton-backend)
   fi
   if [[ "$COMFY_FAST_FP8_MATRIX_MULT" == "1" ]]; then
     COMFY_ARGS+=(--fast fp8_matrix_mult)
