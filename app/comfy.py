@@ -178,6 +178,12 @@ def bind_workflow(name: str, values: dict[str, Any]) -> tuple[dict, dict]:
     for key, value in values.items():
         if key == "turbo_mode":
             continue
+        if key == "negative_prompt" and not str(value or "").strip():
+            # An empty negative prompt means "use the workflow's own". The official Wan
+            # templates ship a tuned one (over-exposure, static frames, blur, extra
+            # fingers, ...); binding "" over it silently degrades every generation that
+            # doesn't spell out a negative prompt. Any non-empty value still overrides.
+            continue
         _apply_bound_value(prompt, bindings.get(key), value, key)
     if values.get("turbo_mode"):
         _materialize_turbo(name, prompt, bindings)

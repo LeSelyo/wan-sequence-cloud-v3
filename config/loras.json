@@ -275,6 +275,24 @@
       "revision": "fb1388adc906ab39ffc26ee40e96b22886b56bc4",
       "source": "huggingface",
       "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/fb1388adc906ab39ffc26ee40e96b22886b56bc4/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors"
+    },
+    "flux_schnell_niji_better_art": {
+      "id": "flux_schnell_niji_better_art",
+      "kind": "lora",
+      "label": "Flux Better Art with Niji (Schnell)",
+      "family": "flux_schnell",
+      "targets": ["keyframe"],
+      "default_target": "keyframe",
+      "version_id": 859463,
+      "filename": "Flux-S-Better-Art-With-Niji.safetensors",
+      "size_bytes": 343805518,
+      "sha256": "8aeaf21e34f3efa7b90d4fe1fc03592df0efb5da2d6f7f440856418ceb95e157",
+      "trigger_words": ["niji"],
+      "recommended_weight": 0.9,
+      "source": "civitai",
+      "url": "https://civitai.com/api/download/models/859463",
+      "source_page": "https://civitai.com/models/768440?modelVersionId=859463",
+      "license_note": "CivitAI metadata: image use and Civitai rental/commercial use of outputs allowed; credit to the creator required; derivatives allowed. Verify current terms before commercial deployment."
     }
   }
 }

@@ -76,7 +76,8 @@ Le cold-start de la release 0.5.0 n’a pas abouti avant hotfix. L’image conte
 ```
 
 - Environment : `DATA_ROOT=/workspace`, `PORT=8000`, `COMFYUI_HOST=127.0.0.1`, `COMFYUI_PORT=8188`, `GPU_CONCURRENCY=1`, `READINESS_PROFILE=all`, `REQUIRE_API_TOKEN=1`, `API_TOKEN=<secret>`.
-- `HF_TOKEN` et `CIVITAI_API_TOKEN` sont optionnels pour les ressources privées/gated. `API_TOKEN` n’est pas le PAT GHCR et aucun de ces secrets ne doit entrer dans Git ou l’image.
+- `CIVITAI_API_TOKEN` est **requis** pour télécharger n'importe quelle LoRA CivitAI du catalogue (l'API renvoie 401 sans token) ; `HF_TOKEN` n'est nécessaire que pour des ressources HuggingFace privées/gated (les modèles Wan/Flux du catalogue n'en demandent pas). `API_TOKEN` n’est pas le PAT GHCR et aucun de ces secrets ne doit entrer dans Git ou l’image.
+- Films longs (ex. 12 plans FLF2V de ~5 s) : les défauts refusent le job (`MAX_SHOTS_PER_JOB=8`, `MAX_TOTAL_FRAMES=968`, `MAX_JOB_COST_UNITS=8`). Coût d'un plan = largeur×hauteur×images×steps / (832×480×121×20) ; relever ces trois variables avec de la marge (ex. `MAX_SHOTS_PER_JOB=20`, `MAX_TOTAL_FRAMES=2400`, `MAX_JOB_COST_UNITS=20`). `scripts/film_client.py` rejoue tout le scénario (keyframes Flux + LoRA, FLF2V, concat ffmpeg) via l'API bearer ; `scripts/smoke_concat.py` valide ffmpeg dans l'image.
 - Quitter SSH ne stoppe pas la facturation : arrêter/terminate explicitement l’ordre Clore.
 
 Le script accepte un lancement initial en `root`, crée uniquement les chemins
