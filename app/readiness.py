@@ -35,6 +35,7 @@ WORKFLOWS = {
         "wan22_i2v.api.json",
         "wan22_flf2v.api.json",
     ),
+    "wan22-animate": ("wan22_animate.api.json",),
 }
 
 TURBO_ITEMS = {
@@ -129,18 +130,21 @@ def check_models(settings: Settings, profile: str) -> tuple[bool, dict[str, str]
     if profile == "backend":
         return True, {}
     catalog = _catalog()
+    if not profile.endswith("-turbo"):
+        # Non-turbo profiles list every item they need directly, LoRAs included
+        # (e.g. wan22-animate's turbo/relight LoRAs are required, not optional).
+        return check_model_items(settings, catalog["profiles"][profile])
     base_ids = [
         item_id
         for item_id in catalog["profiles"][profile]
         if not str(catalog["items"][item_id]["relative_path"]).startswith("loras/")
     ]
     models_ok, details = check_model_items(settings, base_ids)
-    if profile.endswith("-turbo"):
-        workflows = ("wan22_t2v", "wan22_i2v") if profile == "all-turbo" else (("wan22_t2v",) if profile == "t2v-turbo" else ("wan22_i2v",))
-        for workflow in workflows:
-            loras_ok, lora_details = check_turbo_assets(settings, workflow)
-            models_ok = models_ok and loras_ok
-            details.update(lora_details)
+    workflows = ("wan22_t2v", "wan22_i2v") if profile == "all-turbo" else (("wan22_t2v",) if profile == "t2v-turbo" else ("wan22_i2v",))
+    for workflow in workflows:
+        loras_ok, lora_details = check_turbo_assets(settings, workflow)
+        models_ok = models_ok and loras_ok
+        details.update(lora_details)
     return models_ok, details
 
 
@@ -172,9 +176,17 @@ def check_capabilities(settings: Settings, profile: str) -> dict[str, Any]:
     """Report every product family separately and identify those required by profile."""
     catalog = _catalog()
     capabilities: dict[str, Any] = {}
-    for family in ("t2v", "i2v", "flf2v"):
-        models_ok, model_details = check_model_items(settings, catalog["profiles"][family])
-        workflow_names = WORKFLOWS[family]
+    for family in ("t2v", "i2v", "flf2v", "animate"):
+        profile_name = "wan22-animate" if family == "animate" else family
+        profile_ids = catalog["profiles"].get(profile_name)
+        if profile_ids is None:
+            # Older/partial catalogs (or tests using a minimal mocked catalog)
+            # may not define every known family; report it as not-ready rather
+            # than crashing the whole readiness response.
+            capabilities[family] = {"ready": False, "models": {}, "workflows": {}}
+            continue
+        models_ok, model_details = check_model_items(settings, profile_ids)
+        workflow_names = WORKFLOWS.get(profile_name, ())
         workflow_details = {
             name: "ready"
             if (settings.workflow_dir / name).is_file()

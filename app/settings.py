@@ -45,6 +45,14 @@ class Settings:
         return self.models_dir / "loras"
 
     @property
+    def clip_vision_dir(self) -> Path:
+        return self.models_dir / "clip_visions"
+
+    @property
+    def driving_video_dir(self) -> Path:
+        return self.inputs_dir / "videos"
+
+    @property
     def inputs_dir(self) -> Path:
         return self.data_root / "inputs"
 
@@ -86,7 +94,9 @@ class Settings:
             self.models_dir / "vae",
             self.models_dir / "checkpoints",
             self.lora_dir,
+            self.clip_vision_dir,
             self.inputs_dir,
+            self.driving_video_dir,
             self.outputs_dir,
             self.image_outputs_dir,
             self.jobs_dir,
@@ -105,11 +115,11 @@ def get_settings() -> Settings:
     ).resolve()
     readiness_profile = os.getenv("READINESS_PROFILE", "backend").strip().lower()
     if readiness_profile not in {
-        "backend", "t2v", "t2v-turbo", "i2v", "i2v-turbo", "flf2v", "all-video", "image", "flux-schnell", "all", "all-turbo"
+        "backend", "t2v", "t2v-turbo", "i2v", "i2v-turbo", "flf2v", "all-video", "image", "flux-schnell", "all", "all-turbo", "wan22-animate"
     }:
         raise ValueError(
             "READINESS_PROFILE must be one of backend, t2v, t2v-turbo, "
-            "i2v, i2v-turbo, flf2v, all-video, image, flux-schnell, all, all-turbo"
+            "i2v, i2v-turbo, flf2v, all-video, image, flux-schnell, all, all-turbo, wan22-animate"
         )
     return Settings(
         data_root=data_root,

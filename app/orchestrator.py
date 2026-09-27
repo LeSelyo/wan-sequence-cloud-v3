@@ -44,6 +44,8 @@ def validate_request_compatibility(request: SequenceRequest) -> None:
                 resolve_generated_image(image.image_id)
         if shot.mode == Mode.T2V:
             family, workflow = "wan22_t2v", "wan22_t2v"
+        elif shot.mode in {Mode.ANIMATE_MIX, Mode.ANIMATE_MOVE}:
+            family, workflow = "wan22_animate", "wan22_animate"
         else:
             family = "wan22_i2v"
             workflow = (
@@ -137,6 +139,7 @@ async def download_remote_image(
     target: Path,
     max_bytes: int,
     *,
+    content_type_prefix: str = "image/",
     client: httpx.AsyncClient | None = None,
     resolver: Callable = socket.getaddrinfo,
 ) -> Path:
@@ -172,9 +175,10 @@ async def download_remote_image(
                     continue
                 response.raise_for_status()
                 content_type = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
-                if not content_type.startswith("image/"):
+                if not content_type.startswith(content_type_prefix):
                     raise ValueError(
-                        f"remote input content type is not an image: {content_type or 'missing'}"
+                        f"remote input content type does not start with {content_type_prefix!r}: "
+                        f"{content_type or 'missing'}"
                     )
                 content_length = response.headers.get("content-length")
                 if content_length and int(content_length) > max_bytes:
@@ -212,6 +216,27 @@ async def materialize_image(image, job_dir: Path, label: str) -> Path:
     max_download_mb = int(os.getenv("MAX_INPUT_DOWNLOAD_MB", "50"))
     return await download_remote_image(
         str(image.url), target, max_download_mb * 1024 * 1024
+    )
+
+
+async def materialize_video(video, job_dir: Path, label: str) -> Path:
+    """Resolve a driving-video reference the same way materialize_image resolves images:
+    a path relative to the mounted input directory, or a remote URL (SSRF-guarded like
+    download_remote_image). There is no upload/video_id store yet, so video_id is not
+    accepted here even though the schema reserves the field for a future upload route."""
+    if video.video_id:
+        raise ValueError("video_id references are not implemented yet; use path or url")
+    if video.path:
+        source = (settings.driving_video_dir / video.path).resolve()
+        if settings.driving_video_dir.resolve() not in source.parents:
+            raise ValueError("driving_video path escapes the mounted videos directory")
+        if not source.is_file():
+            raise FileNotFoundError(source)
+        return source
+    target = job_dir / f"{label}.mp4"
+    max_download_mb = int(os.getenv("MAX_INPUT_DOWNLOAD_MB", "50"))
+    return await download_remote_image(  # generic SSRF-guarded fetch; content-type checked below
+        str(video.url), target, max_download_mb * 1024 * 1024, content_type_prefix="video/"
     )
 
 
@@ -369,6 +394,10 @@ async def render_shot(shot: Shot, job_dir: Path) -> Path:
     end = await materialize_image(shot.end_image, job_dir, f"{shot.id}_end") if shot.end_image else None
     start_name = stage_for_comfy(start, job_dir.name, shot.id, "start") if start else None
     end_name = stage_for_comfy(end, job_dir.name, shot.id, "end") if end else None
+    driving_video_name = None
+    if shot.driving_video is not None:
+        driving = await materialize_video(shot.driving_video, job_dir, f"{shot.id}_driving")
+        driving_video_name = stage_for_comfy(driving, job_dir.name, shot.id, "driving")
     if shot.mode == Mode.T2V:
         template, family = "wan22_t2v", "wan22_t2v"
     elif shot.mode in {Mode.TEXT_KEYFRAMES_TO_VIDEO, Mode.KEYFRAMES_TO_VIDEO}:
@@ -393,6 +422,13 @@ async def render_shot(shot: Shot, job_dir: Path) -> Path:
             "turbo_mode": shot.turbo_mode,
             "start_image": start_name,
             "end_image": end_name,
+            "driving_video": driving_video_name,
+            # Mix keeps the driving video's background/scene; Move keeps only its
+            # motion. Which WanAnimateToVideo inputs this actually toggles can only
+            # be pinned once bind_workflow's bindings are regenerated against a live
+            # ComfyUI instance with the three Animate preprocessing nodes installed
+            # (see prepare_workflows.py) — not yet finalized as of 2026-09-27.
+            "keep_background": shot.mode == Mode.ANIMATE_MIX,
             "output_prefix": f"{job_dir.name}/{shot.id}_video",
         },
     )

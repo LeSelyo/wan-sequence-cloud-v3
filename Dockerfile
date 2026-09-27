@@ -6,6 +6,9 @@ FROM --platform=linux/amd64 ${CUDA_IMAGE} AS python-builder
 ARG DEBIAN_FRONTEND=noninteractive
 ARG COMFYUI_COMMIT=2881e6161081439b1c3fb3b6c1f51b3d272da710
 ARG WORKFLOW_TEMPLATES_COMMIT=1b3bdd46c945d54d893a3b43692d5963608fb7d4
+# The animate template didn't exist yet at WORKFLOW_TEMPLATES_COMMIT, so it is
+# pinned separately (captured 2026-09-27) rather than left on a floating branch.
+ARG WORKFLOW_TEMPLATES_ANIMATE_COMMIT=9b912856b25a8564632b20857aa6353fbf78eb5a
 ARG PYTORCH_VERSION=2.5.1
 ARG TORCHVISION_VERSION=0.20.1
 ARG TORCHAUDIO_VERSION=2.5.1
@@ -16,6 +19,13 @@ ARG TORCHAUDIO_VERSION=2.5.1
 # the pinned ComfyUI commit. Hash-pinned to match the rest of this build.
 ARG SAGEATTENTION_VERSION=1.0.6
 ARG SAGEATTENTION_SHA256=fafc66569bed62a16839e820c2612141b5a20accf55b876d941bab9c0ac5d888
+# Wan 2.2 Animate (Mix/Move) needs three third-party ComfyUI node packs for its
+# preprocessing stage (pose extraction, segmentation, point editor). None ship
+# with core ComfyUI. Each is pinned to a specific commit (captured 2026-09-27)
+# rather than a floating branch, same rigor as SageAttention above.
+ARG CONTROLNET_AUX_COMMIT=59b1fc411ede8623b2997855b8018f0b3b6cf49f
+ARG KJNODES_COMMIT=d3cfe21625e5170126ce06fbfcfe1d88108688c3
+ARG SEGMENT_ANYTHING_2_COMMIT=0c35fff5f382803e2310103357b5e985f5437f32
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
@@ -69,7 +79,35 @@ RUN mkdir -p /app/ui_workflows && \
       -o /app/ui_workflows/video_wan2_2_14B_i2v.json && \
     curl -fsSL --retry 3 \
       "https://raw.githubusercontent.com/Comfy-Org/workflow_templates/${WORKFLOW_TEMPLATES_COMMIT}/templates/video_wan2_2_14B_flf2v.json" \
-      -o /app/ui_workflows/video_wan2_2_14B_flf2v.json
+      -o /app/ui_workflows/video_wan2_2_14B_flf2v.json && \
+    curl -fsSL --retry 3 \
+      "https://raw.githubusercontent.com/Comfy-Org/workflow_templates/${WORKFLOW_TEMPLATES_ANIMATE_COMMIT}/templates/video_wan2_2_14B_animate.json" \
+      -o /app/ui_workflows/video_wan2_2_14B_animate.json
+
+# Wan 2.2 Animate's three preprocessing node packs (audited 2026-09-27: mainstream,
+# widely-used ComfyUI extensions; pinned by commit, not a floating branch/tag).
+RUN mkdir -p /opt/ComfyUI/custom_nodes && \
+    git -C /opt/ComfyUI/custom_nodes init comfyui_controlnet_aux && \
+    git -C /opt/ComfyUI/custom_nodes/comfyui_controlnet_aux remote add origin \
+      https://github.com/Fannovel16/comfyui_controlnet_aux.git && \
+    git -C /opt/ComfyUI/custom_nodes/comfyui_controlnet_aux fetch --depth 1 origin ${CONTROLNET_AUX_COMMIT} && \
+    git -C /opt/ComfyUI/custom_nodes/comfyui_controlnet_aux checkout --detach FETCH_HEAD && \
+    git -C /opt/ComfyUI/custom_nodes init ComfyUI-KJNodes && \
+    git -C /opt/ComfyUI/custom_nodes/ComfyUI-KJNodes remote add origin \
+      https://github.com/kijai/ComfyUI-KJNodes.git && \
+    git -C /opt/ComfyUI/custom_nodes/ComfyUI-KJNodes fetch --depth 1 origin ${KJNODES_COMMIT} && \
+    git -C /opt/ComfyUI/custom_nodes/ComfyUI-KJNodes checkout --detach FETCH_HEAD && \
+    git -C /opt/ComfyUI/custom_nodes init ComfyUI-segment-anything-2 && \
+    git -C /opt/ComfyUI/custom_nodes/ComfyUI-segment-anything-2 remote add origin \
+      https://github.com/kijai/ComfyUI-segment-anything-2.git && \
+    git -C /opt/ComfyUI/custom_nodes/ComfyUI-segment-anything-2 fetch --depth 1 origin ${SEGMENT_ANYTHING_2_COMMIT} && \
+    git -C /opt/ComfyUI/custom_nodes/ComfyUI-segment-anything-2 checkout --detach FETCH_HEAD && \
+    rm -rf /opt/ComfyUI/custom_nodes/*/.git
+
+RUN --mount=type=cache,target=/root/.cache/pip \
+    for reqs in /opt/ComfyUI/custom_nodes/*/requirements.txt; do \
+      pip install -r "$reqs"; \
+    done
 
 FROM --platform=linux/amd64 ${CUDA_IMAGE} AS runtime
 

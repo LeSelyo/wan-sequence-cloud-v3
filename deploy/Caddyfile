@@ -1,0 +1,28 @@
+# Reverse proxy for a PERMANENT deployment (fixed IP/domain), NOT for ephemeral
+# Clore/RunPod/Verda rentals — those change IP every rental, so Let's Encrypt's
+# HTTP-01 challenge can't be pinned to them. On a rental, use an SSH tunnel to
+# reach ComfyUI instead (see DEPLOY_PERMANENT.md).
+#
+# Caddy terminates TLS itself, on this machine, so no third-party proxy ever
+# sees the API bearer token or ComfyUI traffic in plaintext (unlike Clore's own
+# clorecloud.net edge). Only 443 (and 22 for SSH) need to be open on the host
+# firewall; the app (8000) and ComfyUI (8188) stay bound to 127.0.0.1.
+#
+# Set these before starting Caddy:
+#   API_HOST            e.g. wan.example.com  (the FastAPI app; it does its own
+#                        bearer-token check, Caddy does not add auth here)
+#   COMFYUI_HOST         e.g. comfyui.wan.example.com  (ComfyUI has NO auth of
+#                        its own — Caddy's basic_auth below is the only gate)
+#   COMFYUI_BASIC_USER   an admin username you choose
+#   COMFYUI_BASIC_HASH   output of: caddy hash-password --plaintext '<password>'
+
+{$API_HOST} {
+	reverse_proxy 127.0.0.1:8000
+}
+
+{$COMFYUI_HOST} {
+	basicauth {
+		{$COMFYUI_BASIC_USER} {$COMFYUI_BASIC_HASH}
+	}
+	reverse_proxy 127.0.0.1:8188
+}

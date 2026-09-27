@@ -27,7 +27,17 @@ FILES = {
     "wan22_t2v": "video_wan2_2_14B_t2v.json",
     "wan22_i2v": "video_wan2_2_14B_i2v.json",
     "wan22_flf2v": "video_wan2_2_14B_flf2v.json",
+    "wan22_animate": "video_wan2_2_14B_animate.json",
 }
+# wan22_animate is structurally unlike the other three: it has DWPose/SAM2
+# preprocessing nodes, a PointsEditor, and three sibling subgraphs (one sampler
+# + two "Video Extend" copies meant to be duplicated by hand in the ComfyUI UI
+# for longer clips). build_bindings()'s heuristics were written for the simple
+# single-KSampler t2v/i2v/flf2v shape and have NOT been extended for these node
+# types yet (LoadVideo, DWPreprocessor, Sam2Segmentation, PointsEditor). It is
+# listed in EXPERIMENTAL below so a still-failing conversion never blocks
+# startup for t2v/i2v/flf2v/image — see main() (2026-09-27).
+EXPERIMENTAL = {"wan22_animate"}
 CONVERTER_SCHEMA_VERSION = 4
 
 
@@ -674,24 +684,42 @@ def build_bindings(prompt: dict, workflow_name: str = "wan22_t2v") -> dict:
         ]
         if len(candidates) == 1:
             bindings[f"{branch}_model_target"] = pointer(candidates[0], "model")
-    required = {
-        "positive_prompt",
-        "negative_prompt",
-        "seed",
-        "width",
-        "height",
-        "frames",
-        "fps",
-        "steps",
-        "cfg",
-        "output_prefix",
-        "high_model_target",
-        "low_model_target",
-    }
-    if workflow_name == "wan22_i2v":
-        required.add("start_image")
-    elif workflow_name == "wan22_flf2v":
-        required.update({"start_image", "end_image"})
+    if workflow_name == "wan22_animate":
+        # Single unified diffusion model (no high/low-noise split), so the branch
+        # heuristic in this function falls back to "main_model_target". Left
+        # deliberately minimal: driving_video/keep_background are not covered by
+        # any heuristic here yet and must be bound by hand once this is run
+        # against a live object_info (see the FILES comment above).
+        required = {
+            "positive_prompt",
+            "seed",
+            "width",
+            "height",
+            "frames",
+            "fps",
+            "output_prefix",
+            "main_model_target",
+            "start_image",
+        }
+    else:
+        required = {
+            "positive_prompt",
+            "negative_prompt",
+            "seed",
+            "width",
+            "height",
+            "frames",
+            "fps",
+            "steps",
+            "cfg",
+            "output_prefix",
+            "high_model_target",
+            "low_model_target",
+        }
+        if workflow_name == "wan22_i2v":
+            required.add("start_image")
+        elif workflow_name == "wan22_flf2v":
+            required.update({"start_image", "end_image"})
     missing = required - set(bindings)
     if missing:
         raise RuntimeError(f"automatic binding failed, missing {sorted(missing)}")
@@ -707,14 +735,23 @@ def main(argv: list[str] | None = None) -> None:
     for name, source_name in FILES.items():
         destination = DEST / f"{name}.api.json"
         source_path = SOURCE / source_name
-        source_hash = source_sha256(source_path)
-        if not args.force and reusable(destination, source_hash):
-            print(f"valid: {destination}")
+        try:
+            source_hash = source_sha256(source_path)
+            if not args.force and reusable(destination, source_hash):
+                print(f"valid: {destination}")
+                continue
+            workflow = json.loads(source_path.read_text(encoding="utf-8"))
+            prompt, turbo = convert(workflow, info, include_metadata=True)
+            bindings = build_bindings(prompt, name)
+            validate_runtime_prompt(prompt, name)
+        except Exception as exc:
+            if name not in EXPERIMENTAL:
+                raise
+            print(
+                f"skipped (experimental, not yet converting cleanly): {name}: "
+                f"{type(exc).__name__}: {exc}"
+            )
             continue
-        workflow = json.loads(source_path.read_text(encoding="utf-8"))
-        prompt, turbo = convert(workflow, info, include_metadata=True)
-        bindings = build_bindings(prompt, name)
-        validate_runtime_prompt(prompt, name)
         prompt["_bindings"] = bindings
         if turbo is not None:
             prompt["_turbo"] = turbo

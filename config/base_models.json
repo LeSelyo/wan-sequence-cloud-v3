@@ -10,7 +10,8 @@
     "flux-schnell": ["flux_schnell_diffusion", "flux_clip_l", "flux_t5xxl_fp8", "flux_ae"],
     "image": ["flux_schnell_diffusion", "flux_clip_l", "flux_t5xxl_fp8", "flux_ae"],
     "all": ["wan22_t2v_high", "wan22_t2v_low", "wan22_i2v_high", "wan22_i2v_low", "umt5_xxl", "wan21_vae", "flux_schnell_diffusion", "flux_clip_l", "flux_t5xxl_fp8", "flux_ae"],
-    "all-turbo": ["wan22_t2v_high", "wan22_t2v_low", "wan22_i2v_high", "wan22_i2v_low", "umt5_xxl", "wan21_vae", "wan22_t2v_lightx_high", "wan22_t2v_lightx_low", "wan22_i2v_lightx_high", "wan22_i2v_lightx_low"]
+    "all-turbo": ["wan22_t2v_high", "wan22_t2v_low", "wan22_i2v_high", "wan22_i2v_low", "umt5_xxl", "wan21_vae", "wan22_t2v_lightx_high", "wan22_t2v_lightx_low", "wan22_i2v_lightx_high", "wan22_i2v_lightx_low"],
+    "wan22-animate": ["wan22_animate_diffusion", "umt5_xxl", "wan21_vae", "clip_vision_h", "wan22_animate_lightx", "wan22_animate_relight_lora"]
   },
   "profile_capabilities": {
     "t2v": ["t2v"],
@@ -22,7 +23,8 @@
     "flux-schnell": ["image_generation"],
     "image": ["image_generation"],
     "all": ["t2v", "i2v", "flf2v", "image_generation"],
-    "all-turbo": ["t2v", "i2v", "flf2v"]
+    "all-turbo": ["t2v", "i2v", "flf2v"],
+    "wan22-animate": ["animate"]
   },
   "image_engines": {
     "flux_schnell": {
@@ -214,6 +216,58 @@
       "sha256": "2fc39d31359a4b0a64f55876d8ff7fa8d780956ae2cb13463b0223e15148976b",
       "xet_hash": "2e358d90f91ce658dc1be053d44cf2d6437e5f517c71ae89fcb2c89fd54ca67e",
       "revision": "fb1388adc906ab39ffc26ee40e96b22886b56bc4"
+    },
+    "wan22_animate_diffusion": {
+      "kind": "base_model",
+      "family": "wan22_animate",
+      "role": "main_diffusion",
+      "source": "huggingface",
+      "filename": "Wan2_2-Animate-14B_fp8_e4m3fn_scaled_KJ.safetensors",
+      "relative_path": "diffusion_models/Wan2_2-Animate-14B_fp8_e4m3fn_scaled_KJ.safetensors",
+      "url": "https://huggingface.co/Kijai/WanVideo_comfy_fp8_scaled/resolve/52e6717427927ae20a29250daafa2c62c5160106/Wan22Animate/Wan2_2-Animate-14B_fp8_e4m3fn_scaled_KJ.safetensors",
+      "size_bytes": 18401760586,
+      "sha256": "2936b31473a967e7a429a6646bba60e7862d0938e178b58b2a140f391dd5b8e6",
+      "xet_hash": "684340f24338950ab6fa3951abe552f692769ca30c24f752597f708376f3cf92",
+      "revision": "52e6717427927ae20a29250daafa2c62c5160106"
+    },
+    "wan22_animate_lightx": {
+      "kind": "base_model",
+      "family": "wan22_animate",
+      "role": "turbo_lora",
+      "source": "huggingface",
+      "filename": "lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors",
+      "relative_path": "loras/lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors",
+      "url": "https://huggingface.co/Kijai/WanVideo_comfy/resolve/89ee5a220d9f24199fe5ad553e34a6ec6fd453d4/Lightx2v/lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors",
+      "size_bytes": 738005744,
+      "sha256": "85c4a61c30e0497aa44b91d93a893b624708461a56fe5485183b28fa07e2dfb3",
+      "xet_hash": "decd2a689ced18ed058c0fdcc9c415e1e94ca72d4a6dea6dcbbb45a8e45e09ab",
+      "revision": "89ee5a220d9f24199fe5ad553e34a6ec6fd453d4"
+    },
+    "wan22_animate_relight_lora": {
+      "kind": "base_model",
+      "family": "wan22_animate",
+      "role": "relight_lora",
+      "source": "huggingface",
+      "filename": "WanAnimate_relight_lora_fp16.safetensors",
+      "relative_path": "loras/WanAnimate_relight_lora_fp16.safetensors",
+      "url": "https://huggingface.co/Kijai/WanVideo_comfy/resolve/ac0a6031e3f4f62078bf09a184abedc6b92a6287/LoRAs/Wan22_relight/WanAnimate_relight_lora_fp16.safetensors",
+      "size_bytes": 1436672440,
+      "sha256": "fc646c74c73f4b251f5fd9bc440ef21b03b27305f499966c68b2b3aa31498561",
+      "xet_hash": "48a206fd23480343b52cb58c810714e055656b654de9288cbe93ad9f6e6d08db",
+      "revision": "ac0a6031e3f4f62078bf09a184abedc6b92a6287"
+    },
+    "clip_vision_h": {
+      "kind": "base_model",
+      "family": "wan22_animate",
+      "role": "clip_vision",
+      "source": "huggingface",
+      "filename": "clip_vision_h.safetensors",
+      "relative_path": "clip_visions/clip_vision_h.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/55dc69dfdb9c8806600cce6c26a619e1734999e0/split_files/clip_vision/clip_vision_h.safetensors",
+      "size_bytes": 1264219396,
+      "sha256": "64a7ef761bfccbadbaa3da77366aac4185a6c58fa5de5f589b42a65bcc21f161",
+      "xet_hash": "badc2656bc63a68213b934144f5f63edfcc12e41eeead464512b7fa175631d72",
+      "revision": "55dc69dfdb9c8806600cce6c26a619e1734999e0"
     }
   }
 }

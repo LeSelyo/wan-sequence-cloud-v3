@@ -12,6 +12,12 @@ class Mode(str, Enum):
     I2V = "i2v"
     TEXT_KEYFRAMES_TO_VIDEO = "t+i(keyframe)2v"
     KEYFRAMES_TO_VIDEO = "i(keyframe)2v"
+    # Wan 2.2 Animate: both modes replay a driving video's motion onto a new
+    # character. Mix keeps the driving video's background/scene and swaps only
+    # the character; Move discards the driving video's background entirely and
+    # keeps only its motion, placing the character in a newly generated scene.
+    ANIMATE_MIX = "animate_mix"
+    ANIMATE_MOVE = "animate_move"
 
 
 class LoraUse(BaseModel):
@@ -30,6 +36,25 @@ class InputImage(BaseModel):
     def exactly_one_source(self):
         if sum(value is not None for value in (self.url, self.path, self.image_id)) != 1:
             raise ValueError("provide exactly one of url, path, or image_id")
+        if self.path and (self.path.startswith("/") or ".." in self.path.replace("\\", "/").split("/")):
+            raise ValueError("path must be relative to the mounted input directory")
+        return self
+
+
+class InputVideo(BaseModel):
+    """A driving video reference for Wan 2.2 Animate (Mix/Move). Same controlled-source
+    contract as InputImage: no arbitrary inline data, only a URL, a path relative to the
+    mounted input directory, or (once uploaded) an image_id-style reference."""
+
+    model_config = ConfigDict(extra="forbid")
+    url: HttpUrl | None = None
+    path: str | None = None
+    video_id: str | None = Field(default=None, pattern=r"^vid_[a-f0-9]{32}$")
+
+    @model_validator(mode="after")
+    def exactly_one_source(self):
+        if sum(value is not None for value in (self.url, self.path, self.video_id)) != 1:
+            raise ValueError("provide exactly one of url, path, or video_id")
         if self.path and (self.path.startswith("/") or ".." in self.path.replace("\\", "/").split("/")):
             raise ValueError("path must be relative to the mounted input directory")
         return self
@@ -80,6 +105,7 @@ class Shot(BaseModel):
     start_image: InputImage | None = None
     end_image: InputImage | None = None
     generate_start_image: KeyframeStage | None = None
+    driving_video: InputVideo | None = None
     width: int = Field(default=832, ge=256, le=1536, multiple_of=16)
     height: int = Field(default=480, ge=256, le=1536, multiple_of=16)
     frames: int = Field(default=121, ge=17, le=241)
@@ -106,6 +132,8 @@ class Shot(BaseModel):
             Mode.I2V,
             Mode.TEXT_KEYFRAMES_TO_VIDEO,
             Mode.KEYFRAMES_TO_VIDEO,
+            Mode.ANIMATE_MIX,
+            Mode.ANIMATE_MOVE,
         }
         if needs_start and self.start_image is None and self.generate_start_image is None:
             raise ValueError(f"{self.mode.value} requires start_image or generate_start_image")
@@ -115,6 +143,12 @@ class Shot(BaseModel):
             raise ValueError(f"{self.mode.value} requires end_image")
         if self.mode in {Mode.T2V, Mode.TEXT_IMAGE_TO_VIDEO, Mode.TEXT_KEYFRAMES_TO_VIDEO} and not self.prompt.strip():
             raise ValueError(f"{self.mode.value} requires a prompt")
+        if self.mode in {Mode.ANIMATE_MIX, Mode.ANIMATE_MOVE} and self.driving_video is None:
+            raise ValueError(f"{self.mode.value} requires driving_video (the performer video to replay)")
+        if self.driving_video is not None and self.mode not in {Mode.ANIMATE_MIX, Mode.ANIMATE_MOVE}:
+            raise ValueError("driving_video is only accepted for animate_mix/animate_move shots")
+        # Note: turbo_mode is already rejected for these modes by the earlier
+        # "turbo_mode is supported only for T2V/I2V workflows" check above.
         return self
 
 
