@@ -457,6 +457,10 @@ async def render_shot(shot: Shot, job_dir: Path) -> Path:
         template, family = "wan22_t2v", "wan22_t2v"
     elif shot.mode in {Mode.TEXT_KEYFRAMES_TO_VIDEO, Mode.KEYFRAMES_TO_VIDEO}:
         template, family = "wan22_flf2v", "wan22_i2v"
+    elif shot.mode in {Mode.ANIMATE_MIX, Mode.ANIMATE_MOVE}:
+        template, family = "wan22_animate", "wan22_animate"
+    elif shot.mode == Mode.VACE:
+        template, family = "wan22_vace", "wan22_vace"
     else:
         template, family = "wan22_i2v", "wan22_i2v"
     if shot.turbo_mode:
