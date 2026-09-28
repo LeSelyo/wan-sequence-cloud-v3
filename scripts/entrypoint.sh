@@ -213,6 +213,10 @@ if [[ "${APP_TEST_MODE:-0}" != "1" ]]; then
   "$PYTHON_BIN" "$APP_ROOT/scripts/prepare_workflows.py"
   install -m 0644 "$APP_ROOT/workflows/image_flux_schnell.api.json" \
     "$WORKFLOW_DIR/image_flux_schnell.api.json"
+  # Hand-authored (not auto-converted): see workflows/wan22_vace.api.json's
+  # header comment in the commit that added it for why.
+  install -m 0644 "$APP_ROOT/workflows/wan22_vace.api.json" \
+    "$WORKFLOW_DIR/wan22_vace.api.json"
 fi
 
 echo "[entrypoint] starting API"

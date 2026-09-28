@@ -18,6 +18,10 @@ class Mode(str, Enum):
     # keeps only its motion, placing the character in a newly generated scene.
     ANIMATE_MIX = "animate_mix"
     ANIMATE_MOVE = "animate_move"
+    # Wan 2.2 VACE (Fun variant): several keyframe images placed at chosen frame
+    # positions in one clip, not just a start/end pair. The app builds the actual
+    # control_video/control_masks fed to WanVaceToVideo from Shot.keyframes.
+    VACE = "vace"
 
 
 class LoraUse(BaseModel):
@@ -58,6 +62,12 @@ class InputVideo(BaseModel):
         if self.path and (self.path.startswith("/") or ".." in self.path.replace("\\", "/").split("/")):
             raise ValueError("path must be relative to the mounted input directory")
         return self
+
+
+class TimedKeyframe(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    image: InputImage
+    frame: int = Field(ge=0, description="Frame index (0-based) this image is placed at.")
 
 
 class KeyframeStage(BaseModel):
@@ -106,6 +116,7 @@ class Shot(BaseModel):
     end_image: InputImage | None = None
     generate_start_image: KeyframeStage | None = None
     driving_video: InputVideo | None = None
+    keyframes: list[TimedKeyframe] = Field(default_factory=list, max_length=32)
     width: int = Field(default=832, ge=256, le=1536, multiple_of=16)
     height: int = Field(default=480, ge=256, le=1536, multiple_of=16)
     frames: int = Field(default=121, ge=17, le=241)
@@ -147,6 +158,20 @@ class Shot(BaseModel):
             raise ValueError(f"{self.mode.value} requires driving_video (the performer video to replay)")
         if self.driving_video is not None and self.mode not in {Mode.ANIMATE_MIX, Mode.ANIMATE_MOVE}:
             raise ValueError("driving_video is only accepted for animate_mix/animate_move shots")
+        if self.mode == Mode.VACE:
+            if not self.prompt.strip():
+                raise ValueError(f"{self.mode.value} requires a prompt")
+            if len(self.keyframes) < 2:
+                raise ValueError(f"{self.mode.value} requires at least 2 keyframes")
+            frame_indices = [item.frame for item in self.keyframes]
+            if len(set(frame_indices)) != len(frame_indices):
+                raise ValueError("keyframes must have distinct frame indices")
+            if max(frame_indices) >= self.frames:
+                raise ValueError(
+                    f"keyframe frame index {max(frame_indices)} is out of range for {self.frames} frames"
+                )
+        elif self.keyframes:
+            raise ValueError("keyframes is only accepted for vace shots")
         # Note: turbo_mode is already rejected for these modes by the earlier
         # "turbo_mode is supported only for T2V/I2V workflows" check above.
         return self

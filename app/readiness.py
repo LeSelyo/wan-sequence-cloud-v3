@@ -36,6 +36,7 @@ WORKFLOWS = {
         "wan22_flf2v.api.json",
     ),
     "wan22-animate": ("wan22_animate.api.json",),
+    "wan22-vace": ("wan22_vace.api.json",),
 }
 
 TURBO_ITEMS = {
@@ -176,8 +177,8 @@ def check_capabilities(settings: Settings, profile: str) -> dict[str, Any]:
     """Report every product family separately and identify those required by profile."""
     catalog = _catalog()
     capabilities: dict[str, Any] = {}
-    for family in ("t2v", "i2v", "flf2v", "animate"):
-        profile_name = "wan22-animate" if family == "animate" else family
+    for family in ("t2v", "i2v", "flf2v", "animate", "vace"):
+        profile_name = {"animate": "wan22-animate", "vace": "wan22-vace"}.get(family, family)
         profile_ids = catalog["profiles"].get(profile_name)
         if profile_ids is None:
             # Older/partial catalogs (or tests using a minimal mocked catalog)

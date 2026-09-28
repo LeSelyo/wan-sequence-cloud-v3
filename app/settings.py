@@ -115,11 +115,11 @@ def get_settings() -> Settings:
     ).resolve()
     readiness_profile = os.getenv("READINESS_PROFILE", "backend").strip().lower()
     if readiness_profile not in {
-        "backend", "t2v", "t2v-turbo", "i2v", "i2v-turbo", "flf2v", "all-video", "image", "flux-schnell", "all", "all-turbo", "wan22-animate"
+        "backend", "t2v", "t2v-turbo", "i2v", "i2v-turbo", "flf2v", "all-video", "image", "flux-schnell", "all", "all-turbo", "wan22-animate", "wan22-vace"
     }:
         raise ValueError(
             "READINESS_PROFILE must be one of backend, t2v, t2v-turbo, "
-            "i2v, i2v-turbo, flf2v, all-video, image, flux-schnell, all, all-turbo, wan22-animate"
+            "i2v, i2v-turbo, flf2v, all-video, image, flux-schnell, all, all-turbo, wan22-animate, wan22-vace"
         )
     return Settings(
         data_root=data_root,

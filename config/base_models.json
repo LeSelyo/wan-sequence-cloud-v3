@@ -11,7 +11,8 @@
     "image": ["flux_schnell_diffusion", "flux_clip_l", "flux_t5xxl_fp8", "flux_ae"],
     "all": ["wan22_t2v_high", "wan22_t2v_low", "wan22_i2v_high", "wan22_i2v_low", "umt5_xxl", "wan21_vae", "flux_schnell_diffusion", "flux_clip_l", "flux_t5xxl_fp8", "flux_ae"],
     "all-turbo": ["wan22_t2v_high", "wan22_t2v_low", "wan22_i2v_high", "wan22_i2v_low", "umt5_xxl", "wan21_vae", "wan22_t2v_lightx_high", "wan22_t2v_lightx_low", "wan22_i2v_lightx_high", "wan22_i2v_lightx_low"],
-    "wan22-animate": ["wan22_animate_diffusion", "umt5_xxl", "wan21_vae", "clip_vision_h", "wan22_animate_lightx", "wan22_animate_relight_lora"]
+    "wan22-animate": ["wan22_animate_diffusion", "umt5_xxl", "wan21_vae", "clip_vision_h", "wan22_animate_lightx", "wan22_animate_relight_lora"],
+    "wan22-vace": ["wan22_vace_high", "wan22_vace_low", "umt5_xxl", "wan21_vae"]
   },
   "profile_capabilities": {
     "t2v": ["t2v"],
@@ -24,7 +25,8 @@
     "image": ["image_generation"],
     "all": ["t2v", "i2v", "flf2v", "image_generation"],
     "all-turbo": ["t2v", "i2v", "flf2v"],
-    "wan22-animate": ["animate"]
+    "wan22-animate": ["animate"],
+    "wan22-vace": ["vace"]
   },
   "image_engines": {
     "flux_schnell": {
@@ -255,6 +257,32 @@
       "sha256": "fc646c74c73f4b251f5fd9bc440ef21b03b27305f499966c68b2b3aa31498561",
       "xet_hash": "48a206fd23480343b52cb58c810714e055656b654de9288cbe93ad9f6e6d08db",
       "revision": "ac0a6031e3f4f62078bf09a184abedc6b92a6287"
+    },
+    "wan22_vace_high": {
+      "kind": "base_model",
+      "family": "wan22_vace",
+      "role": "high_noise_diffusion",
+      "source": "huggingface",
+      "filename": "wan2.2_fun_vace_high_noise_14B_fp8_scaled.safetensors",
+      "relative_path": "diffusion_models/wan2.2_fun_vace_high_noise_14B_fp8_scaled.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/90be1c4d8c54f4183f811a1cbafd6059b9e2f86c/split_files/diffusion_models/wan2.2_fun_vace_high_noise_14B_fp8_scaled.safetensors",
+      "size_bytes": 17346056104,
+      "sha256": "23130f30207f6c8697a5bead113ddc9904cfbb5e8fa51a550df3cee4d21fb54c",
+      "xet_hash": "8a06fc31cbe85e0320cfeb76c247472c471089149738b9cd48189281d895913e",
+      "revision": "90be1c4d8c54f4183f811a1cbafd6059b9e2f86c"
+    },
+    "wan22_vace_low": {
+      "kind": "base_model",
+      "family": "wan22_vace",
+      "role": "low_noise_diffusion",
+      "source": "huggingface",
+      "filename": "wan2.2_fun_vace_low_noise_14B_fp8_scaled.safetensors",
+      "relative_path": "diffusion_models/wan2.2_fun_vace_low_noise_14B_fp8_scaled.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/1b52611ee95306464e4e7d1b4619b8fd7bbe5a27/split_files/diffusion_models/wan2.2_fun_vace_low_noise_14B_fp8_scaled.safetensors",
+      "size_bytes": 17346056104,
+      "sha256": "ca55a5cc543e28576edbd2079f8c1de05f71cd9e85bf96fab635f55663dbcb69",
+      "xet_hash": "34b363825684b87e831dd8a9493a3cb635dcf0f9a59e2ac41d7f83e66909c2c9",
+      "revision": "1b52611ee95306464e4e7d1b4619b8fd7bbe5a27"
     },
     "clip_vision_h": {
       "kind": "base_model",

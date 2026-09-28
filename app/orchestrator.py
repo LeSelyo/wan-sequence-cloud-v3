@@ -46,6 +46,8 @@ def validate_request_compatibility(request: SequenceRequest) -> None:
             family, workflow = "wan22_t2v", "wan22_t2v"
         elif shot.mode in {Mode.ANIMATE_MIX, Mode.ANIMATE_MOVE}:
             family, workflow = "wan22_animate", "wan22_animate"
+        elif shot.mode == Mode.VACE:
+            family, workflow = "wan22_vace", "wan22_vace"
         else:
             family = "wan22_i2v"
             workflow = (
@@ -240,6 +242,52 @@ async def materialize_video(video, job_dir: Path, label: str) -> Path:
     )
 
 
+async def build_vace_control_assets(shot: Shot, job_dir: Path) -> tuple[Path, Path]:
+    """Build the two videos WanVaceToVideo actually consumes (see comfy_extras/nodes_wan.py,
+    class WanVaceToVideo): a full-length control_video with each keyframe placed at its frame
+    index and a mid-grey filler elsewhere, and a matching control_masks video (white = generate
+    this frame, black = keep the keyframe as given). WanVaceToVideo takes no other way to place
+    several keyframes at chosen positions -- there is no simple "list of (image, index)" input."""
+    from PIL import Image
+
+    frame_dir = job_dir / f"{shot.id}_vace_frames"
+    control_dir, mask_dir = frame_dir / "control", frame_dir / "mask"
+    control_dir.mkdir(parents=True, exist_ok=True)
+    mask_dir.mkdir(parents=True, exist_ok=True)
+
+    keyframe_images: dict[int, Path] = {}
+    for item in shot.keyframes:
+        keyframe_images[item.frame] = await materialize_image(
+            item.image, job_dir, f"{shot.id}_kf{item.frame}"
+        )
+
+    filler = Image.new("RGB", (shot.width, shot.height), (127, 127, 127))
+    generate_mask = Image.new("RGB", (shot.width, shot.height), (255, 255, 255))
+    keep_mask = Image.new("RGB", (shot.width, shot.height), (0, 0, 0))
+    for index in range(shot.frames):
+        name = f"{index:05d}.png"
+        if index in keyframe_images:
+            with Image.open(keyframe_images[index]) as source:
+                source.convert("RGB").resize((shot.width, shot.height)).save(control_dir / name)
+            keep_mask.save(mask_dir / name)
+        else:
+            filler.save(control_dir / name)
+            generate_mask.save(mask_dir / name)
+
+    control_video = frame_dir / "control_video.mp4"
+    control_masks = frame_dir / "control_masks.mp4"
+    for source_dir, target in ((control_dir, control_video), (mask_dir, control_masks)):
+        subprocess.run(
+            [
+                "ffmpeg", "-y", "-loglevel", "error",
+                "-framerate", str(shot.fps), "-i", str(source_dir / "%05d.png"),
+                "-c:v", "libx264", "-pix_fmt", "yuv420p", str(target),
+            ],
+            check=True,
+        )
+    return control_video, control_masks
+
+
 def stage_for_comfy(path: Path, job_id: str, shot_id: str, label: str) -> str:
     settings.comfy_input_dir.mkdir(parents=True, exist_ok=True)
     name = f"{job_id}_{shot_id}_{label}{path.suffix.lower() or '.png'}"
@@ -398,6 +446,11 @@ async def render_shot(shot: Shot, job_dir: Path) -> Path:
     if shot.driving_video is not None:
         driving = await materialize_video(shot.driving_video, job_dir, f"{shot.id}_driving")
         driving_video_name = stage_for_comfy(driving, job_dir.name, shot.id, "driving")
+    control_video_name = control_masks_name = None
+    if shot.mode == Mode.VACE:
+        control_video_path, control_masks_path = await build_vace_control_assets(shot, job_dir)
+        control_video_name = stage_for_comfy(control_video_path, job_dir.name, shot.id, "control_video")
+        control_masks_name = stage_for_comfy(control_masks_path, job_dir.name, shot.id, "control_masks")
     if shot.mode == Mode.T2V:
         template, family = "wan22_t2v", "wan22_t2v"
     elif shot.mode in {Mode.TEXT_KEYFRAMES_TO_VIDEO, Mode.KEYFRAMES_TO_VIDEO}:
@@ -423,6 +476,8 @@ async def render_shot(shot: Shot, job_dir: Path) -> Path:
             "start_image": start_name,
             "end_image": end_name,
             "driving_video": driving_video_name,
+            "control_video": control_video_name,
+            "control_masks": control_masks_name,
             # Mix keeps the driving video's background/scene; Move keeps only its
             # motion. Which WanAnimateToVideo inputs this actually toggles can only
             # be pinned once bind_workflow's bindings are regenerated against a live
