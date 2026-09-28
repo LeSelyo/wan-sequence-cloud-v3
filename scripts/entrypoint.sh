@@ -101,7 +101,21 @@ if [[ "$(id -u)" == "0" ]]; then
   for directory in "${DATA_DIRECTORIES[@]}"; do
     install -d -o appuser -g appuser -m 775 "$directory"
   done
-  for directory in /opt/ComfyUI/user /opt/ComfyUI/temp; do
+  # /opt/ComfyUI/models and controlnet_aux/ckpts: some of Wan 2.2 Animate's
+  # third-party nodes (DownloadAndLoadSAM2Model, DWPreprocessor) lazily fetch
+  # their own small auxiliary checkpoints into these baked-image paths on
+  # first use, outside our curated base_models.json catalog. `install -d`
+  # only chowns the directory itself, not recursively, so this doesn't touch
+  # ownership of the model subfolders the image build already populated
+  # under /opt/ComfyUI/models (checkpoints/, clip/, ...) -- it just lets
+  # appuser create new ones (confirmed needed: DownloadAndLoadSAM2Model
+  # failed with PermissionError creating models/sam2 before this).
+  for directory in \
+    /opt/ComfyUI/user \
+    /opt/ComfyUI/temp \
+    /opt/ComfyUI/models \
+    /opt/ComfyUI/custom_nodes/comfyui_controlnet_aux/ckpts \
+  ; do
     install -d -o appuser -g appuser -m 775 "$directory"
   done
   exec gosu appuser "$ENTRYPOINT_PATH" "$@"
