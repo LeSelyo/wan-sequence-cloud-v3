@@ -30,13 +30,17 @@ FILES = {
     "wan22_animate": "video_wan2_2_14B_animate.json",
 }
 # wan22_animate is structurally unlike the other three: it has DWPose/SAM2
-# preprocessing nodes, a PointsEditor, and three sibling subgraphs (one sampler
-# + two "Video Extend" copies meant to be duplicated by hand in the ComfyUI UI
-# for longer clips). build_bindings()'s heuristics were written for the simple
-# single-KSampler t2v/i2v/flf2v shape and have NOT been extended for these node
-# types yet (LoadVideo, DWPreprocessor, Sam2Segmentation, PointsEditor). It is
-# listed in EXPERIMENTAL below so a still-failing conversion never blocks
-# startup for t2v/i2v/flf2v/image — see main() (2026-09-27).
+# preprocessing nodes, a PointsEditor, and three chained subgraph instances
+# (one sampler + two "Video Extend" copies). expand_subgraphs() and
+# build_bindings() now handle this shape (subgraph-to-subgraph wiring,
+# WanAnimateToVideo's width/height/reference_image, LoadVideo's driving
+# file) and it converts and binds cleanly against a live object_info with the
+# custom node packs installed (verified 2026-09-28). Still listed in
+# EXPERIMENTAL: total clip length is architecturally fixed by the template's
+# 3-stage chain (shot.frames is silently ignored, see build_bindings' comment
+# below) and ANIMATE_MIX/ANIMATE_MOVE render identically (no keep_background
+# wiring). Kept here so a regression in either area is caught rather than
+# blocking startup for t2v/i2v/flf2v/image — see main().
 EXPERIMENTAL = {"wan22_animate"}
 CONVERTER_SCHEMA_VERSION = 4
 
@@ -657,16 +661,24 @@ def validate_runtime_prompt(prompt: dict, workflow_name: str) -> None:
             raise RuntimeError(
                 f"{workflow_name}: SaveVideo must use format=mp4 and codec=auto"
             )
-    forbidden = [
-        str(node["inputs"].get("lora_name"))
-        for node in prompt.values()
-        if node["class_type"] == "LoraLoaderModelOnly"
-        and "lightx2v" in str(node["inputs"].get("lora_name", "")).lower()
-    ]
-    if forbidden:
-        raise RuntimeError(
-            f"{workflow_name}: optional Lightning LoRA remains in runtime prompt: {forbidden}"
-        )
+    if workflow_name != "wan22_animate":
+        # t2v/i2v/flf2v expose an explicit turbo/non-turbo Switch that
+        # sampling_bindings()'s branch-pruning removes when turbo_mode is off;
+        # a LightX2V loader surviving that means pruning failed. Wan 2.2
+        # Animate's official template has no such switch -- it always bakes
+        # the distilled LightX2V LoRA into the one recipe it ships (confirmed
+        # on the pinned template: no turbo/non-turbo branch to detect), so its
+        # presence here is expected, not a leak.
+        forbidden = [
+            str(node["inputs"].get("lora_name"))
+            for node in prompt.values()
+            if node["class_type"] == "LoraLoaderModelOnly"
+            and "lightx2v" in str(node["inputs"].get("lora_name", "")).lower()
+        ]
+        if forbidden:
+            raise RuntimeError(
+                f"{workflow_name}: optional Lightning LoRA remains in runtime prompt: {forbidden}"
+            )
     for node_id, node in prompt.items():
         for field, value in node["inputs"].items():
             referenced = referenced_node(value)
@@ -680,9 +692,30 @@ def build_bindings(prompt: dict, workflow_name: str = "wan22_t2v") -> dict:
     bindings: dict[str, Any] = {}
     load_images: list[str] = []
     model_loaders: dict[str, str] = {}
+    animate_width_targets: list[str] = []
+    animate_height_targets: list[str] = []
     for node_id, node in prompt.items():
         kind, inputs = node["class_type"], node["inputs"]
         title = node.get("_meta", {}).get("title", "").lower()
+        if kind == "WanAnimateToVideo":
+            # Wan 2.2 Animate's official template chains 3 WanAnimateToVideo
+            # calls (one per Sampling/Extend subgraph instance), each with its
+            # own width/height widget for the same clip -- bind all of them so
+            # a requested resolution actually applies everywhere, not just
+            # whichever instance happens to be processed last.
+            if "width" in inputs:
+                animate_width_targets.append(pointer(node_id, "width"))
+            if "height" in inputs:
+                animate_height_targets.append(pointer(node_id, "height"))
+        if kind == "LoadVideo" and "driving_video" not in bindings:
+            # The official template ships this node with its "file" combo
+            # unset (no widgets_values), so the converter emits it with an
+            # empty inputs dict -- pointer() still targets the right place;
+            # _json_pointer_set adds the "file" key when the real filename is
+            # bound. ComfyUI requires "file" to be present at all (see
+            # object_info: LoadVideo.required.file), so this is mandatory,
+            # not optional like the video-mode-specific fields below.
+            bindings["driving_video"] = pointer(node_id, "file")
         if kind == "CLIPTextEncode" and "text" in inputs:
             bindings["negative_prompt" if "negative" in title else "positive_prompt"] = pointer(node_id, "text")
         if kind == "RandomNoise" and "noise_seed" in inputs and "seed" not in bindings:
@@ -734,20 +767,36 @@ def build_bindings(prompt: dict, workflow_name: str = "wan22_t2v") -> dict:
             bindings[f"{branch}_model_target"] = pointer(candidates[0], "model")
     if workflow_name == "wan22_animate":
         # Single unified diffusion model (no high/low-noise split), so the branch
-        # heuristic in this function falls back to "main_model_target". Left
-        # deliberately minimal: driving_video/keep_background are not covered by
-        # any heuristic here yet and must be bound by hand once this is run
-        # against a live object_info (see the FILES comment above).
+        # heuristic in this function falls back to "main_model_target".
+        # "keep_background" (Mix vs Move) has no corresponding node in this
+        # official template -- it ships one fixed background-handling chain
+        # (DWPose/SAM2 -> DrawMaskOnImage), not a Mix/Move switch -- so
+        # ANIMATE_MIX and ANIMATE_MOVE currently render identically. Still
+        # unbound and unresolved; not attempted here.
+        if animate_width_targets:
+            bindings["width"] = animate_width_targets
+        if animate_height_targets:
+            bindings["height"] = animate_height_targets
+        # No "frames" binding on purpose: each of the 3 chained WanAnimateToVideo
+        # calls has its own "length" (an internal per-segment sample-window size,
+        # confirmed 77 on the official template), not a single "total output
+        # frames" knob -- the template's Sampling -> Extend -> Extend chain fixes
+        # the overall clip length architecturally. Making the requested
+        # shot.frames actually control total length needs someone to trace how
+        # video_frame_offset/TrimVideoLatent stitch the 3 segments together, not
+        # attempted here. Until then, an animate shot's `frames` field is
+        # silently ignored (see _apply_bound_value: a missing binding is a
+        # no-op) and the template's own fixed length is used.
         required = {
             "positive_prompt",
             "seed",
             "width",
             "height",
-            "frames",
             "fps",
             "output_prefix",
             "main_model_target",
             "start_image",
+            "driving_video",
         }
     else:
         required = {
