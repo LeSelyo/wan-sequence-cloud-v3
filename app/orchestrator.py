@@ -348,11 +348,13 @@ async def generate_image_file(
     width: int | None = None,
     height: int | None = None,
 ) -> tuple[Path, int]:
-    """Generate one audited FLUX image and persist it in controlled storage."""
+    """Generate one audited image (Flux Schnell, Krea2, ...) and persist it in
+    controlled storage. Negative-prompt support (or the lack of it) is enforced
+    per-engine at the schema layer (ImageGenerationRequest/KeyframeStage), not
+    hardcoded here."""
     engine_name = request.engine
-    validate_image_generation_compatibility(request)
-    if request.negative_prompt.strip():
-        raise ValueError("flux_schnell does not support a negative prompt")
+    engine_spec = validate_image_generation_compatibility(request)
+    template_name = engine_spec["workflow"].removesuffix(".api.json")
 
     loras: list[dict] = []
     for requested in getattr(request, "loras", []):
@@ -363,7 +365,7 @@ async def generate_image_file(
 
     actual_seed = _seed(request.seed)
     prompt, bindings = bind_workflow(
-        "image_flux_schnell",
+        template_name,
         {
             "positive_prompt": request.prompt,
             "seed": actual_seed,

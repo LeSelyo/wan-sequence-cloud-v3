@@ -217,6 +217,8 @@ if [[ "${APP_TEST_MODE:-0}" != "1" ]]; then
   # header comment in the commit that added it for why.
   install -m 0644 "$APP_ROOT/workflows/wan22_vace.api.json" \
     "$WORKFLOW_DIR/wan22_vace.api.json"
+  install -m 0644 "$APP_ROOT/workflows/image_krea2.api.json" \
+    "$WORKFLOW_DIR/image_krea2.api.json"
 fi
 
 echo "[entrypoint] starting API"

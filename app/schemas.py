@@ -70,40 +70,58 @@ class TimedKeyframe(BaseModel):
     frame: int = Field(ge=0, description="Frame index (0-based) this image is placed at.")
 
 
+_NO_NEGATIVE_PROMPT_ENGINES = {"flux_schnell", "krea2"}
+_MAX_STEPS_PER_ENGINE = {"flux_schnell": 4, "krea2": 8}
+
+
 class KeyframeStage(BaseModel):
-    engine: Literal["flux_schnell", "sd15", "illustrious", "pony", "anima"]
+    engine: Literal["flux_schnell", "krea2", "sd15", "illustrious", "pony", "anima"]
     prompt: str
     negative_prompt: str = ""
     loras: list[LoraUse] = Field(default_factory=list, max_length=8)
     seed: int | None = None
-    steps: int = Field(default=4, ge=1, le=4)
+    # flux_schnell: confirmed 4-step distilled default. krea2 (turbo variant):
+    # confirmed 8-step default from Comfy-Org's own official workflow template
+    # (image_krea2_turbo_t2i.json, fetched 2026-09-28) -- not a guess. The bound
+    # is the max of both; _MAX_STEPS_PER_ENGINE enforces each engine's own cap.
+    steps: int = Field(default=4, ge=1, le=8)
     guidance: float = Field(default=3.5, ge=0.0, le=100.0)
 
     @model_validator(mode="after")
     def flux_parameters(self):
-        if self.engine == "flux_schnell" and self.negative_prompt.strip():
-            raise ValueError("flux_schnell does not support a negative prompt")
+        if self.engine in _NO_NEGATIVE_PROMPT_ENGINES and self.negative_prompt.strip():
+            raise ValueError(f"{self.engine} does not support a negative prompt")
+        if self.engine == "krea2" and "steps" not in self.model_fields_set:
+            self.steps = 8  # krea2's own confirmed default, not flux_schnell's 4
+        limit = _MAX_STEPS_PER_ENGINE.get(self.engine)
+        if limit is not None and self.steps > limit:
+            raise ValueError(f"{self.engine} supports at most {limit} steps")
         return self
 
 
 class ImageGenerationRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    engine: Literal["flux_schnell"] = "flux_schnell"
+    engine: Literal["flux_schnell", "krea2"] = "flux_schnell"
     prompt: str = Field(min_length=1, max_length=4000)
     negative_prompt: str = ""
     width: int = Field(default=832, ge=256, le=1536, multiple_of=16)
     height: int = Field(default=480, ge=256, le=1536, multiple_of=16)
     seed: int | None = None
-    steps: int = Field(default=4, ge=1, le=4)
+    steps: int = Field(default=4, ge=1, le=8)
     guidance: float = Field(default=3.5, ge=0.0, le=100.0)
     loras: list[LoraUse] = Field(default_factory=list, max_length=8)
 
     @model_validator(mode="after")
     def native_flux_contract(self):
-        if self.negative_prompt.strip():
-            raise ValueError("flux_schnell does not support a negative prompt")
+        if self.engine in _NO_NEGATIVE_PROMPT_ENGINES and self.negative_prompt.strip():
+            raise ValueError(f"{self.engine} does not support a negative prompt")
         if any(item.target not in {"auto", "keyframe"} for item in self.loras):
-            raise ValueError("flux_schnell image LoRA target must be auto or keyframe")
+            raise ValueError(f"{self.engine} image LoRA target must be auto or keyframe")
+        if self.engine == "krea2" and "steps" not in self.model_fields_set:
+            self.steps = 8
+        limit = _MAX_STEPS_PER_ENGINE.get(self.engine)
+        if limit is not None and self.steps > limit:
+            raise ValueError(f"{self.engine} supports at most {limit} steps")
         return self
 
 

@@ -64,7 +64,10 @@ class CatalogProfileTests(unittest.TestCase):
         self.assertFalse(any("lightx" in item for item in expected))
         self.assertEqual(
             supported_image_ids,
-            ["flux_schnell_diffusion", "flux_clip_l", "flux_t5xxl_fp8", "flux_ae"],
+            [
+                "flux_schnell_diffusion", "flux_clip_l", "flux_t5xxl_fp8", "flux_ae",
+                "krea2_turbo_diffusion", "krea2_text_encoder", "krea2_vae",
+            ],
         )
 
 

@@ -32,7 +32,7 @@ class BundleReleasePreflightTests(unittest.TestCase):
         self.assertEqual(set(result["second"].values()), {"already_valid"})
         self.assertEqual(set(result["first"]), set(MODEL_TARGETS))
 
-    def test_production_all_profile_is_29_independent_four_gib_chunks(self):
+    def test_production_all_profile_is_36_independent_four_gib_chunks(self):
         catalog = json.loads(
             (PROJECT_ROOT / "config/base_models.json").read_text(encoding="utf-8")
         )
@@ -40,7 +40,10 @@ class BundleReleasePreflightTests(unittest.TestCase):
             math.ceil(catalog["items"][item]["size_bytes"] / DEFAULT_CHUNK_SIZE)
             for item in catalog["profiles"]["all"]
         )
-        self.assertEqual(expected, 29)
+        # Was 29 before Krea 2's ~18.6 GB (diffusion + text encoder + vae) joined
+        # the "all" profile (2026-09-28) -- see test_flux_schnell.py's sibling
+        # assertion for why "all" must include every *supported* image engine.
+        self.assertEqual(expected, 36)
         self.assertEqual(DEFAULT_CHUNK_SIZE, 4_294_967_296)
 
     def test_generated_dockerfile_repairs_directories_without_merging_chunk_copies(self):

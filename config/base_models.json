@@ -9,10 +9,11 @@
     "all-video": ["wan22_t2v_high", "wan22_t2v_low", "wan22_i2v_high", "wan22_i2v_low", "umt5_xxl", "wan21_vae"],
     "flux-schnell": ["flux_schnell_diffusion", "flux_clip_l", "flux_t5xxl_fp8", "flux_ae"],
     "image": ["flux_schnell_diffusion", "flux_clip_l", "flux_t5xxl_fp8", "flux_ae"],
-    "all": ["wan22_t2v_high", "wan22_t2v_low", "wan22_i2v_high", "wan22_i2v_low", "umt5_xxl", "wan21_vae", "flux_schnell_diffusion", "flux_clip_l", "flux_t5xxl_fp8", "flux_ae"],
+    "all": ["wan22_t2v_high", "wan22_t2v_low", "wan22_i2v_high", "wan22_i2v_low", "umt5_xxl", "wan21_vae", "flux_schnell_diffusion", "flux_clip_l", "flux_t5xxl_fp8", "flux_ae", "krea2_turbo_diffusion", "krea2_text_encoder", "krea2_vae"],
     "all-turbo": ["wan22_t2v_high", "wan22_t2v_low", "wan22_i2v_high", "wan22_i2v_low", "umt5_xxl", "wan21_vae", "wan22_t2v_lightx_high", "wan22_t2v_lightx_low", "wan22_i2v_lightx_high", "wan22_i2v_lightx_low"],
     "wan22-animate": ["wan22_animate_diffusion", "umt5_xxl", "wan21_vae", "clip_vision_h", "wan22_animate_lightx", "wan22_animate_relight_lora"],
-    "wan22-vace": ["wan22_vace_high", "wan22_vace_low", "umt5_xxl", "wan21_vae"]
+    "wan22-vace": ["wan22_vace_high", "wan22_vace_low", "umt5_xxl", "wan21_vae"],
+    "krea2": ["krea2_turbo_diffusion", "krea2_text_encoder", "krea2_vae"]
   },
   "profile_capabilities": {
     "t2v": ["t2v"],
@@ -26,12 +27,18 @@
     "all": ["t2v", "i2v", "flf2v", "image_generation"],
     "all-turbo": ["t2v", "i2v", "flf2v"],
     "wan22-animate": ["animate"],
-    "wan22-vace": ["vace"]
+    "wan22-vace": ["vace"],
+    "krea2": ["image_generation"]
   },
   "image_engines": {
     "flux_schnell": {
       "workflow": "image_flux_schnell.api.json",
       "model_ids": ["flux_schnell_diffusion", "flux_clip_l", "flux_t5xxl_fp8", "flux_ae"],
+      "supported": true
+    },
+    "krea2": {
+      "workflow": "image_krea2.api.json",
+      "model_ids": ["krea2_turbo_diffusion", "krea2_text_encoder", "krea2_vae"],
       "supported": true
     },
     "sd15": {
@@ -257,6 +264,45 @@
       "sha256": "fc646c74c73f4b251f5fd9bc440ef21b03b27305f499966c68b2b3aa31498561",
       "xet_hash": "48a206fd23480343b52cb58c810714e055656b654de9288cbe93ad9f6e6d08db",
       "revision": "ac0a6031e3f4f62078bf09a184abedc6b92a6287"
+    },
+    "krea2_turbo_diffusion": {
+      "kind": "base_model",
+      "engine": "krea2",
+      "family": "krea2",
+      "role": "diffusion_model",
+      "source": "huggingface",
+      "filename": "krea2_turbo_fp8_scaled.safetensors",
+      "relative_path": "diffusion_models/krea2_turbo_fp8_scaled.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Krea-2/resolve/3da2809e72fa04ba266e3b51c2a366fd04500b5a/diffusion_models/krea2_turbo_fp8_scaled.safetensors",
+      "size_bytes": 13141730784,
+      "sha256": "eb4dd8c612cfd10f64f25b057e6e6bbcb5737c94a7372177e456dbf7579502f1",
+      "revision": "3da2809e72fa04ba266e3b51c2a366fd04500b5a"
+    },
+    "krea2_text_encoder": {
+      "kind": "base_model",
+      "engine": "krea2",
+      "family": "krea2",
+      "role": "text_encoder",
+      "source": "huggingface",
+      "filename": "qwen3vl_4b_fp8_scaled.safetensors",
+      "relative_path": "text_encoders/qwen3vl_4b_fp8_scaled.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Krea-2/resolve/4aa0eed112bd2780ceea37583edbdcd2df6c2c09/text_encoders/qwen3vl_4b_fp8_scaled.safetensors",
+      "size_bytes": 5242467968,
+      "sha256": "54bd5144df0bbc25dd6ccadfcb826b521445a1b06ae5a42570bdd2974ca87094",
+      "revision": "4aa0eed112bd2780ceea37583edbdcd2df6c2c09"
+    },
+    "krea2_vae": {
+      "kind": "base_model",
+      "engine": "krea2",
+      "family": "krea2",
+      "role": "vae",
+      "source": "huggingface",
+      "filename": "qwen_image_vae.safetensors",
+      "relative_path": "vae/qwen_image_vae.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Krea-2/resolve/a0a28f7e5b645c950ad56fc2e45bfd3e0044c06e/vae/qwen_image_vae.safetensors",
+      "size_bytes": 253806246,
+      "sha256": "a70580f0213e67967ee9c95f05bb400e8fb08307e017a924bf3441223e023d1f",
+      "revision": "a0a28f7e5b645c950ad56fc2e45bfd3e0044c06e"
     },
     "wan22_vace_high": {
       "kind": "base_model",

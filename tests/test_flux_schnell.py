@@ -51,7 +51,10 @@ class FluxCatalogTests(unittest.TestCase):
         self.assertEqual(catalog["profiles"]["flux-schnell"], FLUX_IDS)
         self.assertEqual(catalog["profiles"]["image"], FLUX_IDS)
         self.assertNotEqual(catalog["profiles"]["all"], catalog["profiles"]["all-video"])
-        self.assertEqual(catalog["profiles"]["all"], catalog["profiles"]["all-video"] + FLUX_IDS)
+        krea2_ids = ["krea2_turbo_diffusion", "krea2_text_encoder", "krea2_vae"]
+        self.assertEqual(
+            catalog["profiles"]["all"], catalog["profiles"]["all-video"] + FLUX_IDS + krea2_ids
+        )
         for item_id in FLUX_IDS:
             spec = catalog["items"][item_id]
             self.assertEqual(spec["kind"], "base_model")
