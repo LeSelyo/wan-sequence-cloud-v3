@@ -13,7 +13,8 @@
     "all-turbo": ["wan22_t2v_high", "wan22_t2v_low", "wan22_i2v_high", "wan22_i2v_low", "umt5_xxl", "wan21_vae", "wan22_t2v_lightx_high", "wan22_t2v_lightx_low", "wan22_i2v_lightx_high", "wan22_i2v_lightx_low"],
     "wan22-animate": ["wan22_animate_diffusion", "umt5_xxl", "wan21_vae", "clip_vision_h", "wan22_animate_lightx", "wan22_animate_relight_lora"],
     "wan22-vace": ["wan22_vace_high", "wan22_vace_low", "umt5_xxl", "wan21_vae"],
-    "krea2": ["krea2_turbo_diffusion", "krea2_text_encoder", "krea2_vae"]
+    "krea2": ["krea2_turbo_diffusion", "krea2_text_encoder", "krea2_vae"],
+    "wan-animate-vitpose-preprocess": ["vitpose_l_wholebody", "yolov10m_detection"]
   },
   "profile_capabilities": {
     "t2v": ["t2v"],
@@ -28,7 +29,8 @@
     "all-turbo": ["t2v", "i2v", "flf2v"],
     "wan22-animate": ["animate"],
     "wan22-vace": ["vace"],
-    "krea2": ["image_generation"]
+    "krea2": ["image_generation"],
+    "wan-animate-vitpose-preprocess": []
   },
   "image_engines": {
     "flux_schnell": {
@@ -342,6 +344,32 @@
       "sha256": "64a7ef761bfccbadbaa3da77366aac4185a6c58fa5de5f589b42a65bcc21f161",
       "xet_hash": "badc2656bc63a68213b934144f5f63edfcc12e41eeead464512b7fa175631d72",
       "revision": "55dc69dfdb9c8806600cce6c26a619e1734999e0"
+    },
+    "vitpose_l_wholebody": {
+      "kind": "base_model",
+      "family": "wan_animate_vitpose_preprocess",
+      "role": "pose_detection_model",
+      "source": "huggingface",
+      "filename": "vitpose-l-wholebody.onnx",
+      "relative_path": "detection/vitpose-l-wholebody.onnx",
+      "url": "https://huggingface.co/JunkyByte/easy_ViTPose/resolve/3810b59a530677714d43a70c9cfb1fab82d8ed5c/onnx/wholebody/vitpose-l-wholebody.onnx",
+      "size_bytes": 1234579166,
+      "sha256": "89bdf6692d9224dbd5004dcef23a9ba2d54c5776212b359d5a5b5068ac14fd08",
+      "xet_hash": "f71196d4f91c48e8bd577900ecfc8cfb6535381d7c8ed1797cc7069c8ca32937",
+      "revision": "3810b59a530677714d43a70c9cfb1fab82d8ed5c"
+    },
+    "yolov10m_detection": {
+      "kind": "base_model",
+      "family": "wan_animate_vitpose_preprocess",
+      "role": "person_detection_model",
+      "source": "huggingface",
+      "filename": "yolov10m.onnx",
+      "relative_path": "detection/yolov10m.onnx",
+      "url": "https://huggingface.co/Wan-AI/Wan2.2-Animate-14B/resolve/0d22b5cd7b6e63bbdf132a495839a8e1c0824979/process_checkpoint/det/yolov10m.onnx",
+      "size_bytes": 61659339,
+      "sha256": "89b526498a6d55f869a6ab52e3a2eb20ad45b3711c1f7de3dd9ca0b399dfd6d7",
+      "xet_hash": "c17577d8b2dd31fa18078f7281c84fb00c3d4c821a65854690d8db984f623eac",
+      "revision": "0d22b5cd7b6e63bbdf132a495839a8e1c0824979"
     }
   }
 }

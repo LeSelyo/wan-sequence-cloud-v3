@@ -49,6 +49,16 @@ class Settings:
         return self.models_dir / "clip_visions"
 
     @property
+    def detection_dir(self) -> Path:
+        # ComfyUI-WanAnimatePreprocess's OnnxDetectionModelLoader reads from a
+        # "detection" folder_paths category (confirmed from its own source:
+        # add_model_folder_path("detection", ...)). Not consumed by this app's
+        # own orchestrator yet -- see the Dockerfile comment on the
+        # ComfyUI-WanVideoWrapper/ComfyUI-WanAnimatePreprocess/VideoHelperSuite
+        # ARGs for context.
+        return self.models_dir / "detection"
+
+    @property
     def driving_video_dir(self) -> Path:
         return self.inputs_dir / "videos"
 
@@ -95,6 +105,7 @@ class Settings:
             self.models_dir / "checkpoints",
             self.lora_dir,
             self.clip_vision_dir,
+            self.detection_dir,
             self.inputs_dir,
             self.driving_video_dir,
             self.outputs_dir,

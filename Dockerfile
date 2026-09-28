@@ -26,6 +26,16 @@ ARG SAGEATTENTION_SHA256=fafc66569bed62a16839e820c2612141b5a20accf55b876d941bab9
 ARG CONTROLNET_AUX_COMMIT=59b1fc411ede8623b2997855b8018f0b3b6cf49f
 ARG KJNODES_COMMIT=d3cfe21625e5170126ce06fbfcfe1d88108688c3
 ARG SEGMENT_ANYTHING_2_COMMIT=0c35fff5f382803e2310103357b5e985f5437f32
+# Prerequisites for kijai's alternative Wan Animate pipeline (a parallel node
+# ecosystem to the official Comfy-Org template this app converts by default;
+# see app/orchestrator.py's wan22_animate path). Not wired into this app's own
+# orchestrator/bindings yet -- these three packs only make the node TYPES this
+# pipeline needs loadable in ComfyUI, matching the exact commits recorded in a
+# real community workflow ("wan animate without mimic motion.json", captured
+# 2026-09-28) so the same graph can be run/inspected as-is if needed.
+ARG WANVIDEO_WRAPPER_COMMIT=df8f3e49daaad117cf3090cc916c83f3d001494c
+ARG WAN_ANIMATE_PREPROCESS_COMMIT=1a35b81a418bbba093356ad19b19bf2a76a24f4e
+ARG VIDEOHELPERSUITE_COMMIT=3234937ff5f3ca19068aaba5042771514de2429d
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
@@ -102,6 +112,21 @@ RUN mkdir -p /opt/ComfyUI/custom_nodes && \
       https://github.com/kijai/ComfyUI-segment-anything-2.git && \
     git -C /opt/ComfyUI/custom_nodes/ComfyUI-segment-anything-2 fetch --depth 1 origin ${SEGMENT_ANYTHING_2_COMMIT} && \
     git -C /opt/ComfyUI/custom_nodes/ComfyUI-segment-anything-2 checkout --detach FETCH_HEAD && \
+    git -C /opt/ComfyUI/custom_nodes init ComfyUI-WanVideoWrapper && \
+    git -C /opt/ComfyUI/custom_nodes/ComfyUI-WanVideoWrapper remote add origin \
+      https://github.com/kijai/ComfyUI-WanVideoWrapper.git && \
+    git -C /opt/ComfyUI/custom_nodes/ComfyUI-WanVideoWrapper fetch --depth 1 origin ${WANVIDEO_WRAPPER_COMMIT} && \
+    git -C /opt/ComfyUI/custom_nodes/ComfyUI-WanVideoWrapper checkout --detach FETCH_HEAD && \
+    git -C /opt/ComfyUI/custom_nodes init ComfyUI-WanAnimatePreprocess && \
+    git -C /opt/ComfyUI/custom_nodes/ComfyUI-WanAnimatePreprocess remote add origin \
+      https://github.com/kijai/ComfyUI-WanAnimatePreprocess.git && \
+    git -C /opt/ComfyUI/custom_nodes/ComfyUI-WanAnimatePreprocess fetch --depth 1 origin ${WAN_ANIMATE_PREPROCESS_COMMIT} && \
+    git -C /opt/ComfyUI/custom_nodes/ComfyUI-WanAnimatePreprocess checkout --detach FETCH_HEAD && \
+    git -C /opt/ComfyUI/custom_nodes init ComfyUI-VideoHelperSuite && \
+    git -C /opt/ComfyUI/custom_nodes/ComfyUI-VideoHelperSuite remote add origin \
+      https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git && \
+    git -C /opt/ComfyUI/custom_nodes/ComfyUI-VideoHelperSuite fetch --depth 1 origin ${VIDEOHELPERSUITE_COMMIT} && \
+    git -C /opt/ComfyUI/custom_nodes/ComfyUI-VideoHelperSuite checkout --detach FETCH_HEAD && \
     rm -rf /opt/ComfyUI/custom_nodes/*/.git
 
 RUN --mount=type=cache,target=/root/.cache/pip \

@@ -7,3 +7,4 @@ cloud_models:
   loras: loras
   upscale_models: upscale_models
   clip_vision: clip_visions
+  detection: detection
