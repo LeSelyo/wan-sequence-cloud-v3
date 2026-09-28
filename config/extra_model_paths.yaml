@@ -6,3 +6,4 @@ cloud_models:
   vae: vae
   loras: loras
   upscale_models: upscale_models
+  clip_vision: clip_visions

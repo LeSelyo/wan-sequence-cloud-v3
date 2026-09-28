@@ -151,7 +151,7 @@ def _materialize_turbo(name: str, prompt: dict, bindings: dict) -> None:
         next_id += 1
 
 
-def _validate_materialized_prompt(prompt: dict, turbo_mode: bool) -> None:
+def _validate_materialized_prompt(prompt: dict, turbo_mode: bool, name: str = "") -> None:
     lightx = 0
     for node_id, node in prompt.items():
         if (
@@ -167,7 +167,16 @@ def _validate_materialized_prompt(prompt: dict, turbo_mode: bool) -> None:
                 and value[0] not in prompt
             ):
                 raise RuntimeError(f"materialized prompt {node_id}.{field} references missing node {value[0]}")
-    expected = 2 if turbo_mode else 0
+    if name == "wan22_animate":
+        # No turbo/non-turbo switch in this template (see prepare_workflows.py's
+        # validate_runtime_prompt): the distilled LightX2V LoRA is permanently
+        # part of the one recipe it ships, one loader for the single unified
+        # model (unlike t2v/i2v/flf2v's high+low branches), regardless of
+        # turbo_mode -- which mode_inputs() also forbids setting for animate
+        # shots in the first place.
+        expected = 1
+    else:
+        expected = 2 if turbo_mode else 0
     if lightx != expected:
         raise RuntimeError(f"materialized prompt has {lightx} LightX2V nodes; expected {expected}")
 
@@ -187,7 +196,7 @@ def bind_workflow(name: str, values: dict[str, Any]) -> tuple[dict, dict]:
         _apply_bound_value(prompt, bindings.get(key), value, key)
     if values.get("turbo_mode"):
         _materialize_turbo(name, prompt, bindings)
-    _validate_materialized_prompt(prompt, bool(values.get("turbo_mode")))
+    _validate_materialized_prompt(prompt, bool(values.get("turbo_mode")), name)
     return prompt, bindings
 
 
