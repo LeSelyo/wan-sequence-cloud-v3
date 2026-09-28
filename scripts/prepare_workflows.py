@@ -265,6 +265,49 @@ def expand_subgraphs(workflow: dict) -> dict:
     flat_nodes: list[dict] = []
     flat_links: list[dict] = []
 
+    def resolve_subgraph_output(
+        instance_id: str, slot: int, _seen: frozenset[str] = frozenset()
+    ) -> tuple[str, int]:
+        """Trace a subgraph instance's exposed output back to the real (flat)
+        node+slot that produces it, recursing through chained subgraph
+        instances (one subgraph instance's output feeding another instance's
+        input directly, as in Wan 2.2 Animate's Sampling -> Extend -> Extend
+        chain)."""
+        if instance_id in _seen:
+            raise RuntimeError(f"cyclic subgraph output passthrough at {instance_id}")
+        instance = instances[instance_id]
+        subgraph = subgraphs[str(instance["type"])]
+        local_links = [normalized_link(link) for link in subgraph.get("links", [])]
+        match = next(
+            link
+            for link in local_links
+            if str(link["target_id"]) == "-20" and int(link["target_slot"]) == slot
+        )
+        origin_id = str(match["origin_id"])
+        origin_slot = int(match["origin_slot"])
+        if origin_id != "-10":
+            return f"subgraph:{instance_id}:{origin_id}", origin_slot
+        subgraph_input = subgraph.get("inputs", [])[origin_slot]
+        instance_input = next(
+            (
+                item
+                for item in instance.get("inputs", [])
+                if item.get("name") == subgraph_input.get("name")
+            ),
+            None,
+        )
+        external_link_id = instance_input.get("link") if instance_input else None
+        if external_link_id is None:
+            raise RuntimeError("subgraph output passes through an unconnected input")
+        external = main_links_by_id[str(external_link_id)]
+        if str(external["origin_id"]) in instances:
+            return resolve_subgraph_output(
+                str(external["origin_id"]),
+                int(external["origin_slot"]),
+                _seen | {instance_id},
+            )
+        return str(external["origin_id"]), int(external["origin_slot"])
+
     for node_id, node in main_nodes.items():
         if node_id not in instances:
             flat_nodes.append(_copy_node(node, "", "main:"))
@@ -340,15 +383,18 @@ def expand_subgraphs(workflow: dict) -> dict:
                 if external_link_id is not None:
                     external = main_links_by_id[str(external_link_id)]
                     if str(external["origin_id"]) in instances:
-                        raise RuntimeError(
-                            "a subgraph input connected from another subgraph is unsupported"
+                        real_origin_id, real_origin_slot = resolve_subgraph_output(
+                            str(external["origin_id"]), int(external["origin_slot"])
                         )
+                    else:
+                        real_origin_id = str(external["origin_id"])
+                        real_origin_slot = external["origin_slot"]
                     flat_links.append(
                         {
                             **link,
                             "id": f"{link_prefix}{link['id']}",
-                            "origin_id": str(external["origin_id"]),
-                            "origin_slot": external["origin_slot"],
+                            "origin_id": real_origin_id,
+                            "origin_slot": real_origin_slot,
                             "target_id": f"{node_prefix}{target_id}",
                         }
                     )
@@ -361,9 +407,11 @@ def expand_subgraphs(workflow: dict) -> dict:
                     and int(external["origin_slot"]) == output_slot
                 ):
                     if str(external["target_id"]) in instances:
-                        raise RuntimeError(
-                            "a subgraph output connected to another subgraph is unsupported"
-                        )
+                        # Handled by that other instance's own input-side
+                        # resolution (resolve_subgraph_output), which traces
+                        # back to this same internal node -- adding it here
+                        # too would create a duplicate link.
+                        continue
                     flat_links.append(
                         {
                             **external,
