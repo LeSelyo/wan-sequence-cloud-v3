@@ -125,12 +125,14 @@ def get_settings() -> Settings:
         os.getenv("WORKFLOW_DIR", str(data_root / "cache" / "workflows"))
     ).resolve()
     readiness_profile = os.getenv("READINESS_PROFILE", "backend").strip().lower()
-    if readiness_profile not in {
-        "backend", "t2v", "t2v-turbo", "i2v", "i2v-turbo", "flf2v", "all-video", "image", "flux-schnell", "all", "all-turbo", "wan22-animate", "wan22-vace"
-    }:
+    allowed_readiness_profiles = {
+        "backend", "t2v", "t2v-turbo", "i2v", "i2v-turbo", "flf2v", "all-video", "image",
+        "flux-schnell", "all", "all-turbo", "wan22-animate", "wan22-vace", "krea2",
+        "wan-animate-vitpose-preprocess",
+    }
+    if readiness_profile not in allowed_readiness_profiles:
         raise ValueError(
-            "READINESS_PROFILE must be one of backend, t2v, t2v-turbo, "
-            "i2v, i2v-turbo, flf2v, all-video, image, flux-schnell, all, all-turbo, wan22-animate, wan22-vace"
+            "READINESS_PROFILE must be one of " + ", ".join(sorted(allowed_readiness_profiles))
         )
     return Settings(
         data_root=data_root,
