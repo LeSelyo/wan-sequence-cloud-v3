@@ -22,6 +22,7 @@ from .readiness import (
     check_model_items,
     image_engine_spec,
 )
+from .sam2_seed_point import compute_seed_point
 from .schemas import ImageGenerationRequest, Mode, SequenceRequest, Shot
 from .settings import Settings, get_settings
 
@@ -445,9 +446,16 @@ async def render_shot(shot: Shot, job_dir: Path) -> Path:
     start_name = stage_for_comfy(start, job_dir.name, shot.id, "start") if start else None
     end_name = stage_for_comfy(end, job_dir.name, shot.id, "end") if end else None
     driving_video_name = None
+    sam2_seed_point = None
     if shot.driving_video is not None:
         driving = await materialize_video(shot.driving_video, job_dir, f"{shot.id}_driving")
         driving_video_name = stage_for_comfy(driving, job_dir.name, shot.id, "driving")
+        if shot.mode in {Mode.ANIMATE_MIX, Mode.ANIMATE_MOVE}:
+            sam2_seed_point = await asyncio.to_thread(
+                compute_seed_point,
+                driving,
+                settings.detection_dir / "yolov10m.onnx",
+            )
     control_video_name = control_masks_name = None
     if shot.mode == Mode.VACE:
         control_video_path, control_masks_path = await build_vace_control_assets(shot, job_dir)
@@ -490,6 +498,11 @@ async def render_shot(shot: Shot, job_dir: Path) -> Path:
             # ComfyUI instance with the three Animate preprocessing nodes installed
             # (see prepare_workflows.py) — not yet finalized as of 2026-09-27.
             "keep_background": shot.mode == Mode.ANIMATE_MIX,
+            **({
+                "sam2_points_store": sam2_seed_point["points_store"],
+                "sam2_coordinates": sam2_seed_point["coordinates"],
+                "sam2_neg_coordinates": sam2_seed_point["neg_coordinates"],
+            } if sam2_seed_point else {}),
             "output_prefix": f"{job_dir.name}/{shot.id}_video",
         },
     )

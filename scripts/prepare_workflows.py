@@ -741,6 +741,26 @@ def build_bindings(prompt: dict, workflow_name: str = "wan22_t2v") -> dict:
                     bindings["output_prefix"] = pointer(node_id, name)
         if kind == "LoadImage" and "image" in inputs:
             load_images.append(node_id)
+        if kind == "PointsEditor":
+            # The template's SAM2 click-point, meant for a human to set in
+            # ComfyUI's web UI before running the graph -- see
+            # app/sam2_seed_point.py for why a headless caller must supply
+            # its own computed point instead of leaving the template's
+            # hardcoded (256,256) default (confirmed broken 2026-10-01: SAM2
+            # seeds from a point that doesn't land on the subject, producing
+            # a near pass-through of the driving video instead of the new
+            # character).
+            bindings["sam2_points_store"] = pointer(node_id, "points_store")
+            bindings["sam2_coordinates"] = pointer(node_id, "coordinates")
+            bindings["sam2_neg_coordinates"] = pointer(node_id, "neg_coordinates")
+            editor_w, editor_h = inputs.get("width"), inputs.get("height")
+            if (editor_w, editor_h) != (640, 640):
+                raise RuntimeError(
+                    "PointsEditor canvas changed from the pinned 640x640 "
+                    f"(now {editor_w}x{editor_h}) -- app/sam2_seed_point.py's "
+                    "coordinate transform assumes 640x640 and must be updated "
+                    "to match before this binding can be trusted"
+                )
         if kind in {"UNETLoader", "CheckpointLoaderSimple"}:
             filename = str(inputs.get("unet_name", inputs.get("ckpt_name", ""))).lower()
             model_loaders[node_id] = filename
@@ -773,6 +793,12 @@ def build_bindings(prompt: dict, workflow_name: str = "wan22_t2v") -> dict:
         # (DWPose/SAM2 -> DrawMaskOnImage), not a Mix/Move switch -- so
         # ANIMATE_MIX and ANIMATE_MOVE currently render identically. Still
         # unbound and unresolved; not attempted here.
+        #
+        # sam2_points_store/sam2_coordinates/sam2_neg_coordinates ARE now
+        # wired (see the PointsEditor branch above + app/sam2_seed_point.py):
+        # the caller must compute them from the driving video rather than
+        # leave the template's hardcoded (256,256) default, which doesn't
+        # reliably land on the subject.
         if animate_width_targets:
             bindings["width"] = animate_width_targets
         if animate_height_targets:
@@ -797,6 +823,9 @@ def build_bindings(prompt: dict, workflow_name: str = "wan22_t2v") -> dict:
             "main_model_target",
             "start_image",
             "driving_video",
+            "sam2_points_store",
+            "sam2_coordinates",
+            "sam2_neg_coordinates",
         }
     else:
         required = {
