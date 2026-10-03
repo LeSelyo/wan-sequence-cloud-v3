@@ -93,14 +93,45 @@ except ImportError:
 # docstring. Tune BG_CUT_RANGE directly; the V1/V2 names are just a record. ---
 BG_CUT_RANGE_V1 = (1.1, 2.4)   # original build_real.py value -- confirmed too slow
 BG_CUT_RANGE_V2 = (0.5, 1.0)   # 2026-10-02: ~2x faster cuts
-BG_CUT_RANGE = BG_CUT_RANGE_V2
+BG_CUT_RANGE_V3 = (0.25, 0.5)  # 2026-10-03: "the backgrounds still do not scroll fast enough"
+BG_CUT_RANGE = BG_CUT_RANGE_V3
+# Painterly, people-free scenes in the style of the first five backgrounds. Krea2 takes no negative
+# prompt, so "no people, no text" is in the sentence. `--auto-backgrounds N` generates the first N.
+DEFAULT_BACKGROUND_PROMPTS = [
+    "dark classical oil painting of an empty marble library with tall shelves of scrolls, candlelight, chiaroscuro, no people, no text",
+    "classical oil painting of a stormy sea under dramatic clouds seen from an ancient stone terrace, no people, no text",
+    "classical oil painting of a moonlit olive grove with ancient ruins, deep blue night, no people, no text",
+    "classical oil painting of a vast hall of marble columns with shafts of golden light and dust in the air, no people, no text",
+    "classical oil painting of a lone cypress tree on a cliff above a misty valley at dawn, no people, no text",
+    "classical oil painting of a candlelit scholar's study with an open book, a skull and an hourglass, dark background, no people, no text",
+    "classical oil painting of a crumbling Greek temple on a hill at sunset, long shadows, no people, no text",
+    "classical oil painting of a narrow stone staircase leading down into darkness, torchlight, no people, no text",
+    "classical oil painting of a dramatic sky with golden clouds over a distant city of domes, no people, no text",
+    "classical oil painting of an ancient arched aqueduct in a twilight landscape, no people, no text",
+    "classical oil painting of a quiet cloister garden with a stone fountain and fallen leaves, autumn light, no people, no text",
+    "classical oil painting of a dark cave opening onto a bright sea horizon, no people, no text",
+    "classical oil painting of a fresco-covered wall with cracked plaster and a small oil lamp, no people, no text",
+    "classical oil painting of a snowy mountain pass at dusk with a lone watchtower, no people, no text",
+    "classical oil painting of a desert ruin with broken statues half buried in sand, warm light, no people, no text",
+    "classical oil painting of a rain-soaked cobblestone street at night under a single lantern, no people, no text",
+]
 
 # sidechaincompress / amix need both audio inputs in one format (FFmpeg 4.4 fails to negotiate a
 # 24 kHz mono voice against 44.1 kHz stereo music: "filters could not choose their formats").
 COMMON_AUDIO = "aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo"
 BLACK_SCREEN_WINDOW = (30.0, 40.0)  # seconds; the original brief said 20-40 s, review said "after 30 s"
-BLACK_SCREEN_SECONDS = 2.0
+BLACK_SCREEN_SECONDS = 4.0  # 2.25 s was not noticed on review; 4 s is a real pause
+BLACK_EDGE_SECONDS = 0.08  # half-opaque frames on each side so the cut reads as a beat, not a glitch
 
+# Words that carry the sentence: negations/absolutes and the vocabulary of a stoic monologue
+# (accents stripped, see _plain). They get the biggest size and the colour.
+CAPTION_POWER_WORDS = frozenset(
+    "jamais toujours rien tout personne aucun seul seule seulement vide silence verite vrai faux liberte valeur "
+    "sens oubli oublie temps vie mort mourir peur amour solitude ombre lumiere preuve attention regard vu invisible "
+    "existe exister compte importe necessaire inutile reel illusion".split()
+)
+# Montserrat ExtraBold capitals measure 0.685 em on average (0.64-0.75 for French words) + a 0.29 em space
+EM_PER_CAP = 0.72
 CAPTION_ANCHORS = [("lower", 0.78, 0.5), ("upper", 0.2, 0.25), ("middle", 0.5, 0.25)]  # (name, y fraction, weight)
 # Montserrat ExtraBold (fetched by the Dockerfile) is the Hormozi look;
 # libass falls back to any bold font when it is missing. Override with TREND_CAPTION_FONT.
@@ -253,6 +284,20 @@ def music_loop_length(info: dict, music_start: float, duration: float, bar_beats
     if bars < 1:
         raise ValueError("music track is too short to loop on a bar")
     return bars * period
+
+
+def subdivide_beats(beats: list[float], min_step: float = 0.25) -> list[float]:
+    """Splits every beat into the most equal parts that are still at least `min_step` long
+    (106.9 BPM, a beat of 0.56 s, gives eighth notes of 0.28 s): the fast background cuts
+    then land on the music instead of drifting off it."""
+    if len(beats) < 2:
+        return list(beats)
+    gaps = sorted(b - a for a, b in zip(beats, beats[1:]))
+    parts = max(1, int(gaps[len(gaps) // 2] / min_step))
+    out: list[float] = []
+    for a, b in zip(beats, beats[1:]):
+        out += [a + (b - a) * k / parts for k in range(parts)]
+    return out + [beats[-1]]
 
 
 def _nearest(value: float, grid: list[float]) -> float:
@@ -519,22 +564,27 @@ def build_background_video(
     is hidden by the character overlay."""
     rnd = random.Random(rng_seed)
     concat_list = out_path.with_suffix(".txt")
-    n_bg = len(background_images)
     lines = []
     t = 0.0
-    i = 0
     last_img = background_images[0]
+    min_cut = max(0.2, cut_range[0] * 0.8)
+    deck: list[Path] = []
+    previous: Path | None = None
     while t < duration:
         target = t + rnd.uniform(*cut_range)
         if beat_times:
-            ahead = [b for b in beat_times if b > t + 0.3]
+            ahead = [b for b in beat_times if b > t + min_cut]
             cut = (_nearest(target, ahead) - t) if ahead else (target - t)
         else:
             cut = target - t
-        last_img = background_images[i % n_bg]
+        if not deck:  # a shuffled deck: every background in turn, never the same twice in a row
+            deck = list(background_images)
+            rnd.shuffle(deck)
+            if len(deck) > 1 and deck[-1] == previous:
+                deck[0], deck[-1] = deck[-1], deck[0]
+        last_img = previous = deck.pop()
         lines.append(f"file '{last_img.as_posix()}'\nduration {cut:.3f}\n")
         t += cut
-        i += 1
     lines.append(f"file '{last_img.as_posix()}'\n")
     concat_list.write_text("".join(lines), encoding="utf-8")
 
@@ -622,29 +672,73 @@ def estimate_word_times(words: list[str], start: float, end: float) -> list[tupl
     return out
 
 
-def chunk_words(words: list[str], max_words: int = 3, max_chars: int = 17) -> list[list[int]]:
+def chunk_words(
+    words: list[str], max_words: int = 3, max_chars: int = 17,
+    scales: list[float] | None = None, max_units: float | None = None,
+) -> list[list[int]]:
     """Indexes of the words shown together: at most `max_words` / `max_chars`, and a chunk
-    always ends at punctuation (so a comma or a full stop is a natural caption change)."""
-    chunks, current, chars = [], [], 0
+    always ends at punctuation (so a comma or a full stop is a natural caption change).
+    With `scales` (impact sizes) and `max_units` the width a chunk needs, sum((len+1) * scale),
+    must also stay within the budget, so big words get a chunk of their own instead of
+    shrinking the whole line."""
+    chunks, current, chars, units = [], [], 0, 0.0
     for index, word in enumerate(words):
-        if current and (len(current) >= max_words or chars + 1 + len(word) > max_chars):
+        word_units = (len(word) + 1) * (scales[index] if scales else 1.0)
+        too_wide = max_units is not None and units + word_units > max_units
+        if current and (len(current) >= max_words or chars + 1 + len(word) > max_chars or too_wide):
             chunks.append(current)
-            current, chars = [], 0
+            current, chars, units = [], 0, 0.0
         current.append(index)
         chars += len(word) + (1 if len(current) > 1 else 0)
+        units += word_units
         if word.endswith((",", ";", ":", ".", "?", "!", "\u2026")):
             chunks.append(current)
-            current, chars = [], 0
+            current, chars, units = [], 0, 0.0
     if current:
         chunks.append(current)
     return chunks
 
 
 def pick_key_word(words: list[str], chunk: list[int]) -> int | None:
-    """The word of a chunk worth colouring: the longest one that is not a stop word and has
-    at least 5 letters (None when the chunk is only small words)."""
+    """The word of a chunk worth colouring: a power word if there is one, else the longest word
+    that is not a stop word and has at least 5 letters (None when the chunk is only small
+    words)."""
+    power = [i for i in chunk if _plain(words[i]) in CAPTION_POWER_WORDS]
+    if power:
+        return max(power, key=lambda i: len(_plain(words[i])))
     candidates = [(len(_plain(words[i])), i) for i in chunk if _plain(words[i]) not in CAPTION_STOPWORDS and len(_plain(words[i])) >= 5]
     return max(candidates)[1] if candidates else None
+
+
+def impact_scale(word: str, *, last_in_sentence: bool = False, sentence_words: int = 99) -> float:
+    """Relative size (1.0 = base) of a word by how much it hits: small words recede (0.88), plain
+    content words stay at 1.0, 5+ letter words grow (1.18), 8+ letter words more (1.3), the power
+    words most (1.5); the last word of a sentence and every word of a very short, punchy sentence
+    get +0.1. Capped at 1.65."""
+    plain = _plain(word)
+    if plain in CAPTION_STOPWORDS:
+        scale = 0.88
+    elif plain in CAPTION_POWER_WORDS:
+        scale = 1.5
+    elif len(plain) >= 8:
+        scale = 1.3
+    elif len(plain) >= 5:
+        scale = 1.18
+    else:
+        scale = 1.0
+    if scale >= 1.0:
+        if last_in_sentence:
+            scale += 0.1
+        if sentence_words <= 3:
+            scale += 0.1
+    return round(min(scale, 1.65), 2)
+
+
+def fit_factor(words: list[str], scales: list[float], font_size: int, width: int, margin: float = 0.9) -> float:
+    """Shrink factor (<= 1) so a chunk set in its per-word sizes still fits the frame width
+    (Montserrat ExtraBold capitals are ~0.74 em wide on average)."""
+    estimated = sum((len(word) + 1) * scale for word, scale in zip(words, scales)) * font_size * EM_PER_CAP
+    return min(1.0, width * margin / estimated) if estimated else 1.0
 
 
 def build_captions(
@@ -692,7 +786,11 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             anchor_y = 0.5
         pos_x = width // 2 + (0 if during_black else rnd.randint(-40, 40))
         pos_y = int(height * anchor_y)
-        chunks = chunk_words(words)
+        sentence_scales = [
+            impact_scale(w, last_in_sentence=n == len(words) - 1, sentence_words=len(words)) * (1.15 if during_black else 1.0)
+            for n, w in enumerate(words)
+        ]
+        chunks = chunk_words(words, scales=sentence_scales, max_units=width * 0.92 / (font_size * EM_PER_CAP))
         next_start = windows[idx + 1][0] if idx + 1 < len(windows) else None
         for position, chunk in enumerate(chunks):
             c_start = times[chunk[0]][0]
@@ -707,14 +805,20 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 c_end = hold - (0.02 if hold == next_start else 0.0)
             c_end = max(c_end, c_start + 0.18)
             key = pick_key_word(words, chunk)
+            scales = [sentence_scales[i] for i in chunk]
+            fit = fit_factor([words[i] for i in chunk], scales, font_size, width)
             shown = []
-            for i in chunk:
+            for i, scale in zip(chunk, scales):
                 text = words[i].upper().replace("{", "(").replace("}", ")").replace("\\", "")
-                if i == key:
-                    text = f"{{\\c{key_colour}\\fscx114\\fscy114}}{text}{{\\c&H00FFFFFF&\\fscx100\\fscy100}}"
-                shown.append(text)
-            pop = "\\fscx72\\fscy72\\t(0,90,\\fscx108\\fscy108)\\t(90,170,\\fscx100\\fscy100)"
-            tag = f"{{\\pos({pos_x},{pos_y})\\fad(40,0){pop}}}"
+                final = max(40, round(scale * fit * 100))
+                colour = key_colour if i == key else "&H00FFFFFF&"
+                # every word pops from 72 % to 108 % to its own impact size (times are from the event start)
+                shown.append(
+                    f"{{\\c{colour}\\fscx{round(final * 0.72)}\\fscy{round(final * 0.72)}"
+                    f"\\t(0,90,\\fscx{round(final * 1.08)}\\fscy{round(final * 1.08)})"
+                    f"\\t(90,170,\\fscx{final}\\fscy{final})}}{text}"
+                )
+            tag = f"{{\\pos({pos_x},{pos_y})\\fad(40,0)}}"
             lines.append(f"Dialogue: 0,{_fmt_ts(c_start)},{_fmt_ts(c_end)},Quote,,0,0,0,,{tag}{' '.join(shown)}")
     out_path.write_text(header + "\n".join(lines), encoding="utf-8")
     return out_path
@@ -812,7 +916,8 @@ def build_philosopher_trend(
     black = plan_black_screen(duration, at=black_screen_at, length=black_screen_seconds, beats=beats, rng_seed=rng_seed)
     bg_video = work_dir / "bg_video.mp4"
     build_background_video(background_images, bg_video, duration=duration, width=width, height=height,
-                            fps=fps, cut_range=bg_cut_range, beat_times=beats, rng_seed=rng_seed)
+                            fps=fps, cut_range=bg_cut_range, beat_times=subdivide_beats(beats) if beats else None,
+                            rng_seed=rng_seed)
     (work_dir / "plan.json").write_text(json.dumps({
         "duration": round(duration, 3), "black_screen": black, "bpm": music_info and round(music_info["bpm"], 2),
         "music_start": music_start if music_path else None, "music_loop_length": loop_length,
@@ -827,6 +932,11 @@ def build_philosopher_trend(
     ass_path = str(captions).replace("\\", "/").replace(":", "\\:")
     video_filters = []
     if black:  # before `ass`, so the subtitles are drawn ON the black
+        edge = BLACK_EDGE_SECONDS
+        video_filters.append(
+            "drawbox=x=0:y=0:w=iw:h=ih:color=black@0.5:t=fill:enable="
+            f"'between(t,{max(0.0, black[0] - edge):.3f},{black[0]})+between(t,{black[1]},{black[1] + edge:.3f})'"
+        )
         video_filters.append(f"drawbox=x=0:y=0:w=iw:h=ih:color=black:t=fill:enable='between(t,{black[0]},{black[1]})'")
     video_filters.append(f"ass='{ass_path}'")
     graph = [f"[0:v]{','.join(video_filters)}[v]"]
@@ -867,6 +977,8 @@ def main(argv=None) -> None:
     parser.add_argument("--backgrounds", nargs="+", type=Path)
     parser.add_argument("--background-prompt", action="append", dest="background_prompts",
                         help="Krea2 prompt for one background (repeat the flag); alternative to --backgrounds")
+    parser.add_argument("--auto-backgrounds", type=int, default=0,
+                        help="also generate N painterly backgrounds with Krea2 (DEFAULT_BACKGROUND_PROMPTS) through the app API")
     parser.add_argument("--no-matte", action="store_true", help="the character image is already a transparent cutout")
     parser.add_argument("--voice-wav", type=Path, help="precomputed voice-over (needs --voice-windows)")
     parser.add_argument("--voice-windows", type=Path, help="JSON [{start,end,text}] matching --voice-wav")
@@ -888,13 +1000,18 @@ def main(argv=None) -> None:
         if not (args.voice_wav and args.voice_windows):
             parser.error("--voice-wav and --voice-windows go together")
         precomputed = (args.voice_wav, json.loads(args.voice_windows.read_text(encoding="utf-8")))
+    backgrounds = list(args.backgrounds or [])
+    if args.auto_backgrounds:
+        backgrounds += generate_background_images(
+            DEFAULT_BACKGROUND_PROMPTS[: args.auto_backgrounds], args.work_dir / "backgrounds_auto", width=480, height=832, seed=500
+        )
     build_philosopher_trend(
         script_text,
         args.out,
         work_dir=args.work_dir,
         character_image_path=args.character_image,
         character_prompt=args.character_prompt,
-        background_images=args.backgrounds,
+        background_images=backgrounds or None,
         background_prompts=args.background_prompts,
         matte=not args.no_matte,
         precomputed_voice=precomputed,

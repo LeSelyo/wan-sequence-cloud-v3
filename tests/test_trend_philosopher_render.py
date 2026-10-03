@@ -63,6 +63,90 @@ class BeatAnalysisTests(unittest.TestCase):
                 tp.analyze_beats(click_track(Path(temporary) / "tiny.wav", bpm=120, offset=0.0, seconds=0.2))
 
 
+class ImpactSizeTests(unittest.TestCase):
+    def test_sizes_follow_the_impact_of_the_word(self):
+        small = tp.impact_scale("le")
+        plain = tp.impact_scale("nuit")
+        key = tp.impact_scale("lumiere")  # power word, 7 letters
+        medium = tp.impact_scale("blanche")  # 7 letters, not a power word
+        long_ = tp.impact_scale("transforme")
+        power = tp.impact_scale("jamais")
+        self.assertLess(small, plain)
+        self.assertLess(plain, medium)
+        self.assertLess(medium, long_)
+        self.assertLess(long_, power)
+        self.assertEqual(power, key)
+        self.assertEqual(small, 0.88)
+        self.assertEqual(plain, 1.0)
+
+    def test_the_last_word_and_punchy_sentences_hit_harder_and_the_size_is_capped(self):
+        self.assertAlmostEqual(tp.impact_scale("blanche", last_in_sentence=True), tp.impact_scale("blanche") + 0.1)
+        self.assertAlmostEqual(tp.impact_scale("blanche", sentence_words=2), tp.impact_scale("blanche") + 0.1)
+        self.assertEqual(tp.impact_scale("jamais", last_in_sentence=True, sentence_words=1), 1.65)
+        self.assertEqual(tp.impact_scale("le", last_in_sentence=True, sentence_words=1), 0.88)  # small words never grow
+
+    def test_accents_do_not_hide_a_power_word(self):
+        self.assertEqual(tp.impact_scale("Vérité."), tp.impact_scale("verite"))
+        self.assertEqual(tp.impact_scale("liberté,"), 1.5)
+
+    def test_power_words_are_the_coloured_key_word(self):
+        words = "la lumière revient lentement".split()
+        self.assertEqual(words[tp.pick_key_word(words, [0, 1, 2, 3])], "lumière")
+
+    def test_a_chunk_never_needs_more_width_than_the_frame(self):
+        width, font = 1080, 106
+        words = "Elle cherche toujours lentement une vérité immuable.".split()
+        scales = [tp.impact_scale(w, last_in_sentence=i == len(words) - 1, sentence_words=len(words)) for i, w in enumerate(words)]
+        chunks = tp.chunk_words(words, scales=scales, max_units=width * 0.92 / (font * tp.EM_PER_CAP))
+        self.assertEqual([i for chunk in chunks for i in chunk], list(range(len(words))))
+        for chunk in chunks:
+            self.assertGreaterEqual(tp.fit_factor([words[i] for i in chunk], [scales[i] for i in chunk], font, width), 0.9, chunk)
+
+    def test_without_a_budget_chunking_is_unchanged(self):
+        words = "Le temps n'efface rien, il transforme lentement ce que nous croyons immuable.".split()
+        self.assertEqual(tp.chunk_words(words), tp.chunk_words(words, scales=None, max_units=None))
+
+    def test_the_black_beat_boosts_the_caption_size(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            normal, boosted = Path(temporary) / "a.ass", Path(temporary) / "b.ass"
+            tp.build_captions(["Un chat noir dort."], [(0.0, 2.0)], normal, width=1080, height=1920)
+            tp.build_captions(["Un chat noir dort."], [(0.0, 2.0)], boosted, width=1080, height=1920, force_visible=(0.5, 1.5))
+            import re
+
+            def sizes(path):
+                return [int(v) for v in re.findall(r"\\t\(90,170,\\fscx(\d+)", path.read_text(encoding="utf-8"))]
+
+            self.assertGreater(max(sizes(boosted)), max(sizes(normal)))
+
+
+class FasterBackgroundsTests(unittest.TestCase):
+    def test_the_default_cut_range_is_faster_than_the_previous_one(self):
+        self.assertEqual(tp.BG_CUT_RANGE, tp.BG_CUT_RANGE_V3)
+        self.assertLess(tp.BG_CUT_RANGE_V3[1], tp.BG_CUT_RANGE_V2[0] + 0.001)  # even the slowest cut beats the old fastest
+
+    def test_beats_are_split_into_eighths_when_that_stays_above_a_quarter_second(self):
+        beats = [0.27 + 0.5614 * k for k in range(40)]
+        grid = tp.subdivide_beats(beats)
+        gaps = [b - a for a, b in zip(grid, grid[1:])]
+        self.assertAlmostEqual(sum(gaps) / len(gaps), 0.2807, delta=0.002)
+        self.assertEqual(len(tp.subdivide_beats([0.0, 0.3, 0.6, 0.9])), 4)  # 0.3 s beats are not split
+        self.assertEqual(tp.subdivide_beats([1.0]), [1.0])
+
+    def test_every_background_is_used_and_none_repeats_back_to_back(self):
+        with tempfile.TemporaryDirectory() as temporary, mock.patch.object(tp, "_run"):
+            images = [Path(temporary) / f"{n}.png" for n in "abcde"]
+            tp.build_background_video(images, Path(temporary) / "bg.mp4", duration=30.0, width=270, height=480, rng_seed=5)
+            files = [l.split("'")[1] for l in (Path(temporary) / "bg.txt").read_text(encoding="utf-8").splitlines() if l.startswith("file")]
+        shown = [Path(f).name for f in files]
+        self.assertEqual(set(shown), {"a.png", "b.png", "c.png", "d.png", "e.png"})
+        self.assertTrue(all(x != y for x, y in zip(shown[:-1], shown[1:-1])))  # the trailing entry repeats the last image on purpose
+        self.assertGreater(len(shown), 60)  # a cut every 0.25-0.5 s
+
+    def test_the_default_pool_of_extra_backgrounds_is_big_and_people_free(self):
+        self.assertGreaterEqual(len(tp.DEFAULT_BACKGROUND_PROMPTS), 12)
+        self.assertTrue(all("no people" in p for p in tp.DEFAULT_BACKGROUND_PROMPTS))
+
+
 class AmixCompatibilityTests(unittest.TestCase):
     def test_modern_ffmpeg_uses_normalize_zero(self):
         with mock.patch.object(tp, "_filter_has_option", return_value=True):
@@ -125,9 +209,13 @@ class HormoziCaptionTests(unittest.TestCase):
         palette = {tp._ass_colour(hex_) for _, hex_, _ in tp.CAPTION_KEY_COLORS}
         used = {c for c in palette if f"\\c{c}" in joined}
         self.assertEqual(len(used), 1, "one key-word colour per sentence")
-        self.assertIn("\\fscx114", joined)  # the key word is a bit bigger
+        import re
+
+        finals = [int(v) for v in re.findall(r"\\t\(90,170,\\fscx(\d+)", joined)]
+        self.assertGreater(max(finals), 110)  # impact words are bigger than the base size...
+        self.assertLess(min(finals), 100)  # ...and small words recede
         for event in events:
-            self.assertLessEqual(event.count("\\c&H00FFFFFF&"), 1)
+            self.assertLessEqual(event.count(f"\\c{key_colour}"), 1) if (key_colour := next(iter(used))) else None
 
     def test_key_word_colours_change_across_sentences(self):
         sentences = [f"Le grand silence numero {i} traverse longtemps." for i in range(40)]
@@ -161,16 +249,16 @@ class HormoziCaptionTests(unittest.TestCase):
         self.assertEqual(first, second)
 
     def test_given_word_times_win_over_the_estimate(self):
-        words = ["Un", "grand", "silence."]
         _, events = self._events(["Un grand silence."], [(0.0, 3.0)], word_times=[[(0.0, 0.2), (1.0, 1.5), (2.5, 3.0)]])
-        # one chunk of three words, from the first word's start
-        self.assertEqual(len(events), 1)
+        # "silence." is a power word set at the maximum size: it gets a chunk of its own, which must
+        # start at the time the voice gave for that word (2.5 s), not at an estimate
+        self.assertEqual(len(events), 2)
         self.assertIn("0:00:00.00", events[0])
-        del words
+        self.assertIn("0:00:02.50", events[1])
 
 
 class BeatGridAndPlanTests(unittest.TestCase):
-    BEATS = [0.2 + 0.5 * k for k in range(60)]  # 120 BPM, bars every 2 s from 0.2
+    BEATS = [0.2 + 0.5 * k for k in range(240)]  # 120 BPM, bars every 2 s from 0.2, covers a 2-minute video
 
     def test_beats_for_video_offsets_and_loops_the_track(self):
         one = tp.beats_for_video(self.BEATS, music_start=1.2, duration=5.0)
