@@ -38,11 +38,11 @@ FILES = {
 # custom node packs installed (verified 2026-09-28). Still listed in
 # EXPERIMENTAL: total clip length is architecturally fixed by the template's
 # 3-stage chain (shot.frames is silently ignored, see build_bindings' comment
-# below) and ANIMATE_MIX/ANIMATE_MOVE render identically (no keep_background
-# wiring). Kept here so a regression in either area is caught rather than
+# below) and ANIMATE_MIX/ANIMATE_MOVE differ only by the background_inputs binding
+# (see build_bindings). Kept here so a regression in either area is caught rather than
 # blocking startup for t2v/i2v/flf2v/image — see main().
 EXPERIMENTAL = {"wan22_animate"}
-CONVERTER_SCHEMA_VERSION = 4
+CONVERTER_SCHEMA_VERSION = 7
 
 
 def get_json(url: str) -> dict:
@@ -688,12 +688,93 @@ def validate_runtime_prompt(prompt: dict, workflow_name: str) -> None:
                 )
 
 
+def wire_sam2_negative_points(prompt: dict, object_info: dict | None = None) -> None:
+    """Connects PointsEditor's red (negative) output to Sam2Segmentation.
+
+    The official Animate template only links `positive_coords` (green, the
+    person to segment); `coordinates_negative` is left unconnected (checked on
+    the template JSON 2026-10-02), so a negative point -- background, the other
+    fighter -- never reaches SAM2. The link is created here and removed again at
+    bind time unless the shot supplies exclude_points (see app/comfy.py), so
+    jobs without red points run the same graph as before.
+    """
+    editors = [key for key, node in prompt.items() if node["class_type"] == "PointsEditor"]
+    segmenters = [key for key, node in prompt.items() if node["class_type"] == "Sam2Segmentation"]
+    if not editors or not segmenters:
+        return
+    if len(editors) != 1:
+        raise RuntimeError(f"expected one PointsEditor in the Animate template, found {len(editors)}")
+    names = list(((object_info or {}).get("PointsEditor") or {}).get("output_name") or ["positive_coords", "negative_coords"])
+    index = names.index("negative_coords")  # ValueError = the node's outputs were renamed: fail loudly
+    for key in segmenters:
+        prompt[key]["inputs"]["coordinates_negative"] = [editors[0], index]
+
+
+ANIMAL_POSE_NODE_ID = "animal_pose_ap10k"
+
+
+def _combo_options(spec) -> list:
+    """Options of a combo input in /object_info, old (`[[a, b], {...}]`) or new
+    (`["COMBO", {"options": [a, b]}]`) format."""
+    if isinstance(spec, list) and spec:
+        if isinstance(spec[0], list):
+            return spec[0]
+        if spec[0] == "COMBO" and len(spec) > 1 and isinstance(spec[1], dict):
+            return list(spec[1].get("options", []))
+    return []
+
+
+def add_animal_pose_branch(prompt: dict, object_info: dict | None) -> bool:
+    """Adds comfyui_controlnet_aux's AnimalPosePreprocessor (AP10K, 17 quadruped
+    keypoints) next to the human DWPose one, fed by the very same squared driving
+    frames. Nothing consumes it until a shot asks for pose_source="animal" (see
+    app/comfy.py), so human jobs run the unchanged, validated graph.
+
+    Returns False (and adds nothing) when the installed node pack has no such node.
+    The node is a ControlNet preprocessor for SD1.5's animal-openpose; no source says
+    Wan 2.2 Animate was trained on its skeleton, so the path is experimental.
+    """
+    spec = (object_info or {}).get("AnimalPosePreprocessor")
+    if not spec:
+        return False
+    human = [
+        key for key, node in prompt.items()
+        if node["class_type"] == "DWPreprocessor" and node["inputs"].get("detect_body") == "enable"
+    ]
+    if len(human) != 1:
+        raise RuntimeError(f"expected one body DWPreprocessor in the Animate template, found {len(human)}")
+    required = (spec.get("input") or {}).get("required") or {}
+    detectors = _combo_options(required.get("bbox_detector"))
+    estimators = _combo_options(required.get("pose_estimator"))
+    detector = next((o for o in ("yolox_l.onnx", "yolox_l.torchscript.pt") if o in detectors), None)
+    estimator = next((o for o in ("rtmpose-m_ap10k_256_bs5.torchscript.pt", "rtmpose-m_ap10k_256.onnx") if o in estimators), None)
+    if detector is None or estimator is None:
+        raise RuntimeError(
+            f"AnimalPosePreprocessor has no known YOLOX detector / AP10K estimator (detectors={detectors}, estimators={estimators})"
+        )
+    shared = prompt[human[0]]["inputs"]
+    prompt[ANIMAL_POSE_NODE_ID] = {
+        "class_type": "AnimalPosePreprocessor",
+        "inputs": {
+            "image": shared["image"],
+            "bbox_detector": detector,
+            "pose_estimator": estimator,
+            "resolution": shared["resolution"],
+        },
+    }
+    return True
+
+
 def build_bindings(prompt: dict, workflow_name: str = "wan22_t2v") -> dict:
     bindings: dict[str, Any] = {}
     load_images: list[str] = []
     model_loaders: dict[str, str] = {}
     animate_width_targets: list[str] = []
     animate_height_targets: list[str] = []
+    animate_background_inputs: list[str] = []
+    sam2_negative_inputs: list[str] = []
+    animate_pose_inputs: list[str] = []
+    animate_face_inputs: list[str] = []
     for node_id, node in prompt.items():
         kind, inputs = node["class_type"], node["inputs"]
         title = node.get("_meta", {}).get("title", "").lower()
@@ -707,6 +788,19 @@ def build_bindings(prompt: dict, workflow_name: str = "wan22_t2v") -> dict:
                 animate_width_targets.append(pointer(node_id, "width"))
             if "height" in inputs:
                 animate_height_targets.append(pointer(node_id, "height"))
+            # The background handling of "Mix": the SAM2 mask of the replaced
+            # person and the driving video with that person blacked out. A
+            # WanAnimateToVideo that does not receive them ("Move") generates the
+            # scene from the reference image instead -- confirmed live 2026-10-02:
+            # dropping both inputs from all three nodes gave the same character
+            # in the reference's own dojo / rooftop / forest background.
+            if "pose_video" in inputs:
+                animate_pose_inputs.append(pointer(node_id, "pose_video"))
+            if "face_video" in inputs:
+                animate_face_inputs.append(pointer(node_id, "face_video"))
+            for background_input in ("background_video", "character_mask"):
+                if background_input in inputs:
+                    animate_background_inputs.append(pointer(node_id, background_input))
         if kind == "LoadVideo" and "driving_video" not in bindings:
             # The official template ships this node with its "file" combo
             # unset (no widgets_values), so the converter emits it with an
@@ -741,6 +835,8 @@ def build_bindings(prompt: dict, workflow_name: str = "wan22_t2v") -> dict:
                     bindings["output_prefix"] = pointer(node_id, name)
         if kind == "LoadImage" and "image" in inputs:
             load_images.append(node_id)
+        if kind == "Sam2Segmentation" and "coordinates_negative" in inputs:
+            sam2_negative_inputs.append(pointer(node_id, "coordinates_negative"))
         if kind == "PointsEditor":
             # The template's SAM2 click-point, meant for a human to set in
             # ComfyUI's web UI before running the graph -- see
@@ -788,17 +884,27 @@ def build_bindings(prompt: dict, workflow_name: str = "wan22_t2v") -> dict:
     if workflow_name == "wan22_animate":
         # Single unified diffusion model (no high/low-noise split), so the branch
         # heuristic in this function falls back to "main_model_target".
-        # "keep_background" (Mix vs Move) has no corresponding node in this
-        # official template -- it ships one fixed background-handling chain
-        # (DWPose/SAM2 -> DrawMaskOnImage), not a Mix/Move switch -- so
-        # ANIMATE_MIX and ANIMATE_MOVE currently render identically. Still
-        # unbound and unresolved; not attempted here.
+        # "keep_background" (Mix vs Move) is not a node in this official template,
+        # so it is bound as "background_inputs": the pointers to every
+        # WanAnimateToVideo background_video/character_mask input. bind_workflow
+        # deletes them for ANIMATE_MOVE (keep_background=False), which is what
+        # makes Move render the reference image's own background.
         #
         # sam2_points_store/sam2_coordinates/sam2_neg_coordinates ARE now
         # wired (see the PointsEditor branch above + app/sam2_seed_point.py):
         # the caller must compute them from the driving video rather than
         # leave the template's hardcoded (256,256) default, which doesn't
         # reliably land on the subject.
+        if animate_background_inputs:
+            bindings["background_inputs"] = animate_background_inputs
+        if sam2_negative_inputs:
+            bindings["sam2_negative_input"] = sam2_negative_inputs
+        if ANIMAL_POSE_NODE_ID in prompt and animate_pose_inputs:
+            # pose_source="animal": every stage's pose_video comes from the AP10K
+            # skeleton instead of DWPose, and the human face crops are dropped.
+            bindings["pose_video_inputs"] = animate_pose_inputs
+            bindings["face_video_inputs"] = animate_face_inputs
+            bindings["animal_pose_output"] = [ANIMAL_POSE_NODE_ID, 0]
         if animate_width_targets:
             bindings["width"] = animate_width_targets
         if animate_height_targets:
@@ -826,6 +932,8 @@ def build_bindings(prompt: dict, workflow_name: str = "wan22_t2v") -> dict:
             "sam2_points_store",
             "sam2_coordinates",
             "sam2_neg_coordinates",
+            "background_inputs",
+            "sam2_negative_input",
         }
     else:
         required = {
@@ -868,6 +976,9 @@ def main(argv: list[str] | None = None) -> None:
                 continue
             workflow = json.loads(source_path.read_text(encoding="utf-8"))
             prompt, turbo = convert(workflow, info, include_metadata=True)
+            if name == "wan22_animate":
+                wire_sam2_negative_points(prompt, info)
+                add_animal_pose_branch(prompt, info)
             bindings = build_bindings(prompt, name)
             validate_runtime_prompt(prompt, name)
         except Exception as exc:

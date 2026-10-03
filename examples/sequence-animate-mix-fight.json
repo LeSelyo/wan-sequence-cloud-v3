@@ -1,0 +1,29 @@
+{
+  "id": "animate_fight_pass_a",
+  "shots": [
+    {
+      "id": "fighter_a",
+      "mode": "animate_mix",
+      "prompt": "a grey tabby cat with a clearly visible face and head, white karate gi, fighting",
+      "start_image": {
+        "image_id": "img_00000000000000000000000000000000"
+      },
+      "driving_video": {
+        "path": "two_fighters.mp4"
+      },
+      "driving_fit": "pad",
+      "subject_point": [
+        0.66,
+        0.53
+      ],
+      "fps": 16,
+      "seed": 21,
+      "exclude_points": [
+        [
+          0.19,
+          0.58
+        ]
+      ]
+    }
+  ]
+}

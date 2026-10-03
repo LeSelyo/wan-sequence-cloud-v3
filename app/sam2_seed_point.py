@@ -25,13 +25,12 @@ import json
 import sys
 from pathlib import Path
 
-# cv2/numpy aren't in requirements.txt: this module only runs in the shipped
+# cv2/numpy aren't in requirements.txt: detection only runs in the shipped
 # container, where app/ and ComfyUI share one venv (both launched from
 # /opt/venv/bin/python, confirmed 2026-10-01) and cv2 is already pulled in
-# by ComfyUI-WanAnimatePreprocess's own dependencies. Don't import this
-# module in a context that doesn't have that venv.
-import cv2
-import numpy as np
+# by ComfyUI-WanAnimatePreprocess's own dependencies. They are imported lazily
+# inside compute_seed_point so that this module (and therefore app.orchestrator)
+# still imports in a plain dev/test environment; only the YOLO pass needs them.
 
 CUSTOM_NODE_PKG_PATH = Path("/opt/ComfyUI/custom_nodes/ComfyUI-WanAnimatePreprocess")
 _PKG_NAME = "wan_animate_preprocess_pkg"
@@ -70,7 +69,59 @@ def _load_yolo_class():
     return nodes_mod.Yolo
 
 
-def compute_seed_point(driving_video_path: Path, yolo_model_path: Path) -> dict:
+def _clamp_point(x: float, y: float) -> dict:
+    canvas = POINTS_EDITOR_CANVAS
+    return {"x": round(min(canvas - 1, max(0, x))), "y": round(min(canvas - 1, max(0, y)))}
+
+
+def seed_point_values(x: float, y: float, negatives: list[tuple[float, float]] | None = None) -> dict:
+    """PointsEditor input values (all JSON strings) for one positive click at
+    (x, y) on the template's 640x640 canvas.
+
+    PointsEditor has two kinds of points (red/green in its web UI): POSITIVE
+    (green) marks the subject SAM2 must segment -- the person to replace -- and
+    NEGATIVE (red) marks what it must leave out (background, the other fighter).
+    The official template only wires the positive output into Sam2Segmentation
+    (confirmed on the template JSON 2026-10-02: `coordinates_negative` has no
+    link), which prepare_workflows.py now connects. `negatives` are canvas
+    coordinates; without any, the template's own corner default is kept in the
+    editor widgets (and, unless the shot asked for red points, stays unwired).
+    """
+    positive = _clamp_point(x, y)
+    negative = [_clamp_point(nx, ny) for nx, ny in negatives] if negatives else [{"x": 5, "y": 5}]
+    return {
+        "points_store": json.dumps({"positive": [positive], "negative": negative}),
+        "coordinates": json.dumps([positive]),
+        "neg_coordinates": json.dumps(negative),
+    }
+
+
+def _canvas_points(points) -> list[tuple[float, float]]:
+    out = []
+    for x, y in points:
+        if not (0.0 <= x <= 1.0 and 0.0 <= y <= 1.0):
+            raise ValueError("points must be (x, y) with both values between 0 and 1")
+        out.append((x * POINTS_EDITOR_CANVAS, y * POINTS_EDITOR_CANVAS))
+    return out
+
+
+def manual_seed_point(subject_point: tuple[float, float], exclude_points=()) -> dict:
+    """Seed from an explicit (x, y) in 0..1 coordinates of the (already square,
+    see app/driving_video.py) driving clip's first frame, plus optional red
+    "exclude" points in the same coordinates.
+
+    Needed whenever YOLO's "best person" is not the one to replace -- e.g. a
+    two-fighter clip where the second fighter is the character to swap
+    (2026-10-02 cat-vs-cat test: auto picked the wrong fighter; the point had to
+    be set by hand). The subject must be visible in frame 0: SAM2 only gets this
+    single click for the whole clip, so someone who enters the shot later is
+    never segmented.
+    """
+    (x, y), = _canvas_points([subject_point])
+    return seed_point_values(x, y, _canvas_points(exclude_points))
+
+
+def compute_seed_point(driving_video_path: Path, yolo_model_path: Path, exclude_points=()) -> dict:
     """Returns the PointsEditor input values (points_store/coordinates/
     neg_coordinates, all JSON strings) for the given driving video, mapped
     into the template's fixed 640x640 PointsEditor canvas.
@@ -80,6 +131,9 @@ def compute_seed_point(driving_video_path: Path, yolo_model_path: Path) -> dict:
     the animate pipeline has no other signal that the seed point was bad
     until a human reviews the output video.
     """
+    import cv2
+    import numpy as np
+
     cap = cv2.VideoCapture(str(driving_video_path))
     ok, frame = cap.read()
     cap.release()
@@ -121,17 +175,50 @@ def compute_seed_point(driving_video_path: Path, yolo_model_path: Path) -> dict:
     scaled_w, scaled_h = w0 * scale, h0 * scale
     crop_x = (scaled_w - canvas) / 2
     crop_y = (scaled_h - canvas) / 2
-    px = min(canvas - 1, max(0, cx * scale - crop_x))
-    py = min(canvas - 1, max(0, chest_y * scale - crop_y))
-    px, py = round(px), round(py)
+    return seed_point_values(cx * scale - crop_x, chest_y * scale - crop_y, _canvas_points(exclude_points))
 
-    # A negative point anchored at a corner, mirroring the template's own
-    # default negative point convention, keeps SAM2 from also claiming
-    # background in that corner as foreground.
-    neg = {"x": 5, "y": 5}
-    positive = {"x": px, "y": py}
-    return {
-        "points_store": json.dumps({"positive": [positive], "negative": [neg]}),
-        "coordinates": json.dumps([positive]),
-        "neg_coordinates": json.dumps([neg]),
-    }
+
+def compute_animal_seed_point(driving_video_path: Path, exclude_points=()) -> dict:
+    """Green SAM2 point for a driving video whose subject is an animal.
+
+    yolov10m (compute_seed_point) is a person detector, so it finds nothing on a cat.
+    comfyui_controlnet_aux's own YOLOX detector, class-filtered to the COCO animal
+    classes 14-23 (bird..giraffe, includes cat and dog), is what its AnimalPose
+    estimator runs on; this reuses it on the first frame (live-verified on a cat clip
+    2026-10-02) and puts the point at the bbox center, which for a quadruped is on
+    the body (a human's chest offset would be wrong).
+    """
+    import cv2
+    import numpy as np
+
+    src = "/opt/ComfyUI/custom_nodes/comfyui_controlnet_aux/src"
+    if src not in sys.path:
+        sys.path.insert(0, src)
+    if "/opt/ComfyUI" not in sys.path:
+        sys.path.insert(0, "/opt/ComfyUI")
+    from custom_controlnet_aux.dwpose.animalpose import AnimalPoseImage
+    from custom_controlnet_aux.dwpose.dw_onnx.cv_ox_det import inference_detector
+    from custom_controlnet_aux.util import custom_hf_download
+
+    cap = cv2.VideoCapture(str(driving_video_path))
+    ok, frame = cap.read()
+    cap.release()
+    if not ok:
+        raise RuntimeError(f"could not read a frame from {driving_video_path}")
+    h0, w0 = frame.shape[:2]
+    image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+    detector = AnimalPoseImage(custom_hf_download("hr16/yolox-onnx", "yolox_l.onnx"), None, torchscript_device="cuda")
+    found = inference_detector(detector.det, image, detect_classes=list(range(14, 24)), dtype=np.float32)
+    if found is None or found.shape[0] == 0:
+        raise RuntimeError(
+            f"no animal detected in the first frame of {driving_video_path} "
+            "-- cannot compute a SAM2 seed point (pass subject_point to set it by hand)"
+        )
+    x1, y1, x2, y2 = found[0][:4]
+    canvas = POINTS_EDITOR_CANVAS
+    scale = max(canvas / w0, canvas / h0)
+    crop_x, crop_y = (w0 * scale - canvas) / 2, (h0 * scale - canvas) / 2
+    return seed_point_values(
+        (x1 + x2) / 2 * scale - crop_x, (y1 + y2) / 2 * scale - crop_y, _canvas_points(exclude_points)
+    )

@@ -48,17 +48,20 @@ class InputImage(BaseModel):
 class InputVideo(BaseModel):
     """A driving video reference for Wan 2.2 Animate (Mix/Move). Same controlled-source
     contract as InputImage: no arbitrary inline data, only a URL, a path relative to the
-    mounted input directory, or (once uploaded) an image_id-style reference."""
+    mounted input directory, a (future) uploaded video_id, or the output of an earlier
+    completed job (job_id -- used to chain Animate passes, e.g. the two-pass cat-vs-cat
+    fight where the second pass replays the first pass's result)."""
 
     model_config = ConfigDict(extra="forbid")
     url: HttpUrl | None = None
     path: str | None = None
     video_id: str | None = Field(default=None, pattern=r"^vid_[a-f0-9]{32}$")
+    job_id: str | None = Field(default=None, pattern=r"^[a-zA-Z0-9_-]{1,64}$")
 
     @model_validator(mode="after")
     def exactly_one_source(self):
-        if sum(value is not None for value in (self.url, self.path, self.video_id)) != 1:
-            raise ValueError("provide exactly one of url, path, or video_id")
+        if sum(value is not None for value in (self.url, self.path, self.video_id, self.job_id)) != 1:
+            raise ValueError("provide exactly one of url, path, video_id, or job_id")
         if self.path and (self.path.startswith("/") or ".." in self.path.replace("\\", "/").split("/")):
             raise ValueError("path must be relative to the mounted input directory")
         return self
@@ -134,6 +137,26 @@ class Shot(BaseModel):
     end_image: InputImage | None = None
     generate_start_image: KeyframeStage | None = None
     driving_video: InputVideo | None = None
+    # How a non-square driving clip becomes the square the Animate template
+    # works on: "crop" is the template's own center crop, "pad" letterboxes so
+    # action at the sides of a wide clip is kept (see app/driving_video.py).
+    driving_fit: Literal["crop", "pad"] = "crop"
+    # animate_mix only: (x, y) in 0..1 of the driving clip's first frame, on the
+    # person to replace. Overrides the automatic YOLO "best person" pick, which is
+    # wrong for clips with two people. The subject must be visible in frame 0.
+    # Where the skeleton that drives the motion comes from. "human" (default) is the
+    # validated DWPose body+hands+face pipeline; "animal" swaps in the AP10K quadruped
+    # skeleton of comfyui_controlnet_aux for a pet as the motion source. Experimental:
+    # nothing documents Wan 2.2 Animate as trained on that skeleton, and a character
+    # sitting upright like a person does not match a quadruped skeleton -- use a human
+    # performer for an upright/anthropomorphic character.
+    pose_source: Literal["human", "animal"] = "human"
+    subject_point: tuple[float, float] | None = None
+    # animate_mix only: red SAM2 points, (x, y) in 0..1 of the same first frame, on what
+    # must NOT be segmented (background, the other fighter). subject_point is the green
+    # point; both kinds are PointsEditor points, and only green is wired in the stock
+    # template -- this connects the red ones. Not live-validated yet (2026-10-02).
+    exclude_points: list[tuple[float, float]] = Field(default_factory=list, max_length=8)
     keyframes: list[TimedKeyframe] = Field(default_factory=list, max_length=32)
     width: int = Field(default=832, ge=256, le=1536, multiple_of=16)
     height: int = Field(default=480, ge=256, le=1536, multiple_of=16)
@@ -176,6 +199,33 @@ class Shot(BaseModel):
             raise ValueError(f"{self.mode.value} requires driving_video (the performer video to replay)")
         if self.driving_video is not None and self.mode not in {Mode.ANIMATE_MIX, Mode.ANIMATE_MOVE}:
             raise ValueError("driving_video is only accepted for animate_mix/animate_move shots")
+        if self.pose_source != "human" and self.mode not in {Mode.ANIMATE_MIX, Mode.ANIMATE_MOVE}:
+            raise ValueError("pose_source is only accepted for animate_mix/animate_move shots")
+        if self.subject_point is not None or self.exclude_points:
+            if self.mode != Mode.ANIMATE_MIX:
+                raise ValueError(
+                    "subject_point/exclude_points are only accepted for animate_mix shots (move mode has no SAM2 mask)"
+                )
+            for point in ([self.subject_point] if self.subject_point is not None else []) + list(self.exclude_points):
+                if not all(0.0 <= value <= 1.0 for value in point):
+                    raise ValueError("subject_point/exclude_points must be (x, y) with both values between 0 and 1")
+        if self.mode in {Mode.ANIMATE_MIX, Mode.ANIMATE_MOVE}:
+            # The template squares the driving video (640x640) and then crops it
+            # again to width x height, so any non-square job silently loses the top
+            # and bottom (or sides) of the pose and mask. Square is the only size
+            # that renders the whole performer; 512 is the validated default.
+            width_set, height_set = "width" in self.model_fields_set, "height" in self.model_fields_set
+            if not width_set and not height_set:
+                self.width = self.height = 512
+            elif width_set and not height_set:
+                self.height = self.width
+            elif height_set and not width_set:
+                self.width = self.height
+            elif self.width != self.height:
+                raise ValueError(
+                    "animate shots must be square (width == height): the template center-crops "
+                    f"the driving video to a square, got {self.width}x{self.height}"
+                )
         if self.mode == Mode.VACE:
             if not self.prompt.strip():
                 raise ValueError(f"{self.mode.value} requires a prompt")

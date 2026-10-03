@@ -15,6 +15,7 @@ import httpx
 
 from .catalog import lora_entry, validate_lora_for_stage
 from .comfy import bind_workflow, inject_loras, output_files, queue_and_wait
+from .driving_video import normalize_driving_video, probe_video, to_square_coords, trim_video
 from .job_store import JobStore
 from .lora_downloads import ensure_lora
 from .readiness import (
@@ -22,7 +23,7 @@ from .readiness import (
     check_model_items,
     image_engine_spec,
 )
-from .sam2_seed_point import compute_seed_point
+from .sam2_seed_point import compute_animal_seed_point, compute_seed_point, manual_seed_point
 from .schemas import ImageGenerationRequest, Mode, SequenceRequest, Shot
 from .settings import Settings, get_settings
 
@@ -43,6 +44,8 @@ def validate_request_compatibility(request: SequenceRequest) -> None:
         for image in (shot.start_image, shot.end_image):
             if image is not None and image.image_id:
                 resolve_generated_image(image.image_id)
+        if shot.driving_video is not None and shot.driving_video.job_id:
+            resolve_job_video(shot.driving_video.job_id)
         if shot.mode == Mode.T2V:
             family, workflow = "wan22_t2v", "wan22_t2v"
         elif shot.mode in {Mode.ANIMATE_MIX, Mode.ANIMATE_MOVE}:
@@ -116,6 +119,22 @@ def resolve_generated_image(image_id: str) -> Path:
         raise ValueError("generated image reference escapes controlled image storage")
     if not source.is_file() or source.suffix.lower() != ".png":
         raise ValueError(f"generated image output is missing or invalid: {image_id}")
+    return source
+
+
+def resolve_job_video(job_id: str) -> Path:
+    """The output video of an earlier completed job, usable as a driving video."""
+    job = store.get(job_id)
+    if (
+        not job
+        or job.get("metadata", {}).get("kind") == "image"
+        or job.get("status") != "completed"
+        or not job.get("output")
+    ):
+        raise ValueError(f"unknown or incomplete job reference for driving video: {job_id}")
+    source = Path(job["output"]).resolve()
+    if settings.outputs_dir.resolve() not in source.parents or not source.is_file() or source.suffix.lower() != ".mp4":
+        raise ValueError(f"job output is missing or outside controlled storage: {job_id}")
     return source
 
 
@@ -227,8 +246,10 @@ async def materialize_video(video, job_dir: Path, label: str) -> Path:
     a path relative to the mounted input directory, or a remote URL (SSRF-guarded like
     download_remote_image). There is no upload/video_id store yet, so video_id is not
     accepted here even though the schema reserves the field for a future upload route."""
+    if video.job_id:
+        return resolve_job_video(video.job_id)
     if video.video_id:
-        raise ValueError("video_id references are not implemented yet; use path or url")
+        raise ValueError("video_id references are not implemented yet; use path, url or job_id")
     if video.path:
         source = (settings.driving_video_dir / video.path).resolve()
         if settings.driving_video_dir.resolve() not in source.parents:
@@ -447,15 +468,43 @@ async def render_shot(shot: Shot, job_dir: Path) -> Path:
     end_name = stage_for_comfy(end, job_dir.name, shot.id, "end") if end else None
     driving_video_name = None
     sam2_seed_point = None
+    driving_frames = None
     if shot.driving_video is not None:
         driving = await materialize_video(shot.driving_video, job_dir, f"{shot.id}_driving")
-        driving_video_name = stage_for_comfy(driving, job_dir.name, shot.id, "driving")
-        if shot.mode in {Mode.ANIMATE_MIX, Mode.ANIMATE_MOVE}:
-            sam2_seed_point = await asyncio.to_thread(
-                compute_seed_point,
-                driving,
-                settings.detection_dir / "yolov10m.onnx",
-            )
+        # Hand the template what it actually wants: a square clip at the output fps
+        # (see app/driving_video.py for what goes wrong otherwise).
+        original = await asyncio.to_thread(probe_video, driving)
+        squared = job_dir / f"{shot.id}_driving_square.mp4"
+        prepared = await asyncio.to_thread(
+            normalize_driving_video, driving, squared, fps=shot.fps, fit=shot.driving_fit
+        )
+        driving_frames = prepared["frames"]
+        driving_video_name = stage_for_comfy(squared, job_dir.name, shot.id, "driving")
+        if shot.mode == Mode.ANIMATE_MIX:
+            # Move has no SAM2 mask, so only Mix needs seed points: one green (the
+            # person to replace, from YOLO unless given) and optional red ones.
+            def to_square(point):
+                x, y = to_square_coords(*point, original["width"], original["height"], shot.driving_fit)
+                if not (0.0 <= x <= 1.0 and 0.0 <= y <= 1.0):
+                    raise ValueError(
+                        f"point {tuple(point)} falls outside the driving video after driving_fit="
+                        f"{shot.driving_fit!r}; use driving_fit='pad' to keep the whole frame"
+                    )
+                return x, y
+
+            exclude = [to_square(point) for point in shot.exclude_points]
+            if shot.subject_point is not None:
+                sam2_seed_point = manual_seed_point(to_square(shot.subject_point), exclude)
+            elif shot.pose_source == "animal":
+                # yolov10m only finds people: use the animal detector of the pose pack
+                sam2_seed_point = await asyncio.to_thread(compute_animal_seed_point, squared, exclude)
+            else:
+                sam2_seed_point = await asyncio.to_thread(
+                    compute_seed_point,
+                    squared,
+                    settings.detection_dir / "yolov10m.onnx",
+                    exclude,
+                )
     control_video_name = control_masks_name = None
     if shot.mode == Mode.VACE:
         control_video_path, control_masks_path = await build_vace_control_assets(shot, job_dir)
@@ -493,11 +542,13 @@ async def render_shot(shot: Shot, job_dir: Path) -> Path:
             "control_video": control_video_name,
             "control_masks": control_masks_name,
             # Mix keeps the driving video's background/scene; Move keeps only its
-            # motion. Which WanAnimateToVideo inputs this actually toggles can only
-            # be pinned once bind_workflow's bindings are regenerated against a live
-            # ComfyUI instance with the three Animate preprocessing nodes installed
-            # (see prepare_workflows.py) — not yet finalized as of 2026-09-27.
+            # motion and takes the scene from the reference image. bind_workflow
+            # implements Move by dropping the SAM2 mask / blacked-out background
+            # inputs ("background_inputs" binding, see prepare_workflows.py).
             "keep_background": shot.mode == Mode.ANIMATE_MIX,
+            # Red SAM2 points only reach the segmenter when the shot asked for them.
+            "use_negative_points": bool(shot.exclude_points),
+            "pose_source": shot.pose_source,
             **({
                 "sam2_points_store": sam2_seed_point["points_store"],
                 "sam2_coordinates": sam2_seed_point["coordinates"],
@@ -516,7 +567,21 @@ async def render_shot(shot: Shot, job_dir: Path) -> Path:
     source = settings.comfy_output_dir / file.get("subfolder", "") / file["filename"]
     target = job_dir / f"{shot.id}.mp4"
     shutil.copy2(source, target)
+    if driving_frames:
+        await asyncio.to_thread(_trim_to_driving, target, driving_frames)
     return target
+
+
+def _trim_to_driving(video: Path, driving_frames: int) -> None:
+    """Animate's last SaveVideo is the extended clip: once the driving video has
+    ended the character freezes on its last pose and the extension stage hard-cuts
+    (confirmed 2026-10-02, 149-frame output for a 77-frame driving clip), so keep
+    only as many frames as there was driving motion."""
+    if probe_video(video)["frames"] <= driving_frames:
+        return
+    trimmed = video.with_name(video.stem + "_trim.mp4")
+    trim_video(video, trimmed, driving_frames)
+    os.replace(trimmed, video)
 
 
 def concatenate(videos: list[Path], output: Path, transition: str, duration: float) -> None:

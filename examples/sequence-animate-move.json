@@ -1,0 +1,17 @@
+{
+  "id": "animate_move_demo",
+  "shots": [
+    {
+      "id": "kungfu_cat",
+      "mode": "animate_move",
+      "prompt": "a ginger tabby cat with human hands sitting upright facing the camera, performing fast kung fu hand strikes and blocks, serious face",
+      "start_image": {"image_id": "img_00000000000000000000000000000000"},
+      "driving_video": {"path": "kung_fu_master.mp4"},
+      "driving_fit": "crop",
+      "width": 512,
+      "height": 512,
+      "fps": 16,
+      "seed": 9
+    }
+  ]
+}

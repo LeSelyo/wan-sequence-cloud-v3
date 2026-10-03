@@ -113,6 +113,61 @@ def _apply_bound_value(prompt: dict, binding: Any, value: Any, key: str) -> None
     raise RuntimeError(f"unsupported binding descriptor for {key}: {binding!r}")
 
 
+def _drop_pointer(document: dict, pointer: str) -> None:
+    parts = [p.replace("~1", "/").replace("~0", "~") for p in pointer.strip("/").split("/")]
+    cursor: Any = document
+    for part in parts[:-1]:
+        cursor = cursor[part]
+    cursor.pop(parts[-1], None)
+
+
+def _drop_background_inputs(prompt: dict, bindings: dict) -> None:
+    """Wan 2.2 Animate "Move": remove the SAM2 mask / blacked-out driving video
+    from every WanAnimateToVideo so the scene comes from the reference image
+    (build_bindings records the pointers under "background_inputs")."""
+    pointers = bindings.get("background_inputs")
+    if not pointers:
+        raise RuntimeError(
+            "animate_move needs the 'background_inputs' binding; regenerate the workflow "
+            "with scripts/prepare_workflows.py --force"
+        )
+    for target in pointers:
+        _drop_pointer(prompt, target)
+
+
+def _apply_negative_points(prompt: dict, bindings: dict, use_negative_points: bool) -> None:
+    """SAM2's red points: keep the PointsEditor -> Sam2Segmentation.coordinates_negative
+    link (created by prepare_workflows.wire_sam2_negative_points) only when the shot
+    supplied exclude_points; otherwise drop it so the graph is the already
+    live-validated one."""
+    pointers = bindings.get("sam2_negative_input")
+    if use_negative_points:
+        if not pointers:
+            raise RuntimeError(
+                "exclude_points needs the 'sam2_negative_input' binding; regenerate the workflow "
+                "with scripts/prepare_workflows.py --force"
+            )
+        return
+    for target in pointers or []:
+        _drop_pointer(prompt, target)
+
+
+def _use_animal_pose(prompt: dict, bindings: dict) -> None:
+    """pose_source="animal": feed the AP10K skeleton to every stage's pose_video and
+    drop face_video (it is a crop of a human face; an animal has none)."""
+    output = bindings.get("animal_pose_output")
+    pose_inputs = bindings.get("pose_video_inputs")
+    if not output or not pose_inputs:
+        raise RuntimeError(
+            "pose_source='animal' needs the animal pose branch; regenerate the workflow with "
+            "scripts/prepare_workflows.py --force (comfyui_controlnet_aux must provide AnimalPosePreprocessor)"
+        )
+    for target in pose_inputs:
+        _json_pointer_set(prompt, target, list(output))
+    for target in bindings.get("face_video_inputs") or []:
+        _drop_pointer(prompt, target)
+
+
 def _materialize_turbo(name: str, prompt: dict, bindings: dict) -> None:
     recipe = bindings.get("_turbo")
     if not recipe:
@@ -194,6 +249,12 @@ def bind_workflow(name: str, values: dict[str, Any]) -> tuple[dict, dict]:
             # doesn't spell out a negative prompt. Any non-empty value still overrides.
             continue
         _apply_bound_value(prompt, bindings.get(key), value, key)
+    if name == "wan22_animate":
+        if values.get("keep_background") is False:
+            _drop_background_inputs(prompt, bindings)
+        _apply_negative_points(prompt, bindings, bool(values.get("use_negative_points")))
+        if values.get("pose_source") == "animal":
+            _use_animal_pose(prompt, bindings)
     if values.get("turbo_mode"):
         _materialize_turbo(name, prompt, bindings)
     _validate_materialized_prompt(prompt, bool(values.get("turbo_mode")), name)
