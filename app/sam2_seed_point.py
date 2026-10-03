@@ -74,7 +74,10 @@ def _clamp_point(x: float, y: float) -> dict:
     return {"x": round(min(canvas - 1, max(0, x))), "y": round(min(canvas - 1, max(0, y)))}
 
 
-def seed_point_values(x: float, y: float, negatives: list[tuple[float, float]] | None = None) -> dict:
+def seed_point_values(
+    x: float, y: float, negatives: list[tuple[float, float]] | None = None,
+    extra_positives: list[tuple[float, float]] | None = None,
+) -> dict:
     """PointsEditor input values (all JSON strings) for one positive click at
     (x, y) on the template's 640x640 canvas.
 
@@ -87,11 +90,11 @@ def seed_point_values(x: float, y: float, negatives: list[tuple[float, float]] |
     coordinates; without any, the template's own corner default is kept in the
     editor widgets (and, unless the shot asked for red points, stays unwired).
     """
-    positive = _clamp_point(x, y)
+    positives = [_clamp_point(x, y)] + [_clamp_point(px, py) for px, py in (extra_positives or [])]
     negative = [_clamp_point(nx, ny) for nx, ny in negatives] if negatives else [{"x": 5, "y": 5}]
     return {
-        "points_store": json.dumps({"positive": [positive], "negative": negative}),
-        "coordinates": json.dumps([positive]),
+        "points_store": json.dumps({"positive": positives, "negative": negative}),
+        "coordinates": json.dumps(positives),
         "neg_coordinates": json.dumps(negative),
     }
 
@@ -178,6 +181,15 @@ def compute_seed_point(driving_video_path: Path, yolo_model_path: Path, exclude_
     return seed_point_values(cx * scale - crop_x, chest_y * scale - crop_y, _canvas_points(exclude_points))
 
 
+def animal_clicks(x1: float, y1: float, x2: float, y2: float) -> list[tuple[float, float]]:
+    """Green SAM2 clicks for an animal bbox (canvas coordinates) as (x, y) pairs:
+    the centre first, then one a quarter of the way in from each side and one higher on the back.
+    A single click on a quadruped made SAM2 segment only a patch of it (live, dog clip)."""
+    width, height = x2 - x1, y2 - y1
+    cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+    return [(cx, cy), (x1 + 0.25 * width, cy), (x1 + 0.75 * width, cy), (cx, y1 + 0.3 * height)]
+
+
 def compute_animal_seed_point(driving_video_path: Path, exclude_points=()) -> dict:
     """Green SAM2 point for a driving video whose subject is an animal.
 
@@ -219,6 +231,5 @@ def compute_animal_seed_point(driving_video_path: Path, exclude_points=()) -> di
     canvas = POINTS_EDITOR_CANVAS
     scale = max(canvas / w0, canvas / h0)
     crop_x, crop_y = (w0 * scale - canvas) / 2, (h0 * scale - canvas) / 2
-    return seed_point_values(
-        (x1 + x2) / 2 * scale - crop_x, (y1 + y2) / 2 * scale - crop_y, _canvas_points(exclude_points)
-    )
+    clicks = animal_clicks(x1 * scale - crop_x, y1 * scale - crop_y, x2 * scale - crop_x, y2 * scale - crop_y)
+    return seed_point_values(clicks[0][0], clicks[0][1], _canvas_points(exclude_points), extra_positives=clicks[1:])

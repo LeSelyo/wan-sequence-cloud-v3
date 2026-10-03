@@ -214,6 +214,12 @@ class Shot(BaseModel):
             # again to width x height, so any non-square job silently loses the top
             # and bottom (or sides) of the pose and mask. Square is the only size
             # that renders the whole performer; 512 is the validated default.
+            # The model ships distilled (LightX2V): the generic 20 steps / cfg 5 would be slow and
+            # over-baked. Every live run (2026-10-02/03) used 8 steps, cfg 1.
+            if "steps" not in self.model_fields_set:
+                self.steps = 8
+            if "cfg" not in self.model_fields_set:
+                self.cfg = 1.0
             width_set, height_set = "width" in self.model_fields_set, "height" in self.model_fields_set
             if not width_set and not height_set:
                 self.width = self.height = 512

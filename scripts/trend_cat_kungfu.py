@@ -301,6 +301,7 @@ def animate_shot(
     shot = {
         "id": shot_id, "mode": mode, "prompt": prompt, "start_image": {"image_id": reference_image_id},
         "driving_video": driving, "width": SQUARE, "height": SQUARE, "fps": 16, "seed": seed, "driving_fit": driving_fit,
+        "steps": 8, "cfg": 1.0,
     }
     if subject_point is not None:
         shot["subject_point"] = list(subject_point)  # SAM2 green point: the fighter to replace

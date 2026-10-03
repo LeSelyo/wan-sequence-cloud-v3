@@ -21,7 +21,7 @@ from app.driving_video import (
     to_square_coords,
     trim_video,
 )
-from app.sam2_seed_point import manual_seed_point, seed_point_values
+from app.sam2_seed_point import animal_clicks, manual_seed_point, seed_point_values
 from app.schemas import InputImage, InputVideo, Mode, Shot
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -47,6 +47,14 @@ class AnimateShotSizeTests(unittest.TestCase):
     def test_one_explicit_side_sets_the_other(self):
         self.assertEqual((_animate(width=640).width, _animate(width=640).height), (640, 640))
         self.assertEqual((_animate(height=576).width, _animate(height=576).height), (576, 576))
+
+    def test_distilled_model_defaults_are_8_steps_and_cfg_1_unless_given(self):
+        shot = _animate()
+        self.assertEqual((shot.steps, shot.cfg), (8, 1.0))
+        explicit = _animate(steps=12, cfg=2.0)
+        self.assertEqual((explicit.steps, explicit.cfg), (12, 2.0))
+        t2v = Shot(id="t", mode=Mode.T2V, prompt="x")
+        self.assertEqual((t2v.steps, t2v.cfg), (20, 5.0))  # other modes keep their own defaults
 
     def test_non_square_size_is_rejected(self):
         with self.assertRaisesRegex(ValidationError, "must be square"):
@@ -87,6 +95,28 @@ class ExcludePointSchemaTests(unittest.TestCase):
             _animate(mode=Mode.ANIMATE_MOVE, exclude_points=[(0.2, 0.5)])
         with self.assertRaisesRegex(ValidationError, "between 0 and 1"):
             _animate(exclude_points=[(0.2, 1.5)])
+
+
+class AnimalClicksTests(unittest.TestCase):
+    """A single click made SAM2 segment only a patch of the dog (live, 2026-10-03): animals get several."""
+
+    def test_four_clicks_across_the_body_centre_first(self):
+        clicks = animal_clicks(100, 100, 500, 400)
+        self.assertEqual(clicks[0], (300.0, 250.0))
+        self.assertEqual(len(clicks), 4)
+        xs = sorted(x for x, _ in clicks)
+        self.assertEqual((xs[0], xs[-1]), (200.0, 400.0))  # a quarter in from each side
+        self.assertTrue(all(100 <= x <= 500 and 100 <= y <= 400 for x, y in clicks))
+
+    def test_all_clicks_are_green_points_and_the_red_default_is_kept(self):
+        first, *rest = animal_clicks(100, 100, 500, 400)
+        values = seed_point_values(*first, extra_positives=rest)
+        self.assertEqual(len(json.loads(values["coordinates"])), 4)
+        self.assertEqual(json.loads(values["points_store"])["positive"], json.loads(values["coordinates"]))
+        self.assertEqual(json.loads(values["neg_coordinates"]), [{"x": 5, "y": 5}])
+
+    def test_one_click_stays_one_click_for_humans(self):
+        self.assertEqual(len(json.loads(seed_point_values(300, 300)["coordinates"])), 1)
 
 
 class ManualSeedPointTests(unittest.TestCase):
