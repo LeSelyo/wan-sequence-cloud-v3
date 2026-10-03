@@ -193,15 +193,16 @@ class AnimateExamplesTests(unittest.TestCase):
 class AnimalPoseTests(unittest.TestCase):
     """pose_source="animal": AP10K skeleton instead of DWPose, opt-in, human path untouched."""
 
+    # the real shape (captured from a live ComfyUI 2026-10-03): detector/estimator are OPTIONAL inputs
     OBJECT_INFO_OLD = {
         "AnimalPosePreprocessor": {
             "input": {
-                "required": {
-                    "image": ["IMAGE"],
-                    "bbox_detector": [["None", "yolox_l.torchscript.pt", "yolox_l.onnx"], {"default": "yolox_l.torchscript.pt"}],
-                    "pose_estimator": [["rtmpose-m_ap10k_256.onnx", "rtmpose-m_ap10k_256_bs5.torchscript.pt"], {}],
-                    "resolution": ["INT", {}],
-                }
+                "required": {"image": ["IMAGE"]},
+                "optional": {
+                    "bbox_detector": [["None", "yolox_l.torchscript.pt", "yolox_l.onnx", "yolo_nas_l_fp16.onnx"], {"default": "yolox_l.torchscript.pt"}],
+                    "pose_estimator": [["rtmpose-m_ap10k_256_bs5.torchscript.pt", "rtmpose-m_ap10k_256.onnx"], {"default": "rtmpose-m_ap10k_256_bs5.torchscript.pt"}],
+                    "resolution": ["INT", {"default": 512}],
+                },
             }
         }
     }
@@ -265,8 +266,13 @@ class AnimalPoseTests(unittest.TestCase):
         self.assertFalse(prepare_workflows.add_animal_pose_branch(untouched, {}))
         self.assertEqual(untouched, self._graph())
         bad = {"AnimalPosePreprocessor": {"input": {"required": {"bbox_detector": [["x"], {}], "pose_estimator": [["y"], {}]}}}}
-        with self.assertRaisesRegex(RuntimeError, "no known YOLOX"):
-            prepare_workflows.add_animal_pose_branch(self._graph(), bad)
+        broken = self._graph()
+        self.assertFalse(prepare_workflows.add_animal_pose_branch(broken, bad))  # warns, never raises
+        self.assertEqual(broken, self._graph(), "an unrecognized node pack must not alter the human graph")
+        # the older layout (everything under `required`) is still understood
+        required_layout = {"AnimalPosePreprocessor": {"input": {"required": {
+            "bbox_detector": [["yolox_l.onnx"], {}], "pose_estimator": [["rtmpose-m_ap10k_256.onnx"], {}]}}}}
+        self.assertTrue(prepare_workflows.add_animal_pose_branch(self._graph(), required_layout))
 
     def _template(self, with_animal=True):
         stage = lambda: {  # noqa: E731

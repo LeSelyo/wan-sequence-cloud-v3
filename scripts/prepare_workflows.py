@@ -9,6 +9,7 @@ import json
 import argparse
 import hashlib
 import os
+import sys
 import tempfile
 import urllib.request
 from copy import deepcopy
@@ -730,7 +731,8 @@ def add_animal_pose_branch(prompt: dict, object_info: dict | None) -> bool:
     frames. Nothing consumes it until a shot asks for pose_source="animal" (see
     app/comfy.py), so human jobs run the unchanged, validated graph.
 
-    Returns False (and adds nothing) when the installed node pack has no such node.
+    Returns False (and adds nothing) when the installed node pack has no such node or no
+    recognizable models.
     The node is a ControlNet preprocessor for SD1.5's animal-openpose; no source says
     Wan 2.2 Animate was trained on its skeleton, so the path is experimental.
     """
@@ -743,15 +745,22 @@ def add_animal_pose_branch(prompt: dict, object_info: dict | None) -> bool:
     ]
     if len(human) != 1:
         raise RuntimeError(f"expected one body DWPreprocessor in the Animate template, found {len(human)}")
-    required = (spec.get("input") or {}).get("required") or {}
-    detectors = _combo_options(required.get("bbox_detector"))
-    estimators = _combo_options(required.get("pose_estimator"))
+    # comfyui_controlnet_aux declares the detector / estimator under `optional` (confirmed on the
+    # live /object_info 2026-10-03); accept either section.
+    declared = spec.get("input") or {}
+    fields = {**(declared.get("required") or {}), **(declared.get("optional") or {})}
+    detectors = _combo_options(fields.get("bbox_detector"))
+    estimators = _combo_options(fields.get("pose_estimator"))
     detector = next((o for o in ("yolox_l.onnx", "yolox_l.torchscript.pt") if o in detectors), None)
     estimator = next((o for o in ("rtmpose-m_ap10k_256_bs5.torchscript.pt", "rtmpose-m_ap10k_256.onnx") if o in estimators), None)
     if detector is None or estimator is None:
-        raise RuntimeError(
-            f"AnimalPosePreprocessor has no known YOLOX detector / AP10K estimator (detectors={detectors}, estimators={estimators})"
+        # Never let the optional animal path take the validated human one down with it.
+        print(
+            "warning: AnimalPosePreprocessor has no known YOLOX detector / AP10K estimator "
+            f"(detectors={detectors}, estimators={estimators}); pose_source='animal' is disabled",
+            file=sys.stderr,
         )
+        return False
     shared = prompt[human[0]]["inputs"]
     prompt[ANIMAL_POSE_NODE_ID] = {
         "class_type": "AnimalPosePreprocessor",
