@@ -95,6 +95,9 @@ BG_CUT_RANGE_V1 = (1.1, 2.4)   # original build_real.py value -- confirmed too s
 BG_CUT_RANGE_V2 = (0.5, 1.0)   # 2026-10-02: ~2x faster cuts
 BG_CUT_RANGE = BG_CUT_RANGE_V2
 
+# sidechaincompress / amix need both audio inputs in one format (FFmpeg 4.4 fails to negotiate a
+# 24 kHz mono voice against 44.1 kHz stereo music: "filters could not choose their formats").
+COMMON_AUDIO = "aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo"
 BLACK_SCREEN_WINDOW = (30.0, 40.0)  # seconds; the original brief said 20-40 s, review said "after 30 s"
 BLACK_SCREEN_SECONDS = 2.0
 
@@ -267,6 +270,7 @@ def plan_black_screen(
     a bar line and the end to a beat."""
     if length <= 0 or (at is not None and at <= 0):
         return None
+    auto = at is None
     if at is None:
         lo, hi = window
         if duration < hi + length + 2:
@@ -275,7 +279,10 @@ def plan_black_screen(
         at = random.Random(rng_seed + 1).uniform(lo, hi)
     start, end = at, at + length
     if beats and len(beats) > bar_beats:
-        start = _nearest(start, beats[::bar_beats])
+        bars = beats[::bar_beats]
+        if auto:  # snapping must not pull it before the start of the window ("after 30 s")
+            bars = [b for b in bars if b >= lo] or bars
+        start = _nearest(start, bars)
         later = [b for b in beats if b > start + length * 0.5]
         end = _nearest(start + length, later) if later else end
     end = min(end, duration - 0.5)
@@ -833,9 +840,9 @@ def build_philosopher_trend(
         else:
             section = f"atrim=start={music_start:.3f},asetpts=PTS-STARTPTS,"
         graph += [
-            "[1:a]asplit=2[vo][sc]",
+            f"[1:a]{COMMON_AUDIO},asplit=2[vo][sc]",
             f"[2:a]{section}atrim=0:{duration:.3f},volume={music_gain_db}dB,"
-            f"afade=t=in:st=0:d=1.5,afade=t=out:st={fade_out:.3f}:d=2.5[m]",
+            f"afade=t=in:st=0:d=1.5,afade=t=out:st={fade_out:.3f}:d=2.5,{COMMON_AUDIO}[m]",
             "[m][sc]sidechaincompress=threshold=0.02:ratio=8:attack=20:release=400[md]",
             f"[vo][md]{amix_filter(2, duration='first')}[a]",
         ]

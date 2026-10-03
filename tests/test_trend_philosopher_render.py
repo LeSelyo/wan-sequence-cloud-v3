@@ -214,6 +214,16 @@ class BeatGridAndPlanTests(unittest.TestCase):
         self.assertIsNone(tp.plan_black_screen(108.0, length=0))
         self.assertEqual(tp.plan_black_screen(108.0, at=50.0, length=3.0), (50.0, 53.0))
 
+    def test_snapping_never_pulls_the_black_screen_before_30_seconds(self):
+        beats = [0.27 + 0.5614 * k for k in range(200)]  # 106.9 BPM: a bar every 2.2456 s
+        for seed in range(40):
+            start, _ = tp.plan_black_screen(108.0, beats=beats, rng_seed=seed)
+            self.assertGreaterEqual(start, 30.0, seed)
+
+    def test_both_audio_inputs_get_one_format_for_old_ffmpeg(self):
+        self.assertIn("aresample=44100", tp.COMMON_AUDIO)
+        self.assertIn("channel_layouts=stereo", tp.COMMON_AUDIO)
+
     def test_music_snaps_the_start_to_a_bar_and_the_end_to_a_beat(self):
         for seed in range(10):
             start, end = tp.plan_black_screen(108.0, beats=self.BEATS, rng_seed=seed)
