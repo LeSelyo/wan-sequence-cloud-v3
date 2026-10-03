@@ -583,9 +583,11 @@ def build_background_video(
             if len(deck) > 1 and deck[-1] == previous:
                 deck[0], deck[-1] = deck[-1], deck[0]
         last_img = previous = deck.pop()
-        lines.append(f"file '{last_img.as_posix()}'\nduration {cut:.3f}\n")
+        # absolute: the concat demuxer resolves relative entries against the LIST's folder, so a
+        # relative --work-dir turned work_v3/x.png into work_v3/work_v3/x.png (live, 2026-10-03)
+        lines.append(f"file '{last_img.resolve().as_posix()}'\nduration {cut:.3f}\n")
         t += cut
-    lines.append(f"file '{last_img.as_posix()}'\n")
+    lines.append(f"file '{last_img.resolve().as_posix()}'\n")
     concat_list.write_text("".join(lines), encoding="utf-8")
 
     _run([FFMPEG, "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", str(concat_list),

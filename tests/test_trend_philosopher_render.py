@@ -142,6 +142,26 @@ class FasterBackgroundsTests(unittest.TestCase):
         self.assertTrue(all(x != y for x, y in zip(shown[:-1], shown[1:-1])))  # the trailing entry repeats the last image on purpose
         self.assertGreater(len(shown), 60)  # a cut every 0.25-0.5 s
 
+    def test_relative_paths_are_written_absolute_for_the_concat_demuxer(self):
+        import os
+
+        with tempfile.TemporaryDirectory() as temporary, mock.patch.object(tp, "_run"):
+            previous = os.getcwd()
+            os.chdir(temporary)
+            try:
+                Path("work").mkdir()
+                images = [Path("work") / "a.png", Path("work") / "b.png"]
+                tp.build_background_video(images, Path("work") / "bg.mp4", duration=3.0, width=270, height=480)
+                listed = [
+                    line.split("'")[1]
+                    for line in Path("work/bg.txt").read_text(encoding="utf-8").splitlines()
+                    if line.startswith("file")
+                ]
+            finally:
+                os.chdir(previous)
+        self.assertTrue(listed)
+        self.assertTrue(all(os.path.isabs(p) for p in listed), listed)
+
     def test_the_default_pool_of_extra_backgrounds_is_big_and_people_free(self):
         self.assertGreaterEqual(len(tp.DEFAULT_BACKGROUND_PROMPTS), 12)
         self.assertTrue(all("no people" in p for p in tp.DEFAULT_BACKGROUND_PROMPTS))
