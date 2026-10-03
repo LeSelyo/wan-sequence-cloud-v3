@@ -58,6 +58,8 @@ COMFY_ENABLE_TRITON_BACKEND="${COMFY_ENABLE_TRITON_BACKEND:-1}"
 # turbo_mode alike). No meaningful slowdown was observed on the same hardware for
 # non-LoRA jobs either. Override to "" (empty/normal) only if you don't use LoRAs and
 # want to test whether the default NORMAL_VRAM path is faster for your workload.
+_comfy_vram_mode_explicit=0
+[[ -n "${COMFY_VRAM_MODE:-}" ]] && _comfy_vram_mode_explicit=1
 COMFY_VRAM_MODE="${COMFY_VRAM_MODE:-novram}"
 # NOT re-validated together with --novram/--enable-triton-backend above: earlier
 # testing (pre-novram-fix, normal VRAM mode) showed --fast fp8_matrix_mult loads and
@@ -66,6 +68,23 @@ COMFY_VRAM_MODE="${COMFY_VRAM_MODE:-novram}"
 # together with the fix). Default is now off; flip on and re-test if you want the
 # extra fp8 matmul speed and are willing to verify it doesn't reintroduce the OOM.
 COMFY_FAST_FP8_MATRIX_MULT="${COMFY_FAST_FP8_MATRIX_MULT:-0}"
+# Low-RAM hosts (confirmed 2026-10-02 on a 32 GB Clore box running Wan 2.2 Animate):
+# --novram parks every weight in system RAM and needs >31 GB for a 14B model, so ComfyUI
+# is OOM-killed by the kernel (sometimes the whole host stalls for minutes). Plain
+# --lowvram then dies on a clean GPU OOM while patching LoRAs onto fp8 weights. What
+# works (peak RSS ~26 GB): --lowvram --reserve-vram 9 with expandable CUDA segments.
+# Applied automatically when the host has less than COMFY_LOW_RAM_THRESHOLD_GIB of RAM
+# and COMFY_VRAM_MODE was not set explicitly; COMFY_AUTO_LOWRAM=0 turns this off.
+COMFY_LOW_RAM_THRESHOLD_GIB="${COMFY_LOW_RAM_THRESHOLD_GIB:-48}"
+if [[ "${COMFY_AUTO_LOWRAM:-1}" == "1" && "$_comfy_vram_mode_explicit" == "0" ]]; then
+  _host_ram_gib="$(awk '/^MemTotal:/ {printf "%d", $2/1024/1024}' /proc/meminfo 2>/dev/null || echo 0)"
+  if (( _host_ram_gib > 0 && _host_ram_gib < COMFY_LOW_RAM_THRESHOLD_GIB )); then
+    echo "[entrypoint] host RAM ${_host_ram_gib} GiB < ${COMFY_LOW_RAM_THRESHOLD_GIB} GiB: using --lowvram --reserve-vram instead of --novram"
+    COMFY_VRAM_MODE="lowvram"
+    COMFY_EXTRA_ARGS="${COMFY_EXTRA_ARGS:---reserve-vram 9}"
+    export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
+  fi
+fi
 
 echo "[entrypoint] starting"
 echo "[entrypoint] uid=$(id -u) invocation_cwd=$INVOCATION_CWD cwd=$PWD"
@@ -208,6 +227,15 @@ if [[ "${APP_TEST_MODE:-0}" != "1" ]]; then
     novram) COMFY_ARGS+=(--novram) ;;
     *) echo "[entrypoint] ignoring unknown COMFY_VRAM_MODE=$COMFY_VRAM_MODE" >&2 ;;
   esac
+  # Free-form escape hatch (e.g. COMFY_EXTRA_ARGS="--reserve-vram 5") so a host's RAM/VRAM
+  # budget can be tuned without rebuilding the image: lowvram + --reserve-vram is the
+  # fallback for boxes with too little system RAM for --novram (Wan 2.2 Animate needs
+  # >31 GB RAM under --novram) but where plain lowvram OOMs while patching LoRAs onto
+  # fp8 weights (requantize needs temp VRAM headroom).
+  if [[ -n "${COMFY_EXTRA_ARGS:-}" ]]; then
+    read -r -a _comfy_extra <<< "$COMFY_EXTRA_ARGS"
+    COMFY_ARGS+=("${_comfy_extra[@]}")
+  fi
   echo "[entrypoint] ComfyUI args: ${COMFY_ARGS[*]}"
   "$PYTHON_BIN" /opt/ComfyUI/main.py "${COMFY_ARGS[@]}" &
   COMFY_PID=$!

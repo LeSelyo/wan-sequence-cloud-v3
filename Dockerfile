@@ -146,11 +146,15 @@ ARG DEBIAN_FRONTEND=noninteractive
 # python3-dev specifically, --enable-triton-backend does NOT fall back: it crashes the
 # generation with subprocess.CalledProcessError (missing Python.h at link time). Both
 # packages must ship together with COMFY_ENABLE_TRITON_BACKEND below.
+# fontconfig + fonts-montserrat: libass (ffmpeg's `ass` filter) burns the trend videos' captions;
+# Montserrat ExtraBold is the Hormozi-style caption font (scripts/trend_philosopher.py), DejaVu
+# is its fallback.
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
-      build-essential ca-certificates curl ffmpeg gosu python3 python3-dev libgl1 libglib2.0-0 && \
-    apt-get clean
+      build-essential ca-certificates curl ffmpeg gosu python3 python3-dev libgl1 libglib2.0-0 \
+      fontconfig fonts-montserrat fonts-dejavu-core && \
+    apt-get clean && fc-cache -f
 
 COPY --from=python-builder /opt/venv /opt/venv
 COPY --from=python-builder /opt/ComfyUI /opt/ComfyUI
