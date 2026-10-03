@@ -187,6 +187,15 @@ def plan_sfx(hits: list[float], duration: float) -> list[tuple[str, float, float
     return [event for event in events if event[1] < duration]
 
 
+def _amix(inputs: int) -> str:
+    """`amix` at full level per input: `normalize=0` needs FFmpeg >= 4.4, older builds get
+    dropout_transition=0 plus a gain that undoes the 1/N scaling."""
+    help_text = subprocess.run(["ffmpeg", "-hide_banner", "-h", "filter=amix"], capture_output=True, text=True)
+    if "normalize" in help_text.stdout + help_text.stderr:
+        return f"amix=inputs={inputs}:normalize=0"
+    return f"amix=inputs={inputs}:dropout_transition=0,volume={inputs}"
+
+
 def mix_sfx(video: Path, out: Path, events: list[tuple[str, float, float]], sfx_dir: Path, *, upscale: int | None = 1024, fade: float = 0.25) -> Path:
     """Adds the planned sounds to a (silent) video, optionally lanczos-upscales it,
     and fades both out. `upscale` is the output width (square clips -> square)."""
@@ -209,7 +218,7 @@ def mix_sfx(video: Path, out: Path, events: list[tuple[str, float, float]], sfx_
         parts.append(f"[{index}:a]volume={gain},adelay={ms}|{ms}[a{index}]")
     labels = "".join(f"[a{index}]" for index in range(1, len(events) + 1))
     parts.append(
-        f"{labels}amix=inputs={len(events)}:normalize=0,alimiter=limit=0.95,atrim=0:{duration:.3f},"
+        f"{labels}{_amix(len(events))},alimiter=limit=0.95,atrim=0:{duration:.3f},"
         f"afade=t=out:st={max(0.0, duration - fade):.3f}:d={fade}[aout]"
     )
     parts.append(f"[0:v]{scale}fade=t=out:st={max(0.0, duration - fade):.3f}:d={fade}[vout]")

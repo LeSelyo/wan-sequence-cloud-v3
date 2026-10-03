@@ -63,6 +63,24 @@ class BeatAnalysisTests(unittest.TestCase):
                 tp.analyze_beats(click_track(Path(temporary) / "tiny.wav", bpm=120, offset=0.0, seconds=0.2))
 
 
+class AmixCompatibilityTests(unittest.TestCase):
+    def test_modern_ffmpeg_uses_normalize_zero(self):
+        with mock.patch.object(tp, "_filter_has_option", return_value=True):
+            self.assertEqual(tp.amix_filter(2, duration="first"), "amix=inputs=2:duration=first:normalize=0")
+
+    def test_old_ffmpeg_gets_the_same_level_from_a_gain(self):
+        with mock.patch.object(tp, "_filter_has_option", return_value=False):
+            self.assertEqual(
+                tp.amix_filter(2, duration="first"), "amix=inputs=2:duration=first:dropout_transition=0,volume=2"
+            )
+            self.assertEqual(tp.amix_filter(3), "amix=inputs=3:dropout_transition=0,volume=3")
+
+    @unittest.skipUnless(HAS_FFMPEG, "ffmpeg/ffprobe not available")
+    def test_the_real_ffmpeg_answers(self):
+        tp._filter_has_option.cache_clear()
+        self.assertIsInstance(tp._filter_has_option("amix", "normalize"), bool)
+
+
 class HormoziCaptionTests(unittest.TestCase):
     WORDS = "Le temps n'efface rien, il transforme lentement ce que nous croyons immuable.".split()
 

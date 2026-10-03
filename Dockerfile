@@ -146,15 +146,25 @@ ARG DEBIAN_FRONTEND=noninteractive
 # python3-dev specifically, --enable-triton-backend does NOT fall back: it crashes the
 # generation with subprocess.CalledProcessError (missing Python.h at link time). Both
 # packages must ship together with COMFY_ENABLE_TRITON_BACKEND below.
-# fontconfig + fonts-montserrat: libass (ffmpeg's `ass` filter) burns the trend videos' captions;
-# Montserrat ExtraBold is the Hormozi-style caption font (scripts/trend_philosopher.py), DejaVu
-# is its fallback.
+# fontconfig + DejaVu: libass (ffmpeg's `ass` filter) burns the trend videos' captions;
+# DejaVu is the fallback of the Hormozi-style caption font installed below.
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
       build-essential ca-certificates curl ffmpeg gosu python3 python3-dev libgl1 libglib2.0-0 \
-      fontconfig fonts-montserrat fonts-dejavu-core && \
-    apt-get clean && fc-cache -f
+      fontconfig fonts-dejavu-core && \
+    apt-get clean
+
+# Montserrat ExtraBold (SIL OFL) for the Hormozi-style captions: Ubuntu 22.04 has no
+# fonts-montserrat package, so the static TTF is fetched from a pinned commit and verified.
+ARG MONTSERRAT_COMMIT=555facfb2a18c72c3c0380f0d9c0f060453a9058
+ARG MONTSERRAT_EXTRABOLD_SHA256=d3ac6a843d3ba6d5cafd44cf39e437055c8aed7e261010f595f57d3c7b3e2c1b
+RUN mkdir -p /usr/local/share/fonts/montserrat && \
+    curl -fsSL --retry 3 \
+      "https://raw.githubusercontent.com/JulietaUla/Montserrat/${MONTSERRAT_COMMIT}/fonts/ttf/Montserrat-ExtraBold.ttf" \
+      -o /usr/local/share/fonts/montserrat/Montserrat-ExtraBold.ttf && \
+    echo "${MONTSERRAT_EXTRABOLD_SHA256}  /usr/local/share/fonts/montserrat/Montserrat-ExtraBold.ttf" | sha256sum -c - && \
+    fc-cache -f && fc-list | grep -qi "Montserrat"
 
 COPY --from=python-builder /opt/venv /opt/venv
 COPY --from=python-builder /opt/ComfyUI /opt/ComfyUI

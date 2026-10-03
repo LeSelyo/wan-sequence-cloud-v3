@@ -65,6 +65,7 @@ apart again.
 from __future__ import annotations
 
 import argparse
+from functools import lru_cache
 import json
 import os
 import random
@@ -98,7 +99,7 @@ BLACK_SCREEN_WINDOW = (30.0, 40.0)  # seconds; the original brief said 20-40 s, 
 BLACK_SCREEN_SECONDS = 2.0
 
 CAPTION_ANCHORS = [("lower", 0.78, 0.5), ("upper", 0.2, 0.25), ("middle", 0.5, 0.25)]  # (name, y fraction, weight)
-# Montserrat ExtraBold (apt `fonts-montserrat`, installed in the image) is the Hormozi look;
+# Montserrat ExtraBold (fetched by the Dockerfile) is the Hormozi look;
 # libass falls back to any bold font when it is missing. Override with TREND_CAPTION_FONT.
 CAPTION_FONT = os.environ.get("TREND_CAPTION_FONT", "Montserrat ExtraBold")
 # Key words are white-outlined-black like the rest but coloured; the colour changes from
@@ -113,6 +114,21 @@ CAPTION_STOPWORDS = frozenset(
 
 def _run(cmd: list[str]) -> None:
     subprocess.run(cmd, check=True)
+
+
+@lru_cache(maxsize=None)
+def _filter_has_option(filter_name: str, option: str) -> bool:
+    result = subprocess.run([FFMPEG, "-hide_banner", "-h", f"filter={filter_name}"], capture_output=True, text=True)
+    return option in (result.stdout + result.stderr)
+
+
+def amix_filter(inputs: int, *, duration: str | None = None) -> str:
+    """`amix` that keeps every input at full level. `normalize=0` needs a recent FFmpeg; older
+    ones get the same result from dropout_transition=0 and a gain that undoes the 1/N scaling."""
+    options = f"inputs={inputs}" + (f":duration={duration}" if duration else "")
+    if _filter_has_option("amix", "normalize"):
+        return f"amix={options}:normalize=0"
+    return f"amix={options}:dropout_transition=0,volume={inputs}"
 
 
 def _audio_duration(path: Path) -> float:
@@ -639,7 +655,7 @@ def build_captions(
     force_visible=(start, end): every sentence overlapping this interval (the black
     screen) is shown centered, and the last chunk of each sentence is held through the pause
     to the next one, so the screen is never captionless."""
-    font_size = round(height * 0.048)
+    font_size = round(height * 0.055)
     outline = max(3, round(font_size * 0.085))
     header = f"""[Script Info]
 ScriptType: v4.00+
@@ -821,7 +837,7 @@ def build_philosopher_trend(
             f"[2:a]{section}atrim=0:{duration:.3f},volume={music_gain_db}dB,"
             f"afade=t=in:st=0:d=1.5,afade=t=out:st={fade_out:.3f}:d=2.5[m]",
             "[m][sc]sidechaincompress=threshold=0.02:ratio=8:attack=20:release=400[md]",
-            "[vo][md]amix=inputs=2:duration=first:normalize=0[a]",
+            f"[vo][md]{amix_filter(2, duration='first')}[a]",
         ]
         audio_map = "[a]"
     else:
