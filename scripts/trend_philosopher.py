@@ -120,7 +120,7 @@ DEFAULT_BACKGROUND_PROMPTS = [
 # 24 kHz mono voice against 44.1 kHz stereo music: "filters could not choose their formats").
 COMMON_AUDIO = "aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo"
 BLACK_SCREEN_WINDOW = (30.0, 40.0)  # seconds; the original brief said 20-40 s, review said "after 30 s"
-BLACK_SCREEN_SECONDS = 4.0  # 2.25 s was not noticed on review; 4 s is a real pause
+BLACK_SCREEN_SECONDS = 8.0  # 2.25 s was not noticed, 4 s was "too short" on review; 8 s is a long pause (voice + music continue)
 BLACK_EDGE_SECONDS = 0.08  # half-opaque frames on each side so the cut reads as a beat, not a glitch
 
 # Words that carry the sentence: negations/absolutes and the vocabulary of a stoic monologue
