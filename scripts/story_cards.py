@@ -75,14 +75,38 @@ def build_cards(plan: dict, out: Path, style_seed: int = 0, only: str | None = N
     return cards
 
 
+def redo_location(plan: dict, out: Path, loc_id: str, seed: int) -> dict:
+    """Make ONE location card again with another seed (a card came out wrong): the earlier picture is kept as <name>_v<N>_<seed>.png, cards.json points to the new one and remembers the old ones."""
+    cards = json.loads((out / "cards.json").read_text(encoding="utf-8"))
+    loc = next(l for l in plan["locations"] if l["id"] == loc_id)
+    style = cards["style"]
+    path = out / f"loc_{loc_id}.png"
+    old = cards["locations"][loc_id]
+    kept = out / f"loc_{loc_id}_v{len(old.get('earlier', [])) + 1}_seed{old['seed']}.png"
+    if path.exists():
+        path.replace(kept)
+    request = {"engine": "krea2", "prompt": location_prompt(loc, style), "width": PORTRAIT[0], "height": PORTRAIT[1], "seed": seed}
+    result = tr.run_still(request, path, log=RESULTS / "logs" / "jobs.jsonl", registry=REGISTRY, label=f"{plan.get('title', 'story')}_loc_{loc_id}_seed{seed}")
+    print(f"loc_{loc_id}: {result['seconds']} s seed {seed} (the earlier one is kept as {kept.name})", flush=True)
+    earlier = [*old.get("earlier", []), {"file": str(kept.resolve().relative_to(ROOT)).replace("\\", "/"), "seed": old["seed"], "why": "replaced by another seed"}]
+    cards["locations"][loc_id] = {**old, "seed": seed, "image_id": result["image_id"], "seconds": result["seconds"], "earlier": earlier}
+    (out / "cards.json").write_text(json.dumps(cards, indent=1, ensure_ascii=False), encoding="utf-8")
+    return cards
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("plan", type=Path)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--style-seed", type=int, default=0)
     parser.add_argument("--only", choices=["locations", "characters"])
+    parser.add_argument("--redo", metavar="LOCATION_ID", help="make this one location card again with --seed (the old picture is kept)")
+    parser.add_argument("--seed", type=int, help="seed for --redo")
     args = parser.parse_args()
     started = time.time()
+    if args.redo:
+        redo_location(json.loads(args.plan.read_text(encoding="utf-8")), args.out, args.redo, args.seed if args.seed is not None else random.randrange(2**31))
+        return
     cards = build_cards(json.loads(args.plan.read_text(encoding="utf-8")), args.out, args.style_seed, args.only)
     print(f"style {cards['style_id']}; {len(cards['locations'])} locations, {len(cards['characters'])} characters in {time.time() - started:.0f} s")
 

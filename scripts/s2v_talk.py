@@ -113,7 +113,7 @@ def main() -> None:
     parser.add_argument("dst", type=Path)
     parser.add_argument("--prompt", default="a person speaking naturally to the camera, small head movements, natural expression, cinematic, handheld")
     parser.add_argument("--seed", type=int, default=1)
-    parser.add_argument("--lora", choices=list(LORAS), default="none")
+    parser.add_argument("--lora", choices=list(LORAS), default="i2v_low")
     parser.add_argument("--seconds", type=float, default=3.0)
     parser.add_argument("--url", default=BASE_URL)
     parser.add_argument("--registry", type=Path)

@@ -1,0 +1,39 @@
+import sys
+from pathlib import Path
+
+from PIL import Image
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+import story_render as sr  # noqa: E402
+
+
+def test_each_word_gets_a_window_in_order_and_the_last_one_ends_with_the_audio():
+    windows = sr.word_windows("In the end you understand: it was never about survival.", 3.5)
+    assert [w[0] for w in windows] == "In the end you understand it was never about survival".split()
+    assert windows[0][1] == 0.08 and abs(windows[-1][2] - 3.5) < 0.01
+    assert all(a[2] <= b[1] + 1e-6 for a, b in zip(windows, windows[1:])) and all(w[2] > w[1] for w in windows)
+
+
+def test_a_word_that_ends_a_sentence_lasts_longer_than_the_same_word_inside_it():
+    first, second = sr.word_windows("Go. Go", 4.0)
+    assert (first[2] - first[1]) > (second[2] - second[1])
+
+
+def test_shot_length_is_voice_plus_tail_and_a_choice_never_shorter_than_the_countdown():
+    assert sr.shot_seconds("talk", 2.0) == 2.15 and sr.shot_seconds("twist", 3.0) == 3.7
+    assert sr.shot_seconds("choice", 1.2) == sr.CHOICE_MIN_SECONDS and sr.shot_seconds("choice", 5.0) == 5.0
+
+
+def test_push_in_starts_on_the_whole_frame_and_stays_inside_it():
+    start, end = sr.kb_box(0, 4), sr.kb_box(4, 4)
+    assert start == (0.0, 0.0, 576.0, 1024.0)
+    assert end[2] - end[0] < 576 and end[0] >= 0 and end[2] <= 576 and end[1] >= 0 and end[3] <= 1024
+
+
+def test_word_and_choice_frames_have_the_video_size_and_the_ring_empties():
+    assert sr.word_image("SURVIVAL").size == sr.SIZE
+    portraits = [Image.new("RGB", (576, 1024), (40, 40, 60)), Image.new("RGB", (576, 1024), (60, 40, 40))]
+    first, last = sr.choice_frame(0.5, 3.5, portraits, ["A", "B"]), sr.choice_frame(3.2, 3.5, portraits, ["A", "B"])
+    assert first.size == last.size == sr.SIZE
+    orange = lambda im: sum(1 for px in im.crop((0, 0, 576, 220)).getdata() if px[0] > 220 and 80 < px[1] < 160 and px[2] < 40)
+    assert orange(first) > 3 * orange(last)
