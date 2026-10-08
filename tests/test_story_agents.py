@@ -310,3 +310,18 @@ def test_the_offer_shot_puts_both_in_the_picture_and_a_branch_never_shows_the_ot
     assert [s["in_shot"] for s in shots[:2]] == [["c1", "c2"], ["c1", "c2"]] and "overlap" not in shots[1]  # one after the other
     assert [s["speaker"] for s in shots[:2]] == ["narrator", "narrator"] and [s["offer_of"] for s in shots[:2]] == ["c1", "c2"]  # the narrator quotes the two proposals
     assert shots[2]["in_shot"] == ["c1"] and shots[3]["in_shot"] == ["c2"]
+
+
+def test_a_chunk_with_only_soft_problems_keeps_the_best_answer_of_the_model_never_a_template():
+    answers = iter([{"n": 1}, {"n": 2}, {"n": 3}])
+
+    def llm(prompt, schema, seed=0):
+        return next(answers)
+    problems_of = {1: ["the lines are too long on average (9.3 words)", "x"], 2: ["the lines are too long on average (9.0 words)"], 3: ["this branch must end GOOD for you but its last lines read MIXED (teaser)"]}
+    answer, problems, attempts = sa.call_agent(llm, "p", {}, lambda a: problems_of[a["n"]], soft=lambda p: sa.soft_writer_problem(p) or p == "x")
+    assert answer == {"n": 2} and problems == ["the lines are too long on average (9.0 words)"] and attempts == 3  # the best of the three, listed as imperfect
+    answers = iter([{"n": 1}, {"n": 1}, {"n": 1}])
+    hard = sa.call_agent(llm, "p", {}, lambda a: ["line 3: 40 words, the limit is 14"], soft=sa.soft_writer_problem)
+    assert hard[0] is None  # a line over the limit is not a matter of taste
+    assert sa.soft_writer_problem("this branch must end GOOD for you but its last lines read BAD (x)") is False  # the opposite outcome is a real failure
+    assert sa.soft_writer_problem("this branch must end GOOD for you but its last lines read MIXED (x)") is True

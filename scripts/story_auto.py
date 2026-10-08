@@ -36,6 +36,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import clip_post as cp  # noqa: E402
 import remote_render as rr  # noqa: E402
 import face_tools as ft  # noqa: E402
+import lab_tools as lt  # noqa: E402
 import s2v_face_test as sft  # noqa: E402
 import s2v_talk as st  # noqa: E402
 import story_cards as sc  # noqa: E402
@@ -52,10 +53,12 @@ import story_writer as sw  # noqa: E402
 ROOT = Path(__file__).resolve().parent.parent
 AUTO = ROOT / "results" / "story_trend" / "auto"
 STEPS = ("story", "cards", "closeups", "stills", "identity", "voices", "animate", "qc", "post", "render", "caption")
-FAMILY = {"cards": "krea2", "closeups": "krea2", "stills": "krea2", "identity": "qwen", "animate": "s2v", "qc": "s2v", "post": "s2v"}  # the app family each step needs ("voices" and "story" do not depend on it)
+FAMILY = {"cards": "lab", "closeups": "lab", "stills": "lab", "identity": "lab", "animate": "lab", "qc": "lab", "post": "lab"}  # the app family each step needs ("voices" and "story" do not depend on it)
 CLOSEUP_SEEDS = (11, 22, 33, 44, 55)
 TUNNELS = {8000: 8000, 18188: 8188, 11434: 11434}  # local port -> box port
 PICTURE_RETRIES = 2  # a picture the judge finds wrong is made again this many times at most (another seed each time, the earlier ones are kept)
+MIN_MOTION = 1.0  # an I2V clip of a person who moves or of hands that act with less picture change than this (frozen) is made again
+MIN_SECONDS_TO_BLINK = 2.5  # a talking clip at least this long with no blink is made again
 FLICKER_OUTLIER = 1.35  # a talking clip whose face shimmers more than this times the median of its characters is made again
 
 
@@ -142,9 +145,13 @@ class Pipeline:
         state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.exists() else {}
         if state.get("family") == family and self.healthy(family):
             return
+        if family == "lab" and self.healthy(family) and self.sage_is_off():  # the app already runs the way the lab did: no restart
+            AUTO.mkdir(parents=True, exist_ok=True)
+            state_path.write_text(json.dumps({"family": family, "label": "already running", "at": time.strftime("%Y-%m-%dT%H:%M:%S")}), encoding="utf-8")
+            return
         started = time.time()
         label = f"{self.name}_{family}_{int(started) % 100000}"
-        sage = "COMFY_USE_SAGE_ATTENTION=0 " if family == "qwen" else ""  # Qwen-Image-Edit gives black pictures with SageAttention
+        sage = "COMFY_USE_SAGE_ATTENTION=0 " if family in ("qwen", "lab") else ""  # Qwen-Image-Edit gives black pictures with SageAttention; the lab (identity, I2V, S2V, Krea2) ran without it
         self.box.run(f"/root/stop_app.sh; {sage}/root/start_app.sh {label} novram")
         for _ in range(90):
             if self.healthy(family):
@@ -157,10 +164,19 @@ class Pipeline:
 
     @staticmethod
     def healthy(family: str) -> bool:
+        """The picture app (8000) for krea2, ComfyUI (18188) for the video families, both for the one family of the lab."""
         import httpx
+        urls = {"krea2": ["http://127.0.0.1:8000/health/live"], "lab": ["http://127.0.0.1:8000/health/live", "http://127.0.0.1:18188/system_stats"]}.get(family, ["http://127.0.0.1:18188/system_stats"])
         try:
-            url = "http://127.0.0.1:8000/health/live" if family == "krea2" else "http://127.0.0.1:18188/system_stats"
-            return httpx.get(url, timeout=5).status_code == 200
+            return all(httpx.get(url, timeout=5).status_code == 200 for url in urls)
+        except Exception:
+            return False
+
+    @staticmethod
+    def sage_is_off() -> bool:
+        import comfy_edit as ce
+        try:
+            return ce.sage_attention_on(st.BASE_URL) is False
         except Exception:
             return False
 
@@ -236,7 +252,41 @@ class Pipeline:
     def step_identity(self, args) -> dict:
         """The same person in every shot: Qwen-Image-Edit puts the close-up of the character (and his or her wardrobe) into the picture of the shot; both characters hold out a hand in the scene of the choice."""
         timings = sid.run_jobs(self.plan(), self.cards(), self.run, st.BASE_URL, args.seed or 1)
-        return {"pictures": len(timings), "timings": timings}
+        result = {"pictures": len(timings), "timings": timings}
+        if not args.no_picture_check:
+            result["picture_check"] = self.check_identity(args)
+        return result
+
+    def check_identity(self, args) -> dict:
+        """The vision model compares every identity picture with the close-up(s) of the character(s): same face and hair, the wardrobe of the character, no glitched head, the place of the world. A wrong one is made
+        again with another seed (PICTURE_RETRIES at most, the earlier ones are kept as _vN)."""
+        plan, cards = self.plan(), self.cards()
+        characters = {c["id"]: c for c in plan["characters"]}
+        ask = sj.ollama_vision(args.model)
+        rounds, todo, wrong = [], None, []
+        for attempt in range(PICTURE_RETRIES + 1):
+            items = []
+            for job in sid.jobs(plan, cards, self.run):
+                picture = self.run / "stills_id" / f"{job['id']}.png"
+                if not picture.exists() or (todo and job["id"] not in todo):
+                    continue
+                shot = next(sh for sh in plan["shots"] if sh["id"] == job["shots"][0])
+                who = [characters[i] for i in (plan["characters"][0]["id"], plan["characters"][1]["id"])] if job["id"] == sid.TWO_SHOT_ID else [characters[i] for i in shot["in_shot"] if i in characters][:2]
+                people = "; ".join(f"{'on the left ' if k == 0 and len(who) == 2 else 'on the right ' if len(who) == 2 else ''}a {sid.person_word(c)} wearing {c.get('wardrobe', 'the clothes of the portrait').rstrip('. ')}" for k, c in enumerate(who))
+                judged_shot = {**shot, "id": job["id"], "still": "Both characters side by side, facing the camera, each one holding out an open hand toward the viewer" if job["id"] == sid.TWO_SHOT_ID else shot["still"]}
+                items.append((picture, judged_shot, job["refs"], people))
+            try:
+                results = sj.judge_images(plan, items, ask)
+            finally:
+                ask.unload()
+            wrong = sorted(i for i, r in results.items() if not r["ok"])
+            rounds.append({"judged": len(results), "wrong": {i: results[i]["major"] for i in wrong}})
+            (self.run / f"identity_judge_{attempt + 1}.json").write_text(json.dumps(results, indent=1, ensure_ascii=False), encoding="utf-8")
+            if not wrong or attempt == PICTURE_RETRIES:
+                break
+            sid.run_jobs(plan, cards, self.run, st.BASE_URL, seed=(args.seed or 1) + 1000 * (attempt + 1), only=set(wrong), force=True)
+            todo = set(wrong)
+        return {"rounds": rounds, "problems_left": wrong}
 
     def step_voices(self, args) -> dict:
         report = {}
@@ -249,32 +299,68 @@ class Pipeline:
         return sp.step_animate(self.plan(), self.cards(), self.run, st.BASE_URL, args.lora, args.seed or 1)
 
     def step_qc(self, args) -> dict:
-        """Measure the face of every talking clip (same numbers as scripts/s2v_face_test.py); a clip far above the median shimmer is made again with another seed (the old one is kept as _vN)."""
+        """What is measured on the clips, and made again (another seed, the old clip kept as _vN) when it is wrong:
+        talking clips (S2V): the shimmer of the face (a clip far above the median) and the BLINKS (counted with face landmarks on the box: none in a clip of 2.5 s or more = made again);
+        I2V clips of people who move and hands that act: the motion amount (a frozen picture, under MIN_MOTION, is made again)."""
         plan, cards = self.plan(), self.cards()
+
+        def face_box_of(speaker: str):
+            faces = ft.detect_faces(ROOT / sp.portrait_of(cards, speaker))
+            return ft.face_box(faces[0], 0.05) if faces else sft.FACE_BOX
+
+        def blinks_of(ids: list[str]) -> dict[str, int | None]:
+            clips = [self.run / "clips" / f"{i}.mp4" for i in ids if (self.run / "clips" / f"{i}.mp4").exists()]
+            found = lt.blinks_on_box(clips, self.box) if clips else {}
+            return {i: (found.get(f"{i}.mp4") or {}).get("blinks") for i in ids}
+
         measured: dict[str, dict] = {}
         for shot in plan["shots"]:
             clip = self.run / "clips" / f"{shot['id']}.mp4"
             if shot["kind"] != "talk" or not clip.exists():
                 continue
-            portrait = ROOT / sp.portrait_of(cards, shot["speaker"])
-            faces = ft.detect_faces(portrait)
-            box = ft.face_box(faces[0], 0.05) if faces else sft.FACE_BOX
-            measured[shot["id"]] = {"speaker": shot["speaker"], **sft.face_metrics(clip, (480, 832), box)}
+            measured[shot["id"]] = {"speaker": shot["speaker"], "seconds": sr.wav_seconds(self.run / "voices" / f"{shot['id']}.wav") + 0.25, **sft.face_metrics(clip, (480, 832), face_box_of(shot["speaker"]))}
+        for shot_id, count in blinks_of(list(measured)).items():
+            measured[shot_id]["blinks"] = count
         median = statistics.median(m["flicker"] for m in measured.values()) if measured else 0.0
-        outliers = [i for i, m in measured.items() if median and m["flicker"] > FLICKER_OUTLIER * median]
+        outliers = {i for i, m in measured.items() if median and m["flicker"] > FLICKER_OUTLIER * median}
+        outliers |= {i for i, m in measured.items() if m.get("blinks") == 0 and m["seconds"] >= MIN_SECONDS_TO_BLINK}
         retried = {}
         if outliers:
             retry = sp.step_animate(plan, cards, self.run, st.BASE_URL, args.lora, (args.seed or 1) + 17, set(outliers), force=True)
-            for shot_id in outliers:
+            new_blinks = blinks_of(sorted(outliers))
+            for shot_id in sorted(outliers):
                 clip = self.run / "clips" / f"{shot_id}.mp4"
-                new = sft.face_metrics(clip, (480, 832), ft.face_box(ft.detect_faces(ROOT / sp.portrait_of(cards, measured[shot_id]["speaker"]))[0], 0.05) if ft.detect_faces(ROOT / sp.portrait_of(cards, measured[shot_id]["speaker"])) else sft.FACE_BOX)
-                kept_new = new["flicker"] < measured[shot_id]["flicker"]
-                if not kept_new:  # the retry is not calmer: the first clip comes back
-                    old = sorted(clip.parent.glob(f"{shot_id}_v*.mp4"))[-1]
-                    clip.replace(clip.with_name(f"{shot_id}_retry_rejected.mp4"))
-                    old.replace(clip)
-                retried[shot_id] = {"before": measured[shot_id]["flicker"], "after": new["flicker"], "kept": "retry" if kept_new else "first", "seconds": retry.get(shot_id, {}).get("seconds")}
-        return {"median_flicker": round(median, 3), "clips": measured, "retried": retried}
+                new = sft.face_metrics(clip, (480, 832), face_box_of(measured[shot_id]["speaker"]))
+                before, after = measured[shot_id], {**new, "blinks": new_blinks.get(shot_id)}
+                kept_new = ((after["blinks"] or 0) > 0, -after["flicker"]) > ((before.get("blinks") or 0) > 0, -before["flicker"])  # a clip that blinks first, then the calmer face
+                if not kept_new:  # the retry is not better: the first clip comes back
+                    self.restore_first(clip, shot_id)
+                retried[shot_id] = {"before": {"flicker": before["flicker"], "blinks": before.get("blinks")}, "after": {"flicker": after["flicker"], "blinks": after["blinks"]}, "kept": "retry" if kept_new else "first",
+                                    "seconds": retry.get(shot_id, {}).get("seconds")}
+        motion, frozen = {}, []
+        for job in sp.animate_jobs(plan, cards, self.run):
+            clip = self.run / "clips" / f"{job['id']}.mp4"
+            if job["engine"] == "i2v" and job.get("need") in ("person_locomotion", "pov_action") and clip.exists():
+                motion[job["id"]] = lt.motion_amount(clip)
+                if motion[job["id"]] < MIN_MOTION:
+                    frozen.append(job["id"])
+        moved = {}
+        if frozen:
+            sp.step_animate(plan, cards, self.run, st.BASE_URL, args.lora, (args.seed or 1) + 31, set(frozen), force=True)
+            for shot_id in frozen:
+                clip = self.run / "clips" / f"{shot_id}.mp4"
+                amount = lt.motion_amount(clip)
+                if amount <= motion[shot_id]:
+                    self.restore_first(clip, shot_id)
+                moved[shot_id] = {"before": motion[shot_id], "after": amount, "kept": "retry" if amount > motion[shot_id] else "first"}
+        return {"median_flicker": round(median, 3), "clips": measured, "retried": retried, "motion_amount": motion, "frozen_retried": moved}
+
+    @staticmethod
+    def restore_first(clip: Path, shot_id: str) -> None:
+        """A retry that is not better: the retry is set aside (_retry_rejected) and the first clip, kept as _vN, comes back."""
+        old = sorted(clip.parent.glob(f"{shot_id}_v*.mp4"))[-1]
+        clip.replace(clip.with_name(f"{shot_id}_retry_rejected.mp4"))
+        old.replace(clip)
 
     def step_post(self, args) -> dict:
         todo = [c for c in sorted((self.run / "clips").glob("*.mp4")) if "_v" not in c.stem and "_retry" not in c.stem and not (self.run / "post" / c.name).exists()]

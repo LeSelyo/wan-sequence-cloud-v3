@@ -116,3 +116,16 @@ def test_the_default_shake_is_a_short_irregular_jolt_not_a_constant_regular_wobb
     xs = [x for x, _ in new[:30]]
     crossings = sum(1 for a, b in zip(xs, xs[1:]) if a * b < 0)
     assert crossings >= 2  # it does move, with several frequencies
+
+
+def test_the_sound_background_has_rain_only_in_a_wet_world(tmp_path):
+    station = {"context": "A space station above a dark Earth, the hull is freezing.", "brief": {"world": {"setting": "Oort Station", "premise": "the lights went out", "atmosphere": "silence, ozone"}}, "locations": [{"description": "the airlock"}]}
+    flood = {"context": "A flooded city at night, a rescue boat.", "locations": []}
+    assert sr.weather_of(station) == "dry" and sr.weather_of(flood) == "wet"
+    timings = {"s001": {"seconds": 3.0}}
+    plan = {**station, "shots": [{"id": "s001", "kind": "narration", "fx": {}}]}
+    assert sr.sound_cues(plan, timings)["weather"] == "dry"
+    import story_sound as so
+    dry = so.build_soundtrack(2.0, {"weather": "dry"}, tmp_path / "dry.wav")
+    wet = so.build_soundtrack(2.0, {"weather": "wet"}, tmp_path / "wet.wav")
+    assert dry.exists() and wet.exists() and dry.stat().st_size > 1000

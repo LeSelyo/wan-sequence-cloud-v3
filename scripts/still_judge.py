@@ -28,10 +28,11 @@ SCHEMA = {
         "action_visible": {"type": "boolean"},
         "collage_or_split_panels": {"type": "boolean"},
         "impossible_geometry": {"type": "boolean"},
+        "same_person": {"type": "boolean"},
         "garbled_text": {"type": "boolean"},
         "problems": {"type": "array", "items": {"type": "string", "maxLength": 140}, "maxItems": 4},
     },
-    "required": ["place_seen", "sunlight_or_blue_sky", "matches_world", "action_visible", "collage_or_split_panels", "impossible_geometry", "garbled_text", "problems"],
+    "required": ["place_seen", "sunlight_or_blue_sky", "matches_world", "action_visible", "collage_or_split_panels", "impossible_geometry", "same_person", "garbled_text", "problems"],
 }
 PROMPT = ("You check ONE picture made for a short cinematic story. Every person in it is fictional.\n"
           "THE WORLD of the story: {setting}. Atmosphere: {atmosphere}. Hour: {hour}.\n"
@@ -40,12 +41,17 @@ PROMPT = ("You check ONE picture made for a short cinematic story. Every person 
           "Look at the picture and answer strictly and honestly:\n"
           "- place_seen: in at most 12 words, what place the picture really shows.\n"
           "- sunlight_or_blue_sky: true if the light looks like the sun or daylight (sunbeams, bright warm patches on the floor, a blue daytime sky). A window that shows space, stars or a dark night sky is false.\n"
-          "- matches_world: 1 to 5. 5 = clearly this world and this place; 1 = another world (for example an old stone arcade, a village or a garden for a space station).\n"
+          "- matches_world: 1 to 5. 5 = clearly this world and this place; 1 = another world (for example an old stone arcade, a village or a garden for a space station). "
+          "If the place is NOT visible (a close-up of hands or of an object), judge whether the objects, materials and light fit this world, and give 3 when they are neutral.\n"
           "- action_visible: true if what the shot should show (the action, the object, the people) can be seen.\n"
           "- collage_or_split_panels: true if the picture is made of several panels or a collage.\n"
           "- impossible_geometry: true if something is physically impossible or glitched: a window inside a window or a second room stacked above the first, duplicated or melted objects, merged bodies, extra limbs or fingers, an emblem repeated everywhere.\n"
+          "- same_person: {same_person_rule}\n"
           "- garbled_text: true if a sign or a label has unreadable or invented letters.\n"
           "- problems: a short list of what is wrong with the picture for THIS story (empty if nothing).")
+SAME_PERSON_NONE = "always true here (there is no reference portrait)."
+SAME_PERSON_REFS = ("the pictures BEFORE the last one are the reference PORTRAITS of the character(s) who must appear in the last picture: {people}. True if the person (or, for two people, the first one on the left) "
+                    "clearly has the same face, hair and age as the portrait and wears what is described; false for a stranger, the wrong clothes, a deformed or glitched head (blobs, foam, a second face).")
 DARK_HOURS = {"night", "midnight", "nightfall", "dusk", "evening", "twilight"}
 
 
@@ -75,41 +81,50 @@ def verdict(answer: dict, no_daylight: bool) -> tuple[list[str], list[str]]:
         major.append("a collage of panels")
     if answer.get("impossible_geometry"):
         major.append("something in the picture is physically impossible or glitched")
+    if not answer.get("same_person", True):
+        major.append("the person is not the character (face, hair or clothes) or the head is glitched")
     if answer["garbled_text"]:
         minor.append("a sign has invented letters")
     minor += [p for p in answer.get("problems", []) if p not in minor]
     return major, minor
 
 
-def judge_still(ask, image: Path, shot: dict, plan: dict, seed: int = 0) -> dict:
-    """`ask(prompt, schema, image_path, seed) -> dict` is the vision model (see `ollama_vision`)."""
+def judge_still(ask, image: Path, shot: dict, plan: dict, seed: int = 0, refs: list[Path] | None = None, people: str = "") -> dict:
+    """`ask(prompt, schema, image_or_images, seed) -> dict` is the vision model (see `ollama_vision`). With `refs` (the close-ups of the characters) the model also checks that the people of the picture ARE
+    those characters (face, hair, wardrobe described in `people`): the pictures sent are the references first, the picture to check last."""
     location = next((l for l in plan["locations"] if l["id"] == shot["location"]), {})
-    prompt = PROMPT.format(**world_of(plan), place=location.get("description") or shot["location"], still=shot["still"])
-    answer = ask(prompt, SCHEMA, image, seed)
+    rule = SAME_PERSON_REFS.format(people=people) if refs else SAME_PERSON_NONE
+    prompt = PROMPT.format(**world_of(plan), place=location.get("description") or shot["location"], still=shot["still"], same_person_rule=rule)
+    answer = ask(prompt, SCHEMA, [*refs, image] if refs else image, seed)
     major, minor = verdict(answer, daylight_forbidden(plan, shot))
     return {"answer": answer, "major": major, "minor": minor, "ok": not major}
 
 
-def judge_stills(plan: dict, stills_dir: Path, ask, only: set[str] | None = None) -> dict[str, dict]:
+def judge_images(plan: dict, items: list[tuple], ask) -> dict[str, dict]:
+    """items = [(image, shot, refs or None, people text)] -> {shot id: verdict}."""
     results = {}
-    for shot in plan["shots"]:
-        image = stills_dir / f"{shot['id']}.png"
-        if not shot.get("still") or not image.exists() or (only and shot["id"] not in only):
-            continue
+    for image, shot, refs, people in items:
         started = time.time()
-        results[shot["id"]] = {**judge_still(ask, image, shot, plan), "seconds": round(time.time() - started, 1)}
+        results[shot["id"]] = {**judge_still(ask, image, shot, plan, refs=refs, people=people), "seconds": round(time.time() - started, 1)}
         print(f"{shot['id']}: {'ok' if results[shot['id']]['ok'] else 'WRONG ' + '; '.join(results[shot['id']]['major'])}", flush=True)
     return results
+
+
+def judge_stills(plan: dict, stills_dir: Path, ask, only: set[str] | None = None) -> dict[str, dict]:
+    items = [(stills_dir / f"{shot['id']}.png", shot, None, "") for shot in plan["shots"]
+             if shot.get("still") and (stills_dir / f"{shot['id']}.png").exists() and not (only and shot["id"] not in only)]
+    return judge_images(plan, items, ask)
 
 
 def ollama_vision(model: str = "qwen3.6:27b", host: str = "http://127.0.0.1:11434"):
     """ask(prompt, schema, image, seed) through Ollama (images in base64), structured output, thinking off, temperature 0; `.unload()` frees the GPU for the picture jobs."""
     import httpx
 
-    def ask(prompt: str, schema: dict, image: Path, seed: int = 0) -> dict:
-        encoded = base64.b64encode(Path(image).read_bytes()).decode()
+    def ask(prompt: str, schema: dict, image, seed: int = 0) -> dict:
+        images = image if isinstance(image, (list, tuple)) else [image]
+        encoded = [base64.b64encode(Path(i).read_bytes()).decode() for i in images]
         response = httpx.post(host.rstrip("/") + "/api/chat", json={"model": model, "stream": False, "think": False, "format": schema, "keep_alive": "10m",
-                                                                  "messages": [{"role": "user", "content": prompt, "images": [encoded]}],
+                                                                  "messages": [{"role": "user", "content": prompt, "images": encoded}],
                                                                   "options": {"num_ctx": 8192, "temperature": 0, "seed": seed, "num_predict": 600}}, timeout=1800)
         response.raise_for_status()
         return json.loads(response.json()["message"]["content"])

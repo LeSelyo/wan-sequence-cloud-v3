@@ -43,6 +43,22 @@ def test_the_model_is_given_the_world_the_place_and_the_shot_with_the_picture(tm
     assert "Oort Station" in seen["prompt"] and "freezing metal walkways" in seen["prompt"] and "Debris falls around the narrator" in seen["prompt"] and "Hour: night" in seen["prompt"]
 
 
+def test_the_identity_of_a_person_is_checked_against_the_close_up_and_the_wardrobe(tmp_path):
+    seen = {}
+
+    def ask(prompt, schema, image, seed):
+        seen.update(prompt=prompt, image=image)
+        return dict(GOOD, same_person=False)
+
+    picture, portrait = tmp_path / "s039.png", tmp_path / "portrait.png"
+    result = sj.judge_still(ask, picture, PLAN["shots"][0], PLAN, refs=[portrait], people="a woman wearing a white chef's coat")
+    assert seen["image"] == [portrait, picture]  # the references first, the picture to check last
+    assert "a woman wearing a white chef's coat" in seen["prompt"] and "reference PORTRAITS" in seen["prompt"]
+    assert not result["ok"] and result["major"] == ["the person is not the character (face, hair or clothes) or the head is glitched"]
+    plain = sj.judge_still(lambda prompt, schema, image, seed: seen.update(prompt=prompt) or dict(GOOD), picture, PLAN["shots"][0], PLAN)
+    assert plain["ok"] and "there is no reference portrait" in seen["prompt"]
+
+
 def test_only_the_shots_with_a_picture_are_judged(tmp_path):
     for name in ("s039", "s050"):
         (tmp_path / f"{name}.png").write_bytes(b"png")

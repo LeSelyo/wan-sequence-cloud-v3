@@ -55,10 +55,12 @@ def build_soundtrack(total: float, cues: dict, out: Path) -> Path:
         chains.append(f"[{index}:a]{chain}{delay_filter},volume={gain}dB,apad=whole_dur={total:.3f},atrim=0:{total:.3f},aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[{label}]")
         labels.append(f"[{label}]")
 
+    wet = cues.get("weather", "wet") == "wet"  # a bunker, a station, a desert have no rain: the rain layer only exists in a wet world
     rain_stop = cues.get("rain_stop")
     rain_fade = f",volume='if(gte(t,{float(rain_stop):.3f}),max(0,1-(t-{float(rain_stop):.3f})/3),1)':eval=frame" if rain_stop else ""  # the rain stops over 3 s when the good ending begins
-    add_input(f"anoisesrc=color=white:amplitude=0.6:r=48000:d={total:.3f}", f"highpass=f=1400,lowpass=f=9500,tremolo=f=0.23:d=0.25{rain_fade},aformat=channel_layouts=stereo", gain=LEVELS["rain"], name="rain")
-    add_input(f"anoisesrc=color=brown:amplitude=0.9:r=48000:d={total:.3f}", "lowpass=f=240,tremolo=f=0.11:d=0.55,aformat=channel_layouts=stereo", gain=LEVELS["water"], name="water")
+    if wet:
+        add_input(f"anoisesrc=color=white:amplitude=0.6:r=48000:d={total:.3f}", f"highpass=f=1400,lowpass=f=9500,tremolo=f=0.23:d=0.25{rain_fade},aformat=channel_layouts=stereo", gain=LEVELS["rain"], name="rain")
+    add_input(f"anoisesrc=color=brown:amplitude=0.9:r=48000:d={total:.3f}", "lowpass=f=240,tremolo=f=0.11:d=0.55,aformat=channel_layouts=stereo", gain=LEVELS["water"] if wet else LEVELS["water"] - 4.0, name="water")  # the low rumble: waves in a wet world, the hull / the machines in a dry one
     add_input(f"aevalsrc='{drone_expression()}':s=48000:d={total:.3f}", f"lowpass=f=700,aecho=0.8:0.55:620|1130:0.45|0.3,afade=t=in:d=2.5,afade=t=out:st={max(0.0, total - 2.0):.3f}:d=2.0,aformat=channel_layouts=stereo",
               gain=LEVELS["drone"], name="drone")
     for index, when in enumerate(cues.get("thunder") or []):

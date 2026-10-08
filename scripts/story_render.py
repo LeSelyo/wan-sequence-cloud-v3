@@ -507,11 +507,21 @@ def render_story(plan: dict, cards_dir: Path, run: Path, out: Path, sound: bool 
     return {"file": str(out), "shots": timings, "total_seconds": total, "sound": sound, "fallback_shots": [s for s, t in timings.items() if t["fallback"]]}
 
 
+WET_WORDS = {"rain", "rainy", "storm", "flood", "flooded", "sea", "ocean", "water", "tsunami", "monsoon", "river", "tide", "wet", "drowned", "waves", "harbor", "harbour", "boat", "ship", "typhoon", "hurricane", "downpour"}
+
+
+def weather_of(plan: dict) -> str:
+    """"wet" when the world of the story has rain or water (its context, setting, premise, atmosphere or the places), else "dry": the sound background has rain only where the picture can have it."""
+    world = (plan.get("brief") or {}).get("world") or {}
+    text = " ".join([plan.get("context", ""), world.get("setting", ""), world.get("premise", ""), world.get("atmosphere", ""), *[loc.get("description", "") for loc in plan.get("locations", [])]]).lower()
+    return "wet" if set(re.findall(r"[a-z]+", text)) & WET_WORDS else "dry"
+
+
 def sound_cues(plan: dict, timings: dict) -> dict:
     """When the sound background must DO something: the heartbeat of the choice, the impact on each twist (and a bright pad + the end of the rain on a GOOD ending), the reverse swell into a rewind,
     thunder on the big impacts."""
     starts = shot_starts(timings)
-    cues: dict = {"choice": None, "twists": [], "rewind": None, "uplift": None, "rain_stop": None, "thunder": []}
+    cues: dict = {"choice": None, "twists": [], "rewind": None, "uplift": None, "rain_stop": None, "thunder": [], "weather": weather_of(plan)}
     last_thunder = -99.0
     for shot in plan["shots"]:
         begin, length = starts[shot["id"]], timings[shot["id"]]["seconds"]

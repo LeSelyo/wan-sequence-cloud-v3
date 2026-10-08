@@ -202,7 +202,7 @@ JUDGE_SCHEMA = {"type": "object", "properties": {k: {"type": "integer"} for k in
 
 
 # ---------------------------------------------------------------------------------------------- the moods of the endings (what "bad" and "good" must mean in the words)
-SUSPENSE = " SUSPENSE: the very last line leaves ONE question open (a sound, a door, a name, a detail nobody explained); never wrap everything up, never say the end."
+SUSPENSE = " SUSPENSE: the very last line is a TEASER that leaves ONE question open (a sound, a door, a name, a detail nobody explained) without changing the outcome: the viewer is still saved or still lost; never wrap everything up, never say the end."
 ENDING_MOOD = {
     "bad": "it ends BAD for you: the twist shows that the person you chose lied to you or used you, and you lose your freedom, your people or your life. Not a happy ending, no last-second rescue." + SUSPENSE,
     "good": "it ends GOOD for you: the twist shows that the person you chose was really on your side, or that you were the hero all along; you are saved and the ending feels earned. NO death, NO betrayal, NO horror at the end." + SUSPENSE,
@@ -248,6 +248,7 @@ You are the VERIFIER of a short-video studio. Read the LAST LINES of one branch 
 - "good": you are saved, you win, or you turn out to be the hero, and the tone is hopeful;
 - "bad": you die, are captured, used, betrayed or lose something essential, and the tone is dark;
 - "mixed": neither clearly.
+Judge the OUTCOME that the twist and the lines before the last one show for the viewer. The very last line may add a teaser (an unexplained sound, door, name): a teaser does NOT make a good ending mixed and does not make a bad one worse.
 Also say whether the LAST LINE leaves a question open (suspense = true: an unexplained sound, door, name or detail, the viewer wants to know what comes next) or closes everything (suspense = false).
 
 LAST LINES:

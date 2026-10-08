@@ -62,9 +62,12 @@ def prompt_fingerprint(trend) -> dict:
 
 
 # ---------------------------------------------------------------------------------------------- one agent: ask, check, repair
-def call_agent(llm, prompt: str, schema: dict, check, attempts: int = 3, seed: int = 0) -> tuple[dict | None, list[str], int]:
-    """Ask the model; check the answer with code; tell the model what is wrong and ask again. Returns (answer or None, the problems of the last attempt, attempts used)."""
+def call_agent(llm, prompt: str, schema: dict, check, attempts: int = 3, seed: int = 0, soft=None) -> tuple[dict | None, list[str], int]:
+    """Ask the model; check the answer with code; tell the model what is wrong and ask again. Returns (answer or None, the problems of the last attempt, attempts used).
+    `soft(problem)` marks the problems that are a matter of taste (a line a little long, an ending that reads mixed): when the attempts are used up and the BEST answer has only those, it is kept
+    (with its problems listed) instead of falling back to a template, which is made of truncated purposes and reads like notes."""
     problems: list[str] = []
+    best: tuple[dict, list[str]] | None = None
     for attempt in range(1, attempts + 1):
         text = prompt + (f"\n\nYour previous answer had these problems. Answer again, the whole JSON, and fix them: {problems[:10]}" if problems else "")
         try:
@@ -74,6 +77,10 @@ def call_agent(llm, prompt: str, schema: dict, check, attempts: int = 3, seed: i
         problems = check(answer)
         if not problems:
             return answer, [], attempt
+        if best is None or len(problems) < len(best[1]):
+            best = (answer, problems)
+    if soft and best and all(soft(p) for p in best[1]):
+        return best[0], best[1], attempts
     return None, problems, attempts
 
 
@@ -320,7 +327,7 @@ def validate_lines(answer: dict, beats: list[dict], location_ids: list[str], max
         return [f"{len(lines)} lines but {len(beats)} beats: one line per beat, same order"]
     if avg_words:
         mean = sum(se.count_words(l.get("text", "")) for l in lines) / len(lines)
-        if mean > 1.3 * avg_words:
+        if mean > 1.2 * avg_words:
             problems.append(f"the lines are too long on average ({mean:.1f} words): aim for about {avg_words:.0f} words per line, shorten most of them")
     seen = set()
     for i, (line, beat) in enumerate(zip(lines, beats)):
@@ -334,6 +341,11 @@ def validate_lines(answer: dict, beats: list[dict], location_ids: list[str], max
             problems.append(f"line {i + 1}: repeats an earlier line")
         seen.add(line.get("text", "").strip().lower())
     return problems
+
+
+def soft_writer_problem(problem: str) -> bool:
+    """The problems of a written chunk that do not make it unusable: lines a little long on average, an ending that reads MIXED (a teaser question left open), an ending that closes everything."""
+    return problem.startswith("the lines are too long on average") or ("must end" in problem and "read MIXED" in problem) or problem.startswith("the last line closes everything")
 
 
 def verify_polarity(llm, trend, lines: list[dict], expected: str, seed: int = 0) -> list[str]:
@@ -372,10 +384,11 @@ def run_writer(brief: dict, outline: dict, params: dict, trend, llm, library_exa
             llm, prompt, trend.LINES_SCHEMA,
             lambda a: validate_lines(a, picked, location_ids, trend.MAX_SPOKEN_WORDS, average, getattr(trend, "MAX_OFFER_WORDS", None)) + validate_independence(a.get("lines", []), picked, brief)
             + (verify_polarity(llm, trend, a.get("lines", []), expected, seed=params["seed"]) if expected and not validate_lines(a, picked, location_ids, trend.MAX_SPOKEN_WORDS) else []),
-            seed=params["seed"] + 7 * chunk[0])
+            seed=params["seed"] + 7 * chunk[0], soft=soft_writer_problem)
+        from_model = answer is not None
         if answer is None:
             answer = {"lines": [{"text": " ".join(b["purpose"].split()[:trend.MAX_SPOKEN_WORDS - 2]), "location": location_ids[0], "in_shot": []} for b in picked]}
-        report["chunks"].append({"beats": len(picked), "source": "llm" if llm and not problems else "template", "attempts": attempts, "problems": problems[:3]})
+        report["chunks"].append({"beats": len(picked), "source": "llm" if from_model else "template", "attempts": attempts, "problems": problems[:3]})
         for i, line in zip(chunk, answer["lines"]):
             lines[i] = line
     return lines, report
