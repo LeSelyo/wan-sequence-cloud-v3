@@ -520,6 +520,26 @@ def offer_still(brief: dict, location: str) -> str:
     return " ".join(text.split()[:48])
 
 
+def infer_in_shot(shots: list[dict], brief: dict) -> int:
+    """Who is in the picture, from what the shot SAYS: the writer often leaves `in_shot` empty for 'Kael steps forward' or 'close-up of Elara's face', and a shot with nobody listed gets no identity pass and is
+    taken for a place. A character named in the line, the picture or the motion is in the shot (the other one never is, after the choice). Returns how many shots changed."""
+    changed = 0
+    for shot in shots:
+        text = f"{shot.get('text', '')} {shot.get('still', '')} {shot.get('motion', '')}".lower()
+        found = [c["id"] for c in brief["characters"][:2] if re.search(rf"\b{re.escape(c['name'].lower())}\b", text)]
+        merged = [i for i in ("c1", "c2") if i in set(shot.get("in_shot", [])) | set(found)]
+        if shot.get("branch") == "A":
+            merged = [i for i in merged if i != "c2"]
+        elif shot.get("branch") == "B" and shot.get("kind") != "rewind":
+            merged = [i for i in merged if i != "c1"]
+        if shot.get("kind") in ("talk", "choice", "offer"):
+            continue  # decided by their kind
+        if merged != shot.get("in_shot", []):
+            shot["in_shot"] = merged
+            changed += 1
+    return changed
+
+
 def unify_offer_scene(shots: list[dict], brief: dict) -> None:
     """The two offers and the choice are ONE scene in ONE place: the place of the choice (the model gave each offer the place of what it promises). The two offer shots get the same two-shot picture."""
     choice = next((s for s in shots if s["kind"] == "choice"), None)
@@ -561,6 +581,7 @@ def assemble_story(brief: dict, outline: dict, lines: list[dict], directions: li
             shot["ending"] = endings[letter]
             shot["tag"] = f"ENDING {letter}: {outline['ending_label_' + letter.lower()].upper()}"
         shots.append(shot)
+    infer_in_shot(shots, brief)
     unify_offer_scene(shots, brief)
     return {"title": brief["title"], "hook_title": outline["hook_title"].strip(), "logline": brief["world"]["premise"], "substitutions": brief.get("substitutions", []),
             "characters": [{k: c[k] for k in ("id", "name", "role", "gender", "age", "look", "wardrobe")} for c in (c1, c2)], "shots": shots, "end_card": outline["closing_question"].strip(),

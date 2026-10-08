@@ -17,7 +17,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 TWO_SHOT_ID = "two_shot"  # the picture of the offers and of the choice: both characters, c1 on the left, c2 on the right
 SINGLE = ("Put the {who} from Picture 2 into the scene of Picture 1 in place of the person who is there, with the same pose and the same action. "
-          "{pronoun} is wearing {wardrobe}. Keep the place, the light and the camera angle of Picture 1.")
+          "{pronoun} is wearing {wardrobe}. Keep the place, the light, the camera angle and exactly the same framing and size of the person as in Picture 1 (a close-up stays a close-up).")
 TWO = ("Put the {first} from Picture 2 on the left and the {second} from Picture 3 on the right, side by side in the place of Picture 1, close together, both facing the camera, "
        "each one holding out one open hand toward the camera. Keep their faces, hair and clothes exactly as in Pictures 2 and 3. Same place, same light.")
 WITH_PEOPLE = ("narration", "pov", "twist", "rewind")

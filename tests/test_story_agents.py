@@ -315,6 +315,17 @@ def test_the_offer_shot_puts_both_in_the_picture_and_a_branch_never_shows_the_ot
     assert shots[2]["in_shot"] == ["c1"] and shots[3]["in_shot"] == ["c2"]
 
 
+def test_a_character_named_in_a_shot_is_in_the_shot_and_the_other_one_never_is_after_the_choice():
+    brief = {"characters": [{"id": "c1", "name": "Kael"}, {"id": "c2", "name": "Elara"}]}
+    shots = [{"id": "s1", "kind": "narration", "branch": "main", "text": "Kael steps forward.", "still": "close-up of a scarred face", "motion": "push-in", "in_shot": []},
+             {"id": "s2", "kind": "narration", "branch": "main", "text": "Two figures.", "still": "medium shot of Elara standing", "motion": "x", "in_shot": ["c1"]},
+             {"id": "s3", "kind": "narration", "branch": "A", "text": "He grabs you.", "still": "Kael and Elara", "motion": "x", "in_shot": ["c2"]},
+             {"id": "s4", "kind": "rewind", "branch": "B", "text": "What if you chose Elara instead of Kael?", "still": "x", "motion": "x", "in_shot": []},
+             {"id": "s5", "kind": "talk", "branch": "main", "text": "Kael", "still": "", "motion": "x", "in_shot": ["c1"]}]
+    assert sa.infer_in_shot(shots, brief) == 4
+    assert [s["in_shot"] for s in shots] == [["c1"], ["c1", "c2"], ["c1"], ["c1", "c2"], ["c1"]]  # the rewind names both and shows both; a talk keeps its own list
+
+
 def test_the_offers_and_the_choice_are_one_scene_in_the_place_of_the_choice():
     brief = {"title": "T", "world": {"premise": "p", "hour": "night"}, "locations": [{"id": "vent", "description": "A vent shaft."}, {"id": "corridor", "description": "A red-lit corridor."}],
              "characters": [{"id": "c1", "name": "Kael", "role": "r", "gender": "m", "age": 40, "look": "l", "wardrobe": "Fatigues."}, {"id": "c2", "name": "Elara", "role": "r", "gender": "f", "age": 40, "look": "l", "wardrobe": "A white coat."}]}

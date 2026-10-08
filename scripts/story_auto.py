@@ -56,6 +56,7 @@ STEPS = ("story", "cards", "closeups", "stills", "identity", "voices", "animate"
 FAMILY = {"cards": "lab", "closeups": "lab", "stills": "lab", "identity": "lab", "animate": "lab", "qc": "lab", "post": "lab"}  # the app family each step needs ("voices" and "story" do not depend on it)
 CLOSEUP_SEEDS = (11, 22, 33, 44, 55)
 TUNNELS = {8000: 8000, 18188: 8188, 11434: 11434}  # local port -> box port
+IDENTITY_MAJOR = ("the person is not the character", "something in the picture is physically impossible")  # the only judge verdicts that make an identity picture again (the place and the action come from the still, already judged)
 PICTURE_RETRIES = 2  # a picture the judge finds wrong is made again this many times at most (another seed each time, the earlier ones are kept)
 MIN_MOTION = 1.0  # an I2V clip of a person who moves or of hands that act with less picture change than this (frozen) is made again
 MIN_SECONDS_TO_BLINK = 2.5  # a talking clip at least this long with no blink is made again
@@ -279,8 +280,8 @@ class Pipeline:
                 results = sj.judge_images(plan, items, ask)
             finally:
                 ask.unload()
-            wrong = sorted(i for i, r in results.items() if not r["ok"])
-            rounds.append({"judged": len(results), "wrong": {i: results[i]["major"] for i in wrong}})
+            wrong = sorted(i for i, r in results.items() if any(m.startswith(IDENTITY_MAJOR) for m in r["major"]))  # only what a new identity picture can fix: the wrong person, a glitched head
+            rounds.append({"judged": len(results), "wrong": {i: results[i]["major"] for i in wrong}, "other_notes": {i: r["major"] for i, r in results.items() if i not in wrong and r["major"]}})
             (self.run / f"identity_judge_{attempt + 1}.json").write_text(json.dumps(results, indent=1, ensure_ascii=False), encoding="utf-8")
             if not wrong or attempt == PICTURE_RETRIES:
                 break

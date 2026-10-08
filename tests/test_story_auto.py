@@ -167,3 +167,18 @@ def test_a_talking_clip_without_a_blink_and_a_frozen_i2v_clip_are_made_again(tmp
     assert done["retried"]["s001"]["kept"] == "retry" and done["retried"]["s001"]["after"]["blinks"] == 2
     assert done["frozen_retried"]["s003"] == {"before": 0.2, "after": 4.0, "kept": "retry"}
     assert (pipeline.run / "clips" / "s001.mp4").read_bytes() == b"retry"
+
+
+def test_an_identity_picture_is_not_made_again_for_a_problem_of_the_place_or_the_action(tmp_path, monkeypatch):
+    """The place and the action come from the still, already judged: a new Qwen picture would not fix them and costs 45 s. Only the wrong person or a glitched head is made again."""
+    pipeline = identity_project(tmp_path, monkeypatch)
+    events = []
+
+    def ask(prompt, schema, image, seed):
+        return {"place_seen": "x", "sunlight_or_blue_sky": False, "matches_world": 1, "action_visible": False, "collage_or_split_panels": False, "impossible_geometry": False, "same_person": True,
+                "person_visible": True, "garbled_text": False, "problems": []}
+    ask.unload = lambda: events.append("unload")
+    monkeypatch.setattr(sa.sj, "ollama_vision", lambda model: ask)
+    monkeypatch.setattr(sa.sid, "run_jobs", lambda *a, **k: events.append("make") or {})
+    result = pipeline.check_identity(types.SimpleNamespace(model="m", seed=1))
+    assert "make" not in events and result["problems_left"] == [] and set(result["rounds"][0]["other_notes"]) == {"two_shot", "s003"}
