@@ -70,7 +70,7 @@ def example_shots(limit: int = 17) -> list[dict]:
     return out
 
 
-def build_prompt(context: str, params: dict, endings: dict, location_ids: list[str]) -> str:
+def build_prompt(context: str, params: dict, endings: dict, location_ids: list[str], example: bool = True) -> str:
     language = {"en": "English", "fr": "French"}[params["language"]]
     n = target_shots(params["target_seconds"])
     two = params["branches"] >= 2
@@ -98,8 +98,8 @@ def build_prompt(context: str, params: dict, endings: dict, location_ids: list[s
             "handheld run, slow push-in, crane, dolly. For talk and choice shots 'still' is empty and 'motion' describes the acting. fx = {zoom 0.03-0.08, shake 0-1.0 (high only for impacts, chases, crashes), flash true only on "
             "a shock}. camera in [wide, medium, close, pov]. A shot may set 'time' (English, e.g. 'it is dawn: golden sunrise light') only when the hour changes. Characters: exactly two main ones, ids c1 and c2, realistic, "
             "with a profession, an age, a face description and a wardrobe. Make the ending of one branch BAD for you and the other GOOD, with a surprising twist in each.\n\n"
-            f"EXAMPLE of shots from another story (follow this level of detail and this format; do NOT reuse its plot):\n{json.dumps(example_shots(), ensure_ascii=False)}\n\n"
-            "Answer with the JSON of the story only.")
+            + (f"EXAMPLE of shots from another story (follow this level of detail and this format; do NOT reuse its plot):\n{json.dumps(example_shots(), ensure_ascii=False)}\n\n" if example else "")
+            + "Answer with the JSON of the story only.")
 
 
 def validate_story(story: dict, params: dict, endings: dict, location_ids: list[str]) -> list[str]:
@@ -178,9 +178,9 @@ def location_kit(context: str) -> tuple[list[dict], list[str]]:
     return locations, [loc["id"] for loc in locations]
 
 
-def write_story_llm(context: str, params: dict, endings: dict, location_ids: list[str], llm_json, attempts: int = 3) -> tuple[dict | None, list[str]]:
+def write_story_llm(context: str, params: dict, endings: dict, location_ids: list[str], llm_json, attempts: int = 3, example: bool = True) -> tuple[dict | None, list[str]]:
     """The model writes the story with STORY_SCHEMA; it is told the problems of its previous attempt (repairs). Returns (story or None, the problems of the last attempt)."""
-    prompt = build_prompt(context, params, endings, location_ids)
+    prompt = build_prompt(context, params, endings, location_ids, example)
     problems: list[str] = []
     for attempt in range(attempts):
         try:
@@ -221,7 +221,7 @@ def template_story(context: str, params: dict, endings: dict) -> dict:
             "locations": plan["locations"]}
 
 
-def make_story_plan(context: str, given: dict | None = None, seed: int | None = None, llm_json=None, voices: list[dict] | None = None) -> dict:
+def make_story_plan(context: str, given: dict | None = None, seed: int | None = None, llm_json=None, voices: list[dict] | None = None, example: bool = True) -> dict:
     """The whole automatic planning: parameters (with provenance), the story (model if it answers validly, else template), the plan in the format of the production steps."""
     given = dict(given or {})
     endings_given = given.pop("endings", None)  # not a parameter of the engine: it says how each branch ends
@@ -231,7 +231,7 @@ def make_story_plan(context: str, given: dict | None = None, seed: int | None = 
     locations, location_ids = location_kit(context)
     story, problems, source = None, [], "template"
     if llm_json is not None and params["story_source"] in ("auto", "llm"):
-        story, problems = write_story_llm(context, params, endings, location_ids, llm_json)
+        story, problems = write_story_llm(context, params, endings, location_ids, llm_json, example=example)
         source = "llm" if story else f"template (the model never gave a valid story: {problems[:3]})"
     if story is None:
         story = template_story(context, params, endings)

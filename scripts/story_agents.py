@@ -389,7 +389,7 @@ def judge_plan(context: str, plan: dict, trend, llm) -> dict | None:
 
 
 def make_plan(context: str, given: dict | None = None, seed: int | None = None, llm=None, trend_name: str = "you_must_choose", candidates: int = 1, judge: bool = False,
-              outline_candidates: int = 1, voices: list[dict] | None = None, library: lib.StoryLibrary | None = None) -> dict:
+              outline_candidates: int = 1, voices: list[dict] | None = None, library: lib.StoryLibrary | None = None, exclude_examples: set[str] | None = None) -> dict:
     """The whole chain for one context. `llm(prompt, schema, seed=...) -> dict`; None = no model (every stage uses its fallback). With candidates > 1 the whole chain runs several times and the
     judge picks the best."""
     trend = load_trend(trend_name)
@@ -408,10 +408,10 @@ def make_plan(context: str, given: dict | None = None, seed: int | None = None, 
         brief, report_a = run_analyst(context, run_params, trend, llm)
         counts = trend.budget(params["target_seconds"], params["branches"])
         outline, report_p = run_planner(brief, counts, endings, run_params, trend, llm, outline_candidates)
-        examples = library.examples_text(brief, k=2)
+        examples = library.examples_text(brief, k=2, exclude=exclude_examples)
         lines, report_w = run_writer(brief, outline, run_params, trend, llm, examples)
         provisional = [{"kind": b["kind"], "branch": b["branch"], "text": l["text"], "location": l["location"], "in_shot": l.get("in_shot", [])} for b, l in zip(outline["beats"], lines)]
-        directions, report_d = run_director(brief, provisional, run_params, trend, llm, library.director_examples_text(brief, k=2))
+        directions, report_d = run_director(brief, provisional, run_params, trend, llm, library.director_examples_text(brief, k=2, exclude=exclude_examples))
         story = assemble_story(brief, outline, lines, directions, endings, trend)
         rhythm = rhythm_pass(story["shots"], trend)
         location_ids = [loc["id"] for loc in brief["locations"]]

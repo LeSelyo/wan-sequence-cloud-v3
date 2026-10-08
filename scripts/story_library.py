@@ -63,12 +63,12 @@ class StoryLibrary:
                 entry["scores"] = scores or entry["scores"]
         self.index_path.write_text(json.dumps(self.entries, indent=1, ensure_ascii=False), encoding="utf-8")
 
-    def similar(self, brief: dict, k: int = 2) -> list[dict]:
+    def similar(self, brief: dict, k: int = 2, exclude: set[str] | None = None) -> list[dict]:
         """The k approved stories whose keywords overlap most with the brief's (keywords, roles, setting)."""
         wanted = tokens(" ".join(brief.get("keywords", [])) + " " + brief["world"]["setting"] + " " + brief["world"]["premise"] + " " + " ".join(c["role"] for c in brief["characters"]))
         scored = []
         for entry in self.entries:
-            if not entry["approved"]:
+            if not entry["approved"] or (exclude and entry["id"] in exclude):
                 continue
             overlap = len(wanted & set(entry["keywords"])) / max(1, len(wanted | set(entry["keywords"])))
             scored.append((overlap, entry))
@@ -79,10 +79,10 @@ class StoryLibrary:
         path = Path(entry["plan"])
         return json.loads((path if path.is_absolute() else ROOT / path).read_text(encoding="utf-8"))
 
-    def examples_text(self, brief: dict, k: int = 2) -> str:
+    def examples_text(self, brief: dict, k: int = 2, exclude: set[str] | None = None) -> str:
         """Spoken lines of approved stories, as STYLE examples: the hook, an exchange of the offers, the twist of each ending (about 20 short lines per story)."""
         blocks = []
-        for entry in self.similar(brief, k):
+        for entry in self.similar(brief, k, exclude):
             shots = self.load_plan(entry)["shots"]
             hook = shots[:3]
             talks = [s for s in shots if s["kind"] == "talk"][:4]
@@ -91,10 +91,10 @@ class StoryLibrary:
             blocks.append(f"Approved story \"{entry['title']}\" (other plot, copy only the STYLE):\n" + "\n".join(lines))
         return "\n".join(blocks)
 
-    def director_examples_text(self, brief: dict, k: int = 2) -> str:
+    def director_examples_text(self, brief: dict, k: int = 2, exclude: set[str] | None = None) -> str:
         """A few picture + camera pairs of approved stories: the first (grandiose) shot, a pov, a fast action shot, a twist."""
         blocks = []
-        for entry in self.similar(brief, k):
+        for entry in self.similar(brief, k, exclude):
             shots = [s for s in self.load_plan(entry)["shots"] if s.get("still")]
             picks = [shots[0], next((s for s in shots if s["kind"] == "pov"), shots[1]), next((s for s in shots if (s.get("fx") or {}).get("shake", 0) >= 0.9), shots[2]), next((s for s in shots if s["kind"] == "twist"), shots[-1])]
             blocks.append(f"Approved story \"{entry['title']}\":\n" + "\n".join(f"  still: {s['still']}\n  motion: {s['motion']}" for s in picks))

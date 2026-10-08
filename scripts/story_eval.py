@@ -73,7 +73,8 @@ def make(method: str, entry: dict, llm, judge: bool, seed: int) -> tuple[dict, f
         plan = json.loads(Path(entry["hand"]).read_text(encoding="utf-8"))
         plan.setdefault("agents", {})
     elif method == "chain":
-        plan = sa.make_plan(entry["context"], given, seed, llm, judge=judge, outline_candidates=entry.get("outline_candidates", 1))
+        # fair test: the story written by hand FOR this context is never shown to the chain as an example of itself
+        plan = sa.make_plan(entry["context"], given, seed, llm, judge=judge, outline_candidates=entry.get("outline_candidates", 1), exclude_examples=set(entry.get("exclude_examples", [])))
     elif method == "single":
         plan = sw.make_story_plan(entry["context"], given, seed, (lambda prompt, schema: llm(prompt, schema, seed=seed)) if llm else None)
         plan.setdefault("agents", {})
