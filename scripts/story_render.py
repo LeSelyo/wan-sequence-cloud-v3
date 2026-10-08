@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import random
 import re
 import subprocess
 import sys
@@ -23,7 +24,7 @@ import wave
 from pathlib import Path
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFont
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import music_timing as mt  # noqa: E402
@@ -39,6 +40,9 @@ CHOICE_MIN_SECONDS = 3.2
 RING_SECONDS_BEFORE_END = 0.35
 RING_START_SECONDS = 0.5  # the voice says "now you must choose" first, then the ring empties
 RING_CENTER_Y = 0.12  # top of the frame: the faces stay free
+SUB_PIXELS = 84  # the size of the spoken word (it was 118: too big)
+SUB_Y = 0.71  # and its height in the frame (it was 0.64): lower, clear of the faces, above the TikTok caption zone
+GLITCH_STRENGTHS = (1.0, 0.7, 0.45, 0.2)  # one glitch frame each (1/30 s), then the clean word: the word hits, then it is calm and easy to read
 GRADE = "eq=contrast=1.05:saturation=0.9:gamma=1.22,unsharp=5:5:0.6:5:5:0.0,noise=alls=5:allf=t,vignette=angle=PI/4.5"  # the look every shot gets: cold, shadows lifted (the pictures are very dark), a little grain
 
 
@@ -94,12 +98,12 @@ def _font(size: int) -> ImageFont.FreeTypeFont:
     return ImageFont.truetype(str(FONT_BOLD if FONT_BOLD.exists() else FONT_FALLBACK), size)
 
 
-def word_image(word: str, size: tuple[int, int] = SIZE, y_fraction: float = 0.64) -> Image.Image:
+def word_image(word: str, size: tuple[int, int] = SIZE, y_fraction: float = SUB_Y, pixels: int | None = None) -> Image.Image:
     """One transparent frame with the word: white capitals, thick black outline, centred, shrunk if the word is wider than the frame."""
     image = Image.new("RGBA", size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
     lines = word.upper().split(chr(10))
-    pixels = 118 if len(lines) == 1 else 76
+    pixels = pixels or (SUB_PIXELS if len(lines) == 1 else 76)
     font = _font(pixels)
     while max(draw.textlength(line, font=font) for line in lines) > size[0] * 0.9 and pixels > 30:
         pixels -= 6
@@ -108,6 +112,41 @@ def word_image(word: str, size: tuple[int, int] = SIZE, y_fraction: float = 0.64
     for index, line in enumerate(lines):
         draw.text((size[0] / 2, top + index * pixels * 1.1), line, font=font, fill=(255, 255, 255, 255), anchor="mm", stroke_width=max(4, pixels // 11), stroke_fill=(0, 0, 0, 255))
     return image
+
+
+def _tint(image: Image.Image, color: tuple[int, int, int]) -> Image.Image:
+    """The same shape (same transparency) in another colour."""
+    layer = Image.new("RGBA", image.size, color + (0,))
+    layer.putalpha(image.getchannel("A"))
+    return layer
+
+
+def glitch_frame(clean: Image.Image, strength: float, rnd: random.Random) -> Image.Image:
+    """The word hit by a glitch: a red and a cyan copy pulled apart (RGB split) behind the clean word, and a few horizontal bands torn sideways. strength 1 = hard, 0 = clean.
+    The clean word stays on top of the split so it is always readable."""
+    if strength <= 0:
+        return clean
+    bbox = clean.getbbox()
+    if bbox is None:
+        return clean
+    shift = max(1, int(round(16 * strength)))
+    out = Image.new("RGBA", clean.size, (0, 0, 0, 0))
+    for color, dx in (((255, 30, 70), shift), ((0, 230, 255), -shift)):
+        out.alpha_composite(ImageChops.offset(_tint(clean, color), dx, 0))
+    out.alpha_composite(clean)
+    for _ in range(2 + int(2 * strength)):
+        band_h = rnd.randint(6, 16)
+        y0 = rnd.randint(bbox[1], max(bbox[1], bbox[3] - band_h))
+        band = out.crop((0, y0, out.width, y0 + band_h))
+        out.paste((0, 0, 0, 0), (0, y0, out.width, y0 + band_h))
+        out.alpha_composite(ImageChops.offset(band, rnd.choice((-1, 1)) * rnd.randint(8, 26) * max(1, int(round(strength * 1.5))) // 1, 0), (0, y0))
+    return out
+
+
+def glitch_sequence(clean: Image.Image, seed: str) -> list[Image.Image]:
+    """The frames of a word's entrance: glitch frames (strong to light) and, last, the clean word."""
+    rnd = random.Random(seed)
+    return [glitch_frame(clean, strength, rnd) for strength in GLITCH_STRENGTHS] + [clean]
 
 
 def kb_box(t: float, seconds: float, size: tuple[int, int] = SIZE, zoom_end: float = 1.14, drift: tuple[float, float] = (0.0, -0.02)) -> tuple[float, float, float, float]:
@@ -191,22 +230,40 @@ def kenburns_frames(card: Image.Image, seconds: float, **kwargs):
         yield base.resize(SIZE, Image.BICUBIC, box=box)
 
 
-def subtitle_overlay(windows: list[tuple[str, float, float]], seconds: float, work: Path) -> Path | None:
-    """The one-word subtitles of a shot as a list for ffmpeg's concat demuxer (an image per word, a transparent image in the gaps); returns the list file."""
+def subtitle_overlay(windows: list, seconds: float, work: Path) -> Path | None:
+    """The on-screen words of a shot as a list for ffmpeg's concat demuxer (an image per frame of change, a transparent image in the gaps); returns the list file.
+    A window is (text, start, end) or (text, start, end, options): options = {"y": fraction of the height, "pixels": font size, "glitch": False} (a title can be placed and sized apart).
+    Every word ENTERS with a glitch (see glitch_frame) of a few frames and is then perfectly clean until the next word."""
     if not windows:
         return None
     work.mkdir(parents=True, exist_ok=True)
     blank = work / "blank.png"
     Image.new("RGBA", SIZE, (0, 0, 0, 0)).save(blank)
+    frame = 1.0 / FPS
     lines, cursor = [], 0.0
-    for index, (word, start, end) in enumerate(windows):
+
+    def entry(path: Path, duration: float) -> None:
+        lines.extend([f"file '{path.resolve().as_posix()}'", f"duration {max(duration, 0.001):.4f}"])
+
+    for index, window in enumerate(windows):
+        word, start, end = window[0], window[1], window[2]
+        options = window[3] if len(window) > 3 else {}
         if start > cursor + 1e-3:
-            lines += [f"file '{blank.resolve().as_posix()}'", f"duration {start - cursor:.3f}"]
-        path = work / f"w{index:02d}.png"
-        word_image(word).save(path)
-        lines += [f"file '{path.resolve().as_posix()}'", f"duration {end - start:.3f}"]
-        cursor = end
-    lines += [f"file '{blank.resolve().as_posix()}'", f"duration {max(0.04, seconds - cursor + 0.2):.3f}"]
+            entry(blank, start - cursor)
+        clean = word_image(word, y_fraction=options.get("y", SUB_Y), pixels=options.get("pixels"))
+        frames = glitch_sequence(clean, f"{word}-{index}") if options.get("glitch", True) else [clean]
+        remaining = end - start
+        for k, image in enumerate(frames):
+            path = work / f"w{index:03d}_{k}.png"
+            image.save(path)
+            last = k == len(frames) - 1
+            duration = remaining if last else min(frame, remaining)
+            if duration <= 0:
+                break
+            entry(path, duration)
+            remaining -= duration
+        cursor = max(end, start)
+    entry(blank, max(0.04, seconds - cursor + 0.2))
     lines.append(f"file '{blank.resolve().as_posix()}'")  # the concat demuxer ignores the duration of the last entry
     listing = work / "words.ffconcat"
     listing.write_text("\n".join(lines), encoding="utf-8")

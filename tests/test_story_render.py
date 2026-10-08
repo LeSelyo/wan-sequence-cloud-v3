@@ -51,3 +51,29 @@ def test_subtitle_words_follow_the_real_times_when_the_counts_match_and_are_spre
 def test_a_two_line_end_card_fits_the_frame():
     card = sr.word_image("Would you have chosen" + chr(10) + "Ilse?", y_fraction=0.5)
     assert card.size == sr.SIZE and card.getbbox() is not None and card.getbbox()[0] > 0 and card.getbbox()[2] < sr.SIZE[0]
+
+
+def test_a_word_enters_with_a_glitch_that_dies_out_and_ends_perfectly_clean():
+    import random
+    clean = sr.word_image("RAIN")
+    frames = sr.glitch_sequence(clean, "RAIN-0")
+    assert len(frames) == len(sr.GLITCH_STRENGTHS) + 1 and frames[-1] is clean and all(f.size == sr.SIZE for f in frames)
+    hard, light = frames[0], frames[len(sr.GLITCH_STRENGTHS) - 1]
+    assert list(hard.getdata()) != list(clean.getdata())  # the first frame is hit
+    wide = lambda im: (im.getbbox()[2] - im.getbbox()[0])
+    assert wide(hard) > wide(clean) and wide(hard) >= wide(light)  # the colour split widens the word, less and less
+    assert sr.glitch_frame(clean, 0, random.Random(1)) is clean
+
+
+def test_the_subtitle_is_smaller_and_lower_than_before_and_a_title_can_be_placed_apart():
+    assert sr.SUB_PIXELS < 100 and sr.SUB_Y > 0.66
+    word = sr.word_image("FLOOD")
+    top = sr.word_image("TITLE", y_fraction=0.18, pixels=70)
+    assert word.getbbox()[1] > sr.SIZE[1] * 0.64 and top.getbbox()[3] < sr.SIZE[1] * 0.30
+
+
+def test_overlay_list_has_glitch_frames_then_the_clean_word_and_never_a_negative_duration(tmp_path):
+    listing = sr.subtitle_overlay([("RAIN", 0.1, 0.9), ("FALLS", 0.9, 0.95)], 1.5, tmp_path)
+    text = listing.read_text(encoding="utf-8")
+    assert text.count("w000_") == len(sr.GLITCH_STRENGTHS) + 1 and "w001_0" in text
+    assert all(float(line.split()[1]) > 0 for line in text.splitlines() if line.startswith("duration"))

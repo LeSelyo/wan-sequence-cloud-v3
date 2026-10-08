@@ -44,6 +44,41 @@ def portrait_prompt(c: dict, style: dict, loc: dict | None) -> str:
             f"{ss.style_prompt(style, (loc or {}).get('tags', []))}")
 
 
+def closeup_prompt(c: dict, style: dict, loc: dict | None) -> str:
+    """A TIGHT portrait for the talking shots: the face fills a third of the frame, so the model has real pixels for the eyes, the eyelids and the skin (a wider portrait gave grainy eyes)."""
+    place = f", behind them {loc['description']} out of focus" if loc else ""
+    return (f"tight head-and-shoulders close-up portrait of {character_text(c)}{place}, the face centered in the frame and filling a third of it, symmetrical composition, looking straight at the camera, mouth slightly open as if speaking, "
+            f"extremely sharp detailed eyes with clear eyelids and eyelashes, natural skin texture, soft key light on the face, photorealistic, {ss.style_prompt(style, (loc or {}).get('tags', []))}")
+
+
+def make_closeups(plan: dict, out: Path, seeds: list[int]) -> dict:
+    """Several tight portraits per character (one per seed) in <out>/closeups/char_<id>_close_<seed>.png, listed in cards.json under characters[id]["closeup_candidates"]: pick one with set_closeup."""
+    cards = json.loads((out / "cards.json").read_text(encoding="utf-8"))
+    folder = out / "closeups"
+    folder.mkdir(exist_ok=True)
+    first_loc = plan["locations"][0]
+    for c in plan["characters"]:
+        found = cards["characters"][c["id"]].setdefault("closeup_candidates", [])
+        for seed in seeds:
+            path = folder / f"char_{c['id']}_close_{seed}.png"
+            prompt = closeup_prompt(c, cards["style"], first_loc)
+            result = tr.run_still({"engine": "krea2", "prompt": prompt, "width": PORTRAIT[0], "height": PORTRAIT[1], "seed": seed}, path, log=RESULTS / "logs" / "jobs.jsonl", registry=REGISTRY,
+                                  label=f"{plan.get('title', 'story')}_{c['id']}_close_{seed}")
+            print(f"{c['id']} close-up seed {seed}: {result['seconds']} s", flush=True)
+            found.append({"file": str(path.resolve().relative_to(ROOT)).replace("\\", "/"), "seed": seed, "prompt": prompt, "seconds": result["seconds"]})
+    (out / "cards.json").write_text(json.dumps(cards, indent=1, ensure_ascii=False), encoding="utf-8")
+    return cards
+
+
+def set_closeup(out: Path, character_id: str, seed: int) -> dict:
+    """The close-up of a character = the candidate with this seed (the talking shots and the choice card start from it)."""
+    cards = json.loads((out / "cards.json").read_text(encoding="utf-8"))
+    entry = next(c for c in cards["characters"][character_id]["closeup_candidates"] if c["seed"] == seed)
+    cards["characters"][character_id]["closeup"] = entry
+    (out / "cards.json").write_text(json.dumps(cards, indent=1, ensure_ascii=False), encoding="utf-8")
+    return entry
+
+
 def build_cards(plan: dict, out: Path, style_seed: int = 0, only: str | None = None) -> dict:
     out.mkdir(parents=True, exist_ok=True)
     library = ss.StyleLibrary()
@@ -100,10 +135,19 @@ def main() -> None:
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--style-seed", type=int, default=0)
     parser.add_argument("--only", choices=["locations", "characters"])
+    parser.add_argument("--closeups", help="comma-separated seeds: make tight portraits of every character (one per seed) in OUT/closeups")
+    parser.add_argument("--pick-closeup", metavar="ID=SEED", help="use the candidate of this seed as the close-up of the character, e.g. c2=777")
     parser.add_argument("--redo", metavar="LOCATION_ID", help="make this one location card again with --seed (the old picture is kept)")
     parser.add_argument("--seed", type=int, help="seed for --redo")
     args = parser.parse_args()
     started = time.time()
+    if args.closeups:
+        make_closeups(json.loads(args.plan.read_text(encoding="utf-8")), args.out, [int(v) for v in args.closeups.split(",")])
+        return
+    if args.pick_closeup:
+        who, seed = args.pick_closeup.split("=")
+        print(set_closeup(args.out, who, int(seed))["file"])
+        return
     if args.redo:
         redo_location(json.loads(args.plan.read_text(encoding="utf-8")), args.out, args.redo, args.seed if args.seed is not None else random.randrange(2**31))
         return

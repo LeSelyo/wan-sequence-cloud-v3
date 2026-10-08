@@ -111,6 +111,12 @@ def padded_wav(source: Path | None, seconds: float, out: Path) -> Path:
     return out
 
 
+def portrait_of(cards: dict, character_id: str) -> str:
+    """The picture a character speaks from: the tight close-up when one was picked (more pixels on the face), else the first portrait."""
+    entry = cards["characters"][character_id]
+    return (entry.get("closeup") or entry["portrait"])["file"]
+
+
 def animate_jobs(plan: dict, cards: dict, run: Path) -> list[dict]:
     """Every clip to make: id, source picture, audio (the voice line for a talking shot, silence otherwise), seconds, motion prompt. A talking shot starts from the portrait of its speaker, a choice
     from the portraits of the two characters (each one waiting, silent), every other shot from its own still."""
@@ -122,13 +128,13 @@ def animate_jobs(plan: dict, cards: dict, run: Path) -> list[dict]:
         look = f"{shot['visual']}, {LOOK}"
         if shot["kind"] == "talk":
             who = characters[shot["speaker"]]
-            portrait = ROOT / cards["characters"][shot["speaker"]]["portrait"]["file"]
+            portrait = ROOT / portrait_of(cards, shot["speaker"])
             jobs.append({"id": shot["id"], "source": portrait, "voice": voice, "seconds": seconds,
                          "prompt": f"{who['name']}, a {who['age']}-year-old {'woman' if who['gender'] == 'f' else 'man'} {who['role']}, {look}"})
         elif shot["kind"] == "choice":
             for who_id in shot["in_shot"][:2]:
                 who = characters[who_id]
-                portrait = ROOT / cards["characters"][who_id]["portrait"]["file"]
+                portrait = ROOT / portrait_of(cards, who_id)
                 jobs.append({"id": f"{shot['id']}_{who_id}", "source": portrait, "voice": None, "seconds": seconds,
                              "prompt": f"{who['name']}, a {who['age']}-year-old {'woman' if who['gender'] == 'f' else 'man'} {who['role']}, {shot['visual']}, mouth closed, {LOOK}"})
         else:
