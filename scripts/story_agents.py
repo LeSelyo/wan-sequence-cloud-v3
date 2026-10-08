@@ -557,6 +557,7 @@ def assemble_story(brief: dict, outline: dict, lines: list[dict], directions: li
     for beat, line, direction in zip(outline["beats"], lines, directions):
         shot = {"kind": beat["kind"], "branch": beat["branch"], "speaker": beat["speaker"], "text": line["text"].strip(), "location": line["location"], "in_shot": [i for i in line.get("in_shot", []) if i in ("c1", "c2")],
                 "still": "" if beat["kind"] in ("talk", "choice") else direction["still"].strip(), "motion": direction["motion"].strip(), "camera": direction["camera"], "fx": dict(direction["fx"])}
+        shot["beat"] = {"act": beat["act"], "purpose": beat["purpose"]}  # what the planner wanted from this shot, kept in the plan (it was lost before)
         if ss.changes_the_hour(direction.get("time"), brief["world"].get("hour")):  # the same hour as the story is not a change of hour
             shot["time"] = direction["time"].strip()
         if beat["kind"] == "choice":
