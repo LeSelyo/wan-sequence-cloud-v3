@@ -32,7 +32,7 @@ def remote_command(run: str, names: list[str], model: str, size: tuple[int, int]
 
 
 def run_batch(clips: list[Path], out_dir: Path, box: Box, *, model: str = MODELS["x2"], size: tuple[int, int] = (738, 1280), denoise: float = 1.0, fps: int = 30, interpolate: bool = True,
-              jobs: int = 6, sharp: float = 0.5) -> dict:
+              jobs: int = 6, sharp: float = 0.5, keep_remote: str | None = None) -> dict:
     started = time.time()
     run = uuid.uuid4().hex[:8]
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -45,9 +45,11 @@ def run_batch(clips: list[Path], out_dir: Path, box: Box, *, model: str = MODELS
     worked = time.time() - started - uploaded
     for clip in clips:
         box.get(f"/root/post_out/{run}/{clip.name}", out_dir / clip.name)
+    if keep_remote:  # the box keeps the face-detail clips where the montage on the box reads them: they never have to travel up again
+        box.run(f"mkdir -p {keep_remote} && cp /root/post_out/{run}/*.mp4 {keep_remote}/")
     box.run(f"rm -rf /root/post_in/{run} /root/post_out/{run}")
     return {"clips": len(clips), "seconds": round(time.time() - started, 1), "upload_seconds": round(uploaded, 1), "box_seconds": round(worked, 1), "model": model, "size": list(size),
-            "denoise": denoise, "fps": fps, "interpolate": interpolate, "log": log.strip().splitlines()}
+            "denoise": denoise, "fps": fps, "interpolate": interpolate, "log": log.strip().splitlines(), "kept_on_box": keep_remote}
 
 
 def main() -> None:

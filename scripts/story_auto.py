@@ -33,11 +33,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import clip_post as cp  # noqa: E402
+import remote_render as rr  # noqa: E402
 import face_tools as ft  # noqa: E402
 import s2v_face_test as sft  # noqa: E402
 import s2v_talk as st  # noqa: E402
 import story_cards as sc  # noqa: E402
+import story_agents as ag  # noqa: E402
 import story_engine as se  # noqa: E402
+import story_library as lib  # noqa: E402
 import story_produce as sp  # noqa: E402
 import story_render as sr  # noqa: E402
 import story_stills as sst  # noqa: E402
@@ -155,10 +158,16 @@ class Pipeline:
             self.plan_path.write_text(Path(args.plan).read_text(encoding="utf-8"), encoding="utf-8")
             return {"source": f"given plan {args.plan}"}
         given = {k: v for k, v in {"language": args.language, "target_seconds": args.seconds, "branches": args.branches}.items() if v is not None}
-        llm = None if args.no_llm else (lambda prompt, schema: sw.ollama_story(prompt, schema, args.model, args.seed or 0))
-        plan = sw.make_story_plan(args.context, given, args.seed, llm)
+        llm = None if args.no_llm else ag.ollama(args.model)
+        if args.story_method == "single":  # one call writes the whole plan (kept to compare with the chain)
+            plan = sw.make_story_plan(args.context, given, args.seed, (lambda prompt, schema: llm(prompt, schema, seed=args.seed or 0)) if llm else None)
+        else:  # the chain of agents of the trend (analyst, planner, writer, director + the checks)
+            plan = ag.make_plan(args.context, given, args.seed, llm, trend_name=args.trend, candidates=args.candidates, judge=args.judge, outline_candidates=args.outline_candidates)
         self.plan_path.write_text(json.dumps(plan, indent=1, ensure_ascii=False), encoding="utf-8")
-        return {"source": plan["story_source"], "shots": len(plan["shots"]), "estimated_speech_seconds": plan["estimated_seconds"], "endings": plan["endings"]}
+        judged = (plan.get("agents") or {}).get("judge")
+        lib.StoryLibrary().add(plan, approved=False, author="llm" if llm else "template", scores=judged or {}, entry_id=self.name)  # kept, but only an APPROVED story is ever used as an example
+        return {"source": plan["story_source"], "shots": len(plan["shots"]), "estimated_speech_seconds": plan["estimated_seconds"], "endings": plan["endings"], "judge": judged,
+                "problems_left": (plan.get("agents") or {}).get("problems_left")}
 
     def step_cards(self, args) -> dict:
         plan = self.plan()
@@ -231,13 +240,19 @@ class Pipeline:
         todo = [c for c in sorted((self.run / "clips").glob("*.mp4")) if "_v" not in c.stem and "_retry" not in c.stem and not (self.run / "post" / c.name).exists()]
         if not todo:
             return {"clips": 0}
-        result = cp.run_batch(todo, self.run / "post", self.box)
+        result = cp.run_batch(todo, self.run / "post", self.box, keep_remote=f"{rr.REMOTE_ROOT}/jobs/{self.name}/run/post")
         result.pop("log", None)
         return result
 
     def step_render(self, args) -> dict:
-        result = sr.render_story(self.plan(), self.cards_dir, self.run, self.out)
-        return {"seconds_of_video": result["total_seconds"], "fallback_shots": result["fallback_shots"], "file": str(self.out)}
+        """The montage runs on the box (32 cores, the PC stays free) unless --render-on pc."""
+        if args.render_on == "pc":
+            result = sr.render_story(self.plan(), self.cards_dir, self.run, self.out)
+            return {"where": "pc", "seconds_of_video": result["total_seconds"], "fallback_shots": result["fallback_shots"], "file": str(self.out)}
+        result = rr.render_on_box(self.plan_path, self.cards_dir, self.run, self.out, self.box, self.name)
+        inner = result.get("render", {})
+        return {"where": "box", "seconds_of_video": inner.get("total_seconds"), "fallback_shots": inner.get("fallback_shots"), "uploaded_clips": result["uploaded_clips"],
+                "upload_seconds": result["upload_seconds"], "render_seconds": result["render_seconds"], "file": str(self.out)}
 
     def step_caption(self, args) -> dict:
         plan = self.plan()
@@ -279,15 +294,28 @@ def main() -> None:
     run.add_argument("--lora", choices=list(st.LORAS), default="t2v_1217_low")
     run.add_argument("--model", default="qwen3.6:27b")
     run.add_argument("--no-llm", action="store_true", help="template story, no model")
+    run.add_argument("--trend", default="you_must_choose", help="the trend: its prompts, structure and render preset live in scripts/trends/<trend>.py")
+    run.add_argument("--story-method", choices=["chain", "single"], default="chain")
+    run.add_argument("--candidates", type=int, default=1, help="write the whole story this many times and keep the best (the judge scores them)")
+    run.add_argument("--outline-candidates", type=int, default=2, help="outlines tried by the planner, the best one is kept")
+    run.add_argument("--judge", action="store_true", help="the model scores the finished story 1-10 on seven criteria")
+    run.add_argument("--render-on", choices=["box", "pc"], default="box", help="where the montage (Pillow + ffmpeg) runs: the box by default, the PC stays free")
     run.add_argument("--steps", help="only these steps (comma-separated)")
     run.add_argument("--force", action="store_true", help="make the steps again even when their outputs exist")
     status = sub.add_parser("status")
     status.add_argument("name")
+    approve = sub.add_parser("approve", help="the story of this project is good: it becomes an example for the next stories of the trend")
+    approve.add_argument("name")
     for p in (run, status):
         p.add_argument("--ssh-host", default=os.environ.get("BOX_SSH_HOST", "n1.de.clorecloud.net"))
         p.add_argument("--ssh-port", type=int, default=int(os.environ.get("BOX_SSH_PORT", "1380")))
         p.add_argument("--ssh-key", default=os.environ.get("BOX_SSH_KEY", "~/.ssh/id_ed25519_clore"))
     args = parser.parse_args()
+    if args.command == "approve":
+        plan = json.loads((AUTO / args.name / "plan.json").read_text(encoding="utf-8"))
+        lib.StoryLibrary().add(plan, approved=True, author="user", entry_id=args.name, scores=(plan.get("agents") or {}).get("judge") or {})
+        print(f"{args.name} is now an approved example of the trend")
+        return
     pipeline = Pipeline(args.name, args.ssh_host, args.ssh_port, args.ssh_key)
     if args.command == "status":
         for step, (done, detail) in pipeline.status().items():

@@ -15,7 +15,7 @@ Every step is **resumable**: if the box is closed, the PC sleeps or a step fails
 
 | step | what | where | measured (4090, 150 s video) |
 |---|---|---|---|
-| `story` | the model (Ollama, `qwen3.6:27b`) writes the whole video as a list of **shots** from the context: hook, setup, offers, choice, branch A, rewind, branch B, closing question. The plan is validated (structure, word counts, endings, locations, length) and the model is told what is wrong (3 attempts); if it never gets it right a **template story** with the same structure is used, so the pipeline never stops for lack of a model | box, GPU free | model download 16 GB once; a story is minutes |
+| `story` | **a chain of agents** (`scripts/story_agents.py`, prompts of the trend in `scripts/trends/you_must_choose.py`): the ANALYST reads the context (three sentences or more) and writes a BRIEF (world, hour, places, the two characters with what they promise and their hidden truth, keywords, facts that must appear); the PLANNER builds the outline act by act (clues, both twists, hook title, closing question, caption), best of N; the WRITER writes the spoken lines chunk by chunk; the DIRECTOR writes the picture and the camera move of every shot; the CODE gives the rhythm (camera never three times alike, shake on impacts), the tags (CASE A / ENDING B), the choice card; a CHECKER validates every answer and tells the model what is wrong (3 attempts); a stage that never succeeds falls back to a template for that stage only | Ollama `qwen3.6:27b` on the box, GPU free | model download 16 GB once; a story is minutes |
 | `cards` | the style of the video (art direction read from the context, **the hour of the story too**), a sheet and a portrait per character | Krea2 | ~1 min |
 | `closeups` | 5 tight portraits per character, the one whose face is **centred and about 40 % of the frame** is kept (`scripts/face_tools.py`) | Krea2 | ~1.5 min |
 | `stills` | one picture per shot that is not a close-up (own prompt, same style prompt) | Krea2, 14 s each | ~8 min for 34 |
@@ -23,10 +23,22 @@ Every step is **resumable**: if the box is closed, the PC sleeps or a step fails
 | `animate` | one **Wan 2.2 S2V** clip per shot: the character speaks his line (portrait + voice), a scene moves (still + silence) — the same model is the image-to-video model | ComfyUI native nodes, LoRA `t2v_1217_low` (4 steps) | ~35-45 s per 3 s clip |
 | `qc` | the face of every talking clip is measured (detail / shimmer); a clip that shimmers 35 % more than the median is made again with another seed | PC + box | seconds |
 | `post` | **face-detail pass**: ESRGAN x2 per frame, denoise in time (the grain on eyelids), motion-compensated 16 -> 30 fps, 738x1280 | box GPU + 32 CPU cores | ~7 s per clip in parallel |
-| `render` | cuts, zoom/shake/flash, **glitch words** (a 4-frame hit then a clean word), hook title, branch tags, closing question, graded look (no grain), sound | PC, Pillow + ffmpeg, light | ~5 min |
+| `render` | cuts, zoom/shake/flash, **glitch words** (a 4-frame hit then a clean word), hook title, branch tags, closing question, graded look (no grain), sound | **on the box** (`scripts/remote_render.py`; the PC only sends the plan, the voices and the clips the box does not have, and gets the mp4; `--render-on pc` to run it locally) | ~1 min on the box |
 | `caption` | the text and the hashtags to post with the video | — | — |
 
 The box app is switched by the script between the two families (`krea2` ↔ `s2v`), **one family at a time** (one GPU). A switch costs ~1 minute.
+
+## One folder per TREND
+
+Everything that is specific to a trend lives in `scripts/trends/<trend>.py`: the **constant prompts** of the agents (their words never change, only their `{{slots}}`, filled from the brief), `PROMPT_VERSION`
+(recorded in every plan, with a fingerprint of each prompt), the structure recipe (how many shots each act has for N seconds), the JSON schemas of what each agent answers, the render preset. Another trend =
+another file next to it; the chain, the pipeline and the checks do not change (`story_auto.py run NAME "..." --trend you_must_choose`).
+
+**The library of approved stories** (`scripts/story_library.py`): `story_auto.py approve NAME` stores a story you like; the writer and the director get the two most similar approved stories as STYLE
+examples. A story nobody approved is stored but never used as an example. The first entry is the story Claude wrote by hand for the first 2m30 video.
+
+**Proof that it works** (`scripts/story_eval.py`): the same contexts are written by `chain`, `single` (one call) and `hand` (a person) and measured the same way (structure problems left, hook keywords, context words
+kept, variety, repeated word pairs, pictures, endings, seconds); `--judge` adds a 1-10 score by the model on seven criteria. Reports in `results/story_trend/story_tests/`.
 
 ## Everything has a default drawn by the seed and can be overridden
 

@@ -35,8 +35,8 @@ SIZE = (720, 1280)
 K = SIZE[1] / 1024  # everything on screen was designed on a 576x1024 frame: sizes are multiplied by K
 FPS = 30
 ORANGE = (255, 122, 0)
-FONT_BOLD = Path(r"C:\Windows\Fonts\impact.ttf")
-FONT_FALLBACK = Path(r"C:\Windows\Fonts\arialbd.ttf")
+FONT_BOLD = ROOT / "assets" / "fonts" / "Anton-Regular.ttf"  # open licence (SIL OFL), the same file on the PC and on the box: the montage looks the same wherever it runs
+FONT_FALLBACK = Path(r"C:\Windows\Fonts\impact.ttf")
 TAIL = {"talk": 0.25, "choice": 0.0, "narration": 0.4, "pov": 0.4, "twist": 2.4, "rewind": 0.5}  # silence after the line, per kind of shot (the twist keeps the screen: the impact rings, the card shows)
 CHOICE_MIN_SECONDS = 3.2
 RING_SECONDS_BEFORE_END = 0.35
@@ -103,7 +103,10 @@ def aligned_windows(text: str, aligned: list[dict] | None, seconds: float) -> li
 
 
 def _font(size: int) -> ImageFont.FreeTypeFont:
-    return ImageFont.truetype(str(FONT_BOLD if FONT_BOLD.exists() else FONT_FALLBACK), int(size))
+    for candidate in (FONT_BOLD, FONT_FALLBACK, Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf")):
+        if candidate.exists():
+            return ImageFont.truetype(str(candidate), int(size))
+    return ImageFont.load_default()
 
 
 def word_image(word: str, size: tuple[int, int] = SIZE, y_fraction: float = SUB_Y, pixels: int | None = None) -> Image.Image:
@@ -508,7 +511,7 @@ def main() -> None:
     parser.add_argument("--no-sound", action="store_true")
     args = parser.parse_args()
     result = render_story(json.loads(args.plan.read_text(encoding="utf-8")), args.cards.resolve(), args.run, args.out, sound=not args.no_sound)
-    print(json.dumps(result, indent=1))
+    print("RESULT " + json.dumps(result))  # one line: the remote render is read back from the log
 
 
 if __name__ == "__main__":

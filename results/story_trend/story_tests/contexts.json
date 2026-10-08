@@ -1,0 +1,7 @@
+[
+ {"id": "flood_3_sentences", "seconds": 150, "context": "A flooded city at night. Two strangers on a rescue boat each offer to save you: a ship captain and a doctor.",
+  "hand": "results/story_trend/plans/the_last_city_150_en.json"},
+ {"id": "moon_3_sentences", "seconds": 120, "context": "The moon is breaking apart above a huge spaceship. The hull is cracking and the crew is panicking. Two crew members each offer you a seat on the last escape pod: an engineer and a priest."},
+ {"id": "bunker_6_sentences", "seconds": 120, "context": "Year 2091, you wake up alone in an underground bunker after the surface war. The air filters are failing and the lights flicker. A soldier with a radio and a nurse with the last medicine each tell you to follow them. One of them knows the bunker is not what it seems. The only exit door opens once, at dawn."},
+ {"id": "snow_fr", "seconds": 90, "language": "fr", "context": "Une ville de montagne est ensevelie sous la neige depuis trois jours. Le téléphérique est en panne et la nuit tombe. Deux inconnus vous proposent de vous sauver : un guide de haute montagne et une médecin."}
+]
