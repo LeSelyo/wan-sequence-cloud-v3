@@ -282,6 +282,8 @@ def validate_directions(answer: dict, picked: list[dict], trend) -> list[str]:
         return [f"{len(items)} directions but {len(picked)} shots: one per shot, same order"]
     problems = []
     for i, (item, shot) in enumerate(zip(items, picked)):
+        if se.count_words(item.get("motion", "")) < 4:  # every shot needs its acting or camera move, a talking shot too
+            problems.append(f"shot {i + 1}: a motion of at least 4 words is needed (for a talk shot: how the character acts while speaking)")
         if shot["kind"] in ("talk", "choice"):
             continue
         words = se.count_words(item.get("still", ""))
@@ -289,8 +291,6 @@ def validate_directions(answer: dict, picked: list[dict], trend) -> list[str]:
             problems.append(f"shot {i + 1}: the still has {words} words, 20 to 45 are needed")
         if any(re.search(rf"\b{w}\b", item.get("still", "").lower()) for w in trend.FORBIDDEN_IN_PICTURES):
             problems.append(f"shot {i + 1}: the still must not ask for text, letters, captions, a collage or panels")
-        if se.count_words(item.get("motion", "")) < 5:
-            problems.append(f"shot {i + 1}: a motion of at least 5 words is needed")
     return problems
 
 
@@ -402,6 +402,7 @@ def make_plan(context: str, given: dict | None = None, seed: int | None = None, 
     provenance["endings"] = "given" if endings_given else "rng"
     library = library if library is not None else lib.StoryLibrary()
     best = None
+    unload = getattr(llm, "unload", None)
     for k in range(max(1, candidates)):
         started = time.time()
         run_params = {**params, "seed": params["seed"] + 1000 * k}
@@ -426,6 +427,8 @@ def make_plan(context: str, given: dict | None = None, seed: int | None = None, 
         key = (plan["agents"].get("judge") or {}).get("mean", 0) - len(problems)
         if best is None or key > best[0]:
             best = (key, plan)
+    if unload:
+        unload()
     return best[1]
 
 
@@ -448,10 +451,18 @@ def ollama(model: str = "qwen3.6:27b", host: str = "http://127.0.0.1:11434", tem
     import httpx
 
     def call(prompt: str, schema: dict, seed: int = 0) -> dict:
-        response = httpx.post(host.rstrip("/") + "/api/chat", json={"model": model, "stream": False, "think": False, "format": schema, "messages": [{"role": "user", "content": prompt}],
+        response = httpx.post(host.rstrip("/") + "/api/chat", json={"model": model, "stream": False, "think": False, "format": schema, "keep_alive": "10m", "messages": [{"role": "user", "content": prompt}],
                                                                  "options": {"num_ctx": 12288, "temperature": temperature, "top_p": 0.95, "seed": seed, "num_predict": 7000}}, timeout=1800)
         response.raise_for_status()
         return json.loads(response.json()["message"]["content"])
+
+    def unload() -> None:
+        """Free the GPU for the image and video jobs: the model stays loaded between the calls of one story (a reload costs a minute) and is released at the end of it."""
+        try:
+            httpx.post(host.rstrip("/") + "/api/generate", json={"model": model, "keep_alive": 0}, timeout=60)
+        except Exception:
+            pass
+    call.unload = unload
     return call
 
 

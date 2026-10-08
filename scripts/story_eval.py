@@ -84,6 +84,8 @@ def make(method: str, entry: dict, llm, judge: bool, seed: int) -> tuple[dict, f
         plan = sa.make_plan(entry["context"], given, seed, None)
     else:
         raise SystemExit(f"unknown method {method}")
+    if llm is not None and hasattr(llm, "unload"):
+        llm.unload()
     return plan, round(time.time() - started, 1)
 
 

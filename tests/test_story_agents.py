@@ -139,3 +139,24 @@ def test_the_library_gives_the_most_similar_approved_story_and_never_an_unapprov
     assert [e["id"] for e in similar] == ["flood"]  # the unapproved one is never used
     text = library.examples_text(brief, k=2)
     assert "Day nine of the great flood" in text and "talk/c1" in text and "still:" in library.director_examples_text(brief, k=1)
+
+
+def test_the_acts_always_come_in_the_order_of_the_story_in_the_budget_the_prompt_and_the_template_outline():
+    """A bug found by the first real run: the budget listed choice and rewind LAST, the planner was told that order and the checker expected the other one, so it never succeeded."""
+    counts = TREND.budget(150, 2)
+    assert list(counts) == ["hook", "setup", "offers", "choice", "branch_a", "rewind", "branch_b"]
+    assert [line.split(":")[0].lstrip("- ") for line in sa.structure_text(counts).splitlines()] == list(counts)
+    brief = sa.heuristic_brief(CONTEXT, {"seed": 1, "language": "en", "tone": "tense"}, TREND)
+    endings = {"A": "bad", "B": "good"}
+    outline = sa.template_outline(brief, counts, endings, {"seed": 1, "language": "en"}, TREND)
+    assert sa.validate_outline(outline, counts, endings, TREND) == []  # the fallback outline satisfies the very checker that rejects the model's
+    assert list(TREND.budget(60, 1)) == ["hook", "setup", "offers", "choice", "branch_a"]
+
+
+def test_a_talking_shot_needs_a_motion_too_so_the_director_is_asked_again():
+    shots = [{"kind": "talk", "text": "x"}, {"kind": "narration", "text": "y"}]
+    answer = {"directions": [{"still": "", "motion": "", "camera": "close", "fx": {"zoom": 0.05, "shake": 0, "flash": False}},
+                             {"still": "a wide photograph of a flooded street at night with a boat and a light, rain falling hard", "motion": "slow push-in on the boat, rain, handheld", "camera": "wide",
+                              "fx": {"zoom": 0.05, "shake": 0, "flash": False}}]}
+    problems = sa.validate_directions(answer, shots, TREND)
+    assert len(problems) == 1 and problems[0].startswith("shot 1: a motion")

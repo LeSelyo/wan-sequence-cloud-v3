@@ -10,7 +10,7 @@ the BRIEF that the analyst agent extracts from the context. `PROMPT_VERSION` cha
 from __future__ import annotations
 
 NAME = "you_must_choose"
-PROMPT_VERSION = "2026-10-08.2"
+PROMPT_VERSION = "2026-10-08.3"
 KINDS = ["narration", "talk", "pov", "choice", "twist", "rewind"]
 CAMERAS = ["wide", "medium", "close", "pov"]
 LOCATION_TAGS = ["space", "sea", "city", "shelter", "window", "forest", "desert", "ice", "underground"]  # the tags that make the style prompt force what a kind of place must always show
@@ -36,7 +36,7 @@ def budget(seconds: float, branches: int) -> dict[str, int]:
     counts["choice"] = 1
     if two:
         counts["rewind"] = 1
-    return counts
+    return {act: counts[act] for act in ACT_PURPOSE if act in counts}  # always in the order of the story: the planner is told this order and the checker expects it
 
 
 ACT_PURPOSE = {
@@ -122,7 +122,7 @@ For each shot below (its spoken line is given), write the PICTURE and the CAMERA
 
 RULES
 - "still" = ONE concrete filmable photograph (what is in the frame, the angle, the light), 20 to 45 words, in English, a single continuous scene. NEVER ask for text, letters, captions, logos, a collage, panels or a
-  split screen. Characters: use their look and wardrobe from the brief. For kind talk and choice leave "still" empty (the portrait of the character is used).
+  split screen. Characters: use their look and wardrobe from the brief. For kind talk and choice leave "still" empty (the portrait of the character is used) but ALWAYS write the "motion": how the character acts while speaking (gesture, glance, expression, what moves around).
 - "motion" = the camera move and what moves in the picture, 10 to 25 words, English. Use a DIFFERENT camera move from the neighbouring shots, from this list or similar: {{camera_moves}}. At least one third of
   the shots must be dynamic (fast flight, chase, whip pan, impact).
 - "fx": zoom 0.03 to 0.08; shake 0 to 1 (above 0.7 only on impacts, chases, crashes); flash true only on a shock.
