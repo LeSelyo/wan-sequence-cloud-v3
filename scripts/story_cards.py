@@ -82,7 +82,9 @@ def set_closeup(out: Path, character_id: str, seed: int) -> dict:
 def build_cards(plan: dict, out: Path, style_seed: int = 0, only: str | None = None) -> dict:
     out.mkdir(parents=True, exist_ok=True)
     library = ss.StyleLibrary()
-    style = ss.style_from_context(plan["context"], random.Random(style_seed))
+    world = (plan.get("brief") or {}).get("world") or {}
+    tags = [tag for loc in plan["locations"] for tag in loc.get("tags", [])]
+    style = ss.style_from_context(plan["context"], random.Random(style_seed), tags=tags, hour=world.get("hour"), atmosphere=" ".join([world.get("atmosphere", ""), world.get("setting", "")]))
     style_id = library.add(style, origin="auto", context=plan["context"], seed=style_seed)
     cards = {"style_id": style_id, "style": style, "style_seed": style_seed, "negative_prompt_style": ss.negative_prompt(style), "locations": {}, "characters": {}, "plan": plan.get("title"),
              "note": "Krea2 has no negative prompt: the style forbids things through its wording only."}

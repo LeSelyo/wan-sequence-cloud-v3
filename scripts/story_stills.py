@@ -24,12 +24,17 @@ REGISTRY = RESULTS / "generations.json"
 SIZE = (576, 1024)
 
 
+STILL_PROMPT_VERSION = "2026-10-09.1"  # 2026-10-09.1: the place of the shot is WRITTEN in the prompt; a shot's own hour no longer turns the light to "warm natural light" unless it is a daylight hour
+
+
 def shot_prompt(shot: dict, plan: dict, style: dict) -> str:
-    """The picture prompt: what the shot shows + the art direction of the video. A shot with its own `time` (a dawn at the end of a night story) replaces the hour and the lighting of the style."""
+    """The picture prompt: what the shot shows + WHERE it is (the description of its location, written by the world: "the freezing metal walkways leading to the airlock", so the picture cannot drift to a
+    generic sunlit arcade) + the art direction of the video. A shot with its own `time` (a dawn at the end of a night story) changes the hour of the style only when that hour is a daylight one."""
     location = next((l for l in plan["locations"] if l["id"] == shot["location"]), {})
-    if shot.get("time"):
-        style = {**style, "lighting": "warm natural light", "forced_elements": {**style.get("forced_elements", {}), "time": shot["time"]}}
-    return f"{shot['still']}, vertical composition, {ss.style_prompt(style, location.get('tags', []))}"
+    style = ss.shot_hour_style(style, shot.get("time"), ((plan.get("brief") or {}).get("world") or {}).get("hour"))
+    where = (location.get("description") or "").strip().rstrip(".")
+    place = f", set in {where[:1].lower() + where[1:]}" if where else ""
+    return f"{shot['still'].strip().rstrip('. ')}{place}, vertical composition, {ss.style_prompt(style, location.get('tags', []))}"
 
 
 def make_stills(plan: dict, cards: dict, out: Path, only: set[str] | None = None, seed_shift: int = 0) -> dict:
@@ -49,7 +54,7 @@ def make_stills(plan: dict, cards: dict, out: Path, only: set[str] | None = None
         result = tr.run_still({"engine": "krea2", "prompt": prompt, "width": SIZE[0], "height": SIZE[1], "seed": seed}, path, log=RESULTS / "logs" / "jobs.jsonl", registry=REGISTRY,
                               label=f"{plan.get('title', 'story')}_{shot['id']}")
         earlier = book.get(shot["id"], {}).get("earlier", []) + ([{"seed": book[shot["id"]]["seed"]}] if shot["id"] in book else [])
-        book[shot["id"]] = {"file": str(path.resolve().relative_to(ROOT)).replace("\\", "/"), "seed": seed, "prompt": prompt, "seconds": result["seconds"], "earlier": earlier}
+        book[shot["id"]] = {"file": str(path.resolve().relative_to(ROOT)).replace("\\", "/"), "seed": seed, "prompt": prompt, "seconds": result["seconds"], "earlier": earlier, "prompt_version": STILL_PROMPT_VERSION}
         book_path.write_text(json.dumps(book, indent=1, ensure_ascii=False), encoding="utf-8")
         print(f"{shot['id']}: {result['seconds']} s seed {seed}", flush=True)
     return book

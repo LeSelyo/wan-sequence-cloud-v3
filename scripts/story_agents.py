@@ -28,6 +28,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import story_engine as se  # noqa: E402
 import story_library as lib  # noqa: E402
+import story_style as ss  # noqa: E402
 import story_writer as sw  # noqa: E402
 
 IMPACT_WORDS = {"crash", "crashes", "collapse", "collapses", "falls", "fall", "explodes", "explosion", "scream", "screams", "shouts", "chase", "run", "runs", "racing", "guns", "speeding", "storm", "wave", "roars",
@@ -399,32 +400,35 @@ def run_director(brief: dict, shots: list[dict], params: dict, trend, llm, examp
     return directions, report
 
 
+STRONG_IMPACT_WORDS = {"crash", "crashes", "collapse", "collapses", "explodes", "explosion", "slams", "shatters", "crumbles", "erupts"}
+
+
 def rhythm_pass(shots: list[dict], trend) -> dict:
-    """Done by code, not by the model: clamp the effects, give a shake to the impacts, never the same camera move three times in a row, a flash on every twist, enough dynamic shots."""
-    changed = {"clamped": 0, "shake_added": 0, "camera_changed": 0, "flash_added": 0}
+    """Done by code, not by the model: clamp the effects, shake ONLY on a real impact (and at most one shot in six), never the same camera move three times in a row, a flash on every twist.
+    Too much, too regular shaking was the first complaint about the videos: the default is calm."""
+    changed = {"clamped": 0, "shake_added": 0, "shake_removed": 0, "camera_changed": 0, "flash_added": 0}
     for shot in shots:
         fx = shot.setdefault("fx", {})
         before = dict(fx)
         fx["zoom"] = min(0.08, max(0.03, float(fx.get("zoom", 0.05))))
-        fx["shake"] = min(1.0, max(0.0, float(fx.get("shake", 0.0))))
+        fx["shake"] = min(0.7, max(0.0, float(fx.get("shake", 0.0))))
         fx["flash"] = bool(fx.get("flash", False))
         if fx != before:
             changed["clamped"] += 1
         words = set(re.findall(r"[a-z]+", shot.get("text", "").lower())) | set(re.findall(r"[a-z]+", shot.get("motion", "").lower()))
-        if words & IMPACT_WORDS and fx["shake"] < 0.7 and shot["kind"] not in ("talk", "choice"):
-            fx["shake"] = 0.85
+        if words & STRONG_IMPACT_WORDS and fx["shake"] < 0.5 and shot["kind"] not in ("talk", "choice", "offer"):
+            fx["shake"] = 0.6
             changed["shake_added"] += 1
         if shot["kind"] == "twist" and not fx["flash"]:
             fx["flash"] = True
             changed["flash_added"] += 1
-    moving = [s for s in shots if s["kind"] not in ("talk", "choice")]
-    dynamic = [s for s in moving if s["fx"]["shake"] >= 0.5]
-    if moving and len(dynamic) < len(moving) / 4:  # a video of only slow shots: the most intense ones get a shake
-        for shot in sorted((s for s in moving if s not in dynamic), key=lambda s: -len(set(re.findall(r"[a-z]+", shot_text(s))) & IMPACT_WORDS))[: max(1, len(moving) // 4 - len(dynamic))]:
-            shot["fx"]["shake"] = 0.6
-            changed["shake_added"] += 1
+    shaken = [s for s in shots if s["fx"]["shake"] > 0]
+    allowed = max(1, len(shots) // 6)
+    for shot in sorted(shaken, key=lambda s: s["fx"]["shake"])[: max(0, len(shaken) - allowed)]:  # keep only the strongest ones
+        shot["fx"]["shake"] = 0.0
+        changed["shake_removed"] += 1
     for i in range(2, len(shots)):
-        if shots[i]["camera"] == shots[i - 1]["camera"] == shots[i - 2]["camera"] and shots[i]["kind"] not in ("talk", "choice"):
+        if shots[i]["camera"] == shots[i - 1]["camera"] == shots[i - 2]["camera"] and shots[i]["kind"] not in ("talk", "choice", "offer"):
             shots[i]["camera"] = [c for c in trend.CAMERAS if c != shots[i]["camera"]][i % 3]
             changed["camera_changed"] += 1
     return changed
@@ -442,7 +446,7 @@ def assemble_story(brief: dict, outline: dict, lines: list[dict], directions: li
     for beat, line, direction in zip(outline["beats"], lines, directions):
         shot = {"kind": beat["kind"], "branch": beat["branch"], "speaker": beat["speaker"], "text": line["text"].strip(), "location": line["location"], "in_shot": [i for i in line.get("in_shot", []) if i in ("c1", "c2")],
                 "still": "" if beat["kind"] in ("talk", "choice") else direction["still"].strip(), "motion": direction["motion"].strip(), "camera": direction["camera"], "fx": dict(direction["fx"])}
-        if direction.get("time"):
+        if ss.changes_the_hour(direction.get("time"), brief["world"].get("hour")):  # the same hour as the story is not a change of hour
             shot["time"] = direction["time"].strip()
         if beat["kind"] == "choice":
             shot["choice"] = {"a": c1["name"], "b": c2["name"]}

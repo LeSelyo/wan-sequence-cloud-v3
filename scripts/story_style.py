@@ -42,7 +42,7 @@ FORCED_BY_KIND = {
     "sea": "the horizon stays on the same side with the same water colour",
 }
 CONTEXT_RULES = [  # the FIRST rule with a matching whole word wins, so the specific ones (space, shelter, sea/flood) come before the general one (city). (keywords, lighting, lens, grade, texture, motif, tags)
-    (("space", "moon", "spaceship", "planet", "alien", "orbit"), "low-key warm practical lights", "35mm cinematic", "warm bronze monochrome", "photoreal 3D render, fine film grain",
+    (("space", "moon", "spaceship", "planet", "alien", "orbit", "orbiting", "orbital", "spacecraft", "starship", "vacuum", "airlock", "satellite"), "low-key warm practical lights", "35mm cinematic", "warm bronze monochrome", "photoreal 3D render, fine film grain",
      "a winged emblem engraved on every object and wall", ["space", "window"]),
     (("bunker", "shelter", "underground", "siege", "war", "survivor"), "firelight and embers", "documentary 28mm", "desaturated bleach bypass", "gritty documentary realism",
      "a repeated stencilled number on every crate and door", ["shelter"]),
@@ -56,6 +56,14 @@ TIME_RULES = [  # (whole words of the context, lighting, what the light must alw
     ({"dusk", "evening", "twilight", "sunset"}, "dusk blue hour", "it is dusk in every shot: deep blue sky with the last warm glow on the horizon, lamps coming on"),
     ({"dawn", "sunrise", "daybreak"}, "overcast flat daylight", "it is dawn in every shot: pale grey-pink sky, low cold light"),
 ]
+DAYLIGHT_WORDS = {"dawn", "sunrise", "daybreak", "morning", "day", "daylight", "noon", "sunlight", "sunny", "midday"}
+COLD_WORDS = {"freezing", "frozen", "frost", "icy", "ice", "cold", "frigid", "arctic", "hypothermia"}  # the atmosphere of the brief says it is cold: the grade follows it, not the keyword rule
+COLD_PALETTES = [["steel blue", "ash grey", "sodium yellow", "black"], ["midnight blue", "silver", "crimson accent", "concrete grey"]]
+MATERIALS_BY_KIND = {  # a station is metal and glass, not carved wood and dusty cloth: the materials come from the kind of world (the first tag of its rule)
+    "space": ["scratched steel", "glass and chrome", "brushed bronze", "rough concrete", "worn leather"],
+    "shelter": ["rough concrete", "scratched steel", "worn leather", "dusty fabric"],
+    "sea": ["wet asphalt", "scratched steel", "worn leather", "rough concrete"],
+}
 DEFAULT_RULE = ("cold moonlit", "35mm cinematic", "rich earth tones", "polished high-budget cinema still", "one recurring symbol repeated on props", ["window"])
 PALETTES = [["bronze", "brass", "charcoal", "ember orange"], ["steel blue", "ash grey", "sodium yellow", "black"], ["deep teal", "amber", "rust", "off-white"],
             ["olive", "mud brown", "tungsten orange", "soot"], ["midnight blue", "silver", "crimson accent", "concrete grey"]]
@@ -100,19 +108,48 @@ def validate_style(style: dict) -> list[str]:
     return problems
 
 
-def style_from_context(context: str, rng: random.Random, name: str | None = None) -> dict:
-    """The deterministic style: keywords of the context choose the axes, the seed chooses palette and materials. Same context + same seed = same style."""
+def style_from_context(context: str, rng: random.Random, name: str | None = None, tags=(), hour: str | None = None, atmosphere: str = "") -> dict:
+    """The deterministic style: the places of the story (their tags, the most frequent kind wins), the keywords of the context, the hour and the atmosphere of the brief choose the axes, the seed chooses
+    palette and materials. Same input + same seed = same style. The TAGS of the locations come first: a story whose places are a deck, a corridor and an airlock is a spaceship even when its text
+    only says "the last city lights on the Earth below" (the keyword "city" alone made it a city story: warm wood and bronze, dusk, then a sunlit stone arcade in a station)."""
     words = set(re.findall(r"[a-z]+", context.lower()))  # whole words: a substring test took "relationship" for a ship
-    rule = next((r for r in CONTEXT_RULES if words & set(r[0])), None)
-    lighting, lens, grade, texture, motif, tags = rule[1:] if rule else DEFAULT_RULE
-    forced = {tag: FORCED_BY_KIND[tag] for tag in tags if tag in FORCED_BY_KIND}
-    for hour_words, hour_lighting, hour_sentence in TIME_RULES:
-        if words & hour_words:
+    votes = {rule[6][0]: sum(1 for t in tags if t == rule[6][0]) for rule in CONTEXT_RULES}  # the first tag of a rule names its kind of world
+    voted = max(CONTEXT_RULES, key=lambda r: votes[r[6][0]]) if any(votes.values()) else None
+    rule = voted if voted and votes[voted[6][0]] > 0 else next((r for r in CONTEXT_RULES if words & set(r[0])), None)
+    lighting, lens, grade, texture, motif, rule_tags = rule[1:] if rule else DEFAULT_RULE
+    kinds = {*rule_tags, *tags}
+    forced = {tag: FORCED_BY_KIND[tag] for tag in sorted(kinds) if tag in FORCED_BY_KIND}  # every kind of place of the story keeps what it must show (the shelter has no daylight)
+    hour_words = set(re.findall(r"[a-z]+", (hour or "").lower())) | words
+    for time_words, hour_lighting, hour_sentence in TIME_RULES:
+        if hour_words & time_words:
             lighting, forced["time"] = hour_lighting, hour_sentence
             break
-    return {"name": name or slug(f"{(rule[0][0] if rule else 'world')}-{rng.randrange(1000, 9999)}"), "logline": context.strip()[:200], "palette": list(rng.choice(PALETTES)),
-            "materials": rng.sample(MATERIALS, 3), "lighting": lighting, "lens": lens, "grade": grade, "texture": texture, "motif": motif, "forced_elements": forced,
-            "forbidden": ["bright cheerful colours", "flat studio lighting"], "tags": sorted(set(tags))}
+    palette = list(rng.choice(PALETTES))
+    if set(re.findall(r"[a-z]+", atmosphere.lower())) & COLD_WORDS:
+        grade, palette = "cold steel blue", list(rng.choice(COLD_PALETTES))
+    primary = rule_tags[0] if rule else None
+    return {"name": name or slug(f"{(rule[0][0] if rule else 'world')}-{rng.randrange(1000, 9999)}"), "logline": context.strip()[:200], "palette": palette,
+            "materials": rng.sample(MATERIALS_BY_KIND.get(primary, MATERIALS), 3), "lighting": lighting, "lens": lens, "grade": grade, "texture": texture, "motif": motif, "forced_elements": forced,
+            "forbidden": ["bright cheerful colours", "flat studio lighting"], "tags": sorted(set(rule_tags) | set(tags))}
+
+
+def changes_the_hour(shot_time: str | None, story_hour: str | None = None) -> bool:
+    """A shot's own `time` is a change of hour only when it is a daylight hour or an hour other than the one of the story ("night" on a shot of a night story changes nothing)."""
+    if not shot_time:
+        return False
+    said = set(re.findall(r"[a-z]+", shot_time.lower()))
+    return bool(said & DAYLIGHT_WORDS) or not said & set(re.findall(r"[a-z]+", (story_hour or "").lower()))
+
+
+def shot_hour_style(style: dict, shot_time: str | None, story_hour: str | None = None) -> dict:
+    """The style of ONE shot that tells its own hour (a dawn at the end of a night story). Warm light only when that hour IS a daylight one: the director also wrote "night" on shots of a night story,
+    and the old code turned every `time` into "warm natural light", which put the sun into a station at night. The same hour as the story changes nothing; a dusk changes the sentence only."""
+    if not changes_the_hour(shot_time, story_hour):
+        return style
+    forced = {**style.get("forced_elements", {}), "time": shot_time}
+    if set(re.findall(r"[a-z]+", shot_time.lower())) & DAYLIGHT_WORDS:
+        return {**style, "lighting": "warm natural light", "forced_elements": forced}
+    return {**style, "forced_elements": forced}
 
 
 def style_via_llm(context: str, llm_json, seed: int = 0, attempts: int = 3) -> dict | None:

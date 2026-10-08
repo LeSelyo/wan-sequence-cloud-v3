@@ -132,7 +132,7 @@ def test_the_rhythm_pass_clamps_effects_adds_shake_on_impacts_and_breaks_three_e
              {"kind": "narration", "camera": "wide", "text": "calm", "motion": "slow", "fx": {}}, {"kind": "narration", "camera": "wide", "text": "calm", "motion": "slow", "fx": {}},
              {"kind": "twist", "camera": "wide", "text": "end", "motion": "slow", "fx": {}}]
     changes = sa.rhythm_pass(shots, TREND)
-    assert shots[0]["fx"]["zoom"] == 0.08 and shots[0]["fx"]["shake"] == 1.0 and shots[3]["fx"]["flash"] is True and shots[2]["camera"] != "wide" and changes["camera_changed"] >= 1
+    assert shots[0]["fx"]["zoom"] == 0.08 and shots[0]["fx"]["shake"] == 0.7 and shots[3]["fx"]["flash"] is True and shots[2]["camera"] != "wide" and changes["camera_changed"] >= 1
 
 
 def test_the_library_gives_the_most_similar_approved_story_and_never_an_unapproved_one(library):

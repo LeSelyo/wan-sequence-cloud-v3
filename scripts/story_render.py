@@ -166,15 +166,28 @@ def ease(progress: float) -> float:
     return progress * progress * (3 - 2 * progress)
 
 
-def fx_box(t: float, seconds: float, fx: dict, source: tuple[int, int] = SOURCE, out: tuple[int, int] = SIZE, phase: float = 0.0) -> tuple[float, float, float, float]:
+SHAKE_STYLE = "impact"  # "impact" = a short irregular jolt that dies out (default), "legacy" = the constant regular wobble of the first versions (too much, too regular: kept only to compare)
+
+
+def shake_offset(t: float, shake: float, phase: float, style: str = "impact") -> tuple[float, float]:
+    """The camera shake at time t, in pixels of the output frame. 'impact': a jolt of a few pixels that dies out in about a second, made of three frequencies that do not repeat (so it never
+    looks like a regular wobble). 'legacy': the old constant 7-9 Hz oscillation."""
+    if shake <= 0:
+        return 0.0, 0.0
+    if style == "legacy":
+        amplitude = shake * 9.0 * K * (0.35 + 0.65 * math.exp(-t / 0.7))
+        return amplitude * math.sin(2 * math.pi * 7.3 * t + phase), amplitude * math.sin(2 * math.pi * 9.1 * t + phase * 1.7)
+    amplitude = shake * 3.5 * K * math.exp(-t / 0.45)
+    dx = sum(w * math.sin(2 * math.pi * f * t + phase * k) for k, (f, w) in enumerate(((4.1, 0.5), (7.7, 0.3), (12.9, 0.2)), start=1))
+    dy = sum(w * math.sin(2 * math.pi * f * t + phase * (k + 2.3)) for k, (f, w) in enumerate(((3.3, 0.5), (8.9, 0.3), (14.1, 0.2)), start=1))
+    return amplitude * dx, amplitude * dy
+
+
+def fx_box(t: float, seconds: float, fx: dict, source: tuple[int, int] = SOURCE, out: tuple[int, int] = SIZE, phase: float = 0.0, style: str | None = None) -> tuple[float, float, float, float]:
     """Crop box (x0, y0, x1, y1), in pixels of the source frame, at time t: the full output-sized window of the source, shrunk by the zoom (a push-in) and moved by the shake."""
     zoom = 1.0 + float(fx.get("zoom", 0.0)) * ease(t / max(seconds, 1e-6))
-    width, height = out[0] / zoom * (source[0] / out[0]) * (out[0] / source[0]), out[1] / zoom
-    width = out[0] / zoom
-    shake = float(fx.get("shake", 0.0))
-    amplitude = shake * 9.0 * K * (0.35 + 0.65 * math.exp(-t / 0.7))
-    dx = amplitude * math.sin(2 * math.pi * 7.3 * t + phase)
-    dy = amplitude * math.sin(2 * math.pi * 9.1 * t + phase * 1.7)
+    width, height = out[0] / zoom, out[1] / zoom
+    dx, dy = shake_offset(t, float(fx.get("shake", 0.0)), phase, style or SHAKE_STYLE)
     cx, cy = source[0] / 2 + dx, source[1] / 2 + dy
     x0 = min(max(0.0, cx - width / 2), source[0] - width)
     y0 = min(max(0.0, cy - height / 2), source[1] - height)

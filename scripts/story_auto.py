@@ -44,6 +44,7 @@ import story_engine as se  # noqa: E402
 import story_library as lib  # noqa: E402
 import story_produce as sp  # noqa: E402
 import story_render as sr  # noqa: E402
+import still_judge as sj  # noqa: E402
 import story_stills as sst  # noqa: E402
 import story_writer as sw  # noqa: E402
 
@@ -53,6 +54,7 @@ STEPS = ("story", "cards", "closeups", "stills", "voices", "animate", "qc", "pos
 FAMILY = {"cards": "krea2", "closeups": "krea2", "stills": "krea2", "animate": "s2v", "qc": "s2v", "post": "s2v"}  # the app family each step needs ("voices" and "story" do not depend on it)
 CLOSEUP_SEEDS = (11, 22, 33, 44, 55)
 TUNNELS = {8000: 8000, 18188: 8188, 11434: 11434}  # local port -> box port
+PICTURE_RETRIES = 2  # a picture the judge finds wrong is made again this many times at most (another seed each time, the earlier ones are kept)
 FLICKER_OUTLIER = 1.35  # a talking clip whose face shimmers more than this times the median of its characters is made again
 
 
@@ -199,7 +201,30 @@ class Pipeline:
     def step_stills(self, args) -> dict:
         os.environ["WAN_API_TOKEN"] = self.api_token()
         book = sst.make_stills(self.plan(), self.cards(), self.run / "stills", only=set(self.missing_stills()) or None)
-        return {"stills": len(book)}
+        result = {"stills": len(book)}
+        if not args.no_picture_check:
+            result["picture_check"] = self.check_stills(args)
+        return result
+
+    def check_stills(self, args) -> dict:
+        """The vision model LOOKS at every still (does it belong to the world, is the action there, no sun in a night world, no collage); a wrong one is made again with another seed, up to PICTURE_RETRIES
+        times. The model and the picture jobs do not share the GPU: the model is unloaded before every new batch of pictures."""
+        plan, cards, stills = self.plan(), self.cards(), self.run / "stills"
+        ask = sj.ollama_vision(args.model)
+        rounds, todo, wrong = [], None, []
+        for attempt in range(PICTURE_RETRIES + 1):
+            try:
+                results = sj.judge_stills(plan, stills, ask, todo)
+            finally:
+                ask.unload()
+            wrong = sorted(i for i, r in results.items() if not r["ok"])
+            rounds.append({"judged": len(results), "wrong": {i: results[i]["major"] for i in wrong}, "minor_notes": sum(1 for r in results.values() if r["minor"])})
+            (self.run / f"stills_judge_{attempt + 1}.json").write_text(json.dumps(results, indent=1, ensure_ascii=False), encoding="utf-8")
+            if not wrong or attempt == PICTURE_RETRIES:
+                break
+            sst.make_stills(plan, cards, stills, only=set(wrong), seed_shift=1000 * (attempt + 1))
+            todo = set(wrong)
+        return {"rounds": rounds, "problems_left": wrong}
 
     def missing_stills(self) -> list[str]:
         return [s["id"] for s in self.plan()["shots"] if s.get("still") and not (self.run / "stills" / f"{s['id']}.png").exists()]
@@ -304,6 +329,7 @@ def main() -> None:
     run.add_argument("--story-method", choices=["chain", "single"], default="chain")
     run.add_argument("--candidates", type=int, default=1, help="write the whole story this many times and keep the best (the judge scores them)")
     run.add_argument("--outline-candidates", type=int, default=2, help="outlines tried by the planner, the best one is kept")
+    run.add_argument("--no-picture-check", action="store_true", help="do not let the vision model look at the stills (saves a few minutes)")
     run.add_argument("--judge", action="store_true", help="the model scores the finished story 1-10 on seven criteria")
     run.add_argument("--render-on", choices=["box", "pc"], default="box", help="where the montage (Pillow + ffmpeg) runs: the box by default, the PC stays free")
     run.add_argument("--steps", help="only these steps (comma-separated)")

@@ -210,3 +210,22 @@ def test_the_hour_of_the_story_beats_the_lighting_of_the_place_and_applies_to_ev
     day = ss.style_from_context("A flooded city. A rescue boat.", random.Random(1))
     assert day["lighting"] == "overcast flat daylight" and "time" not in day["forced_elements"]
     assert ss.style_from_context("The moon is breaking apart at dusk", random.Random(1))["lighting"] == "dusk blue hour"
+
+
+def test_the_places_of_the_story_decide_its_world_before_a_stray_keyword():
+    """auto_ab_1: a station story whose text says 'the last city lights' was styled as a CITY (olive, carved wood, dusk); its places (deck, corridor, airlock = space) must win."""
+    context = "The observation deck of the Oort Station shudders as the last city lights on the darkened Earth flicker out."
+    tags = ["space", "window", "shelter", "underground", "shelter", "underground", "space", "space"]
+    style = ss.style_from_context(context, random.Random(0), tags=tags, hour="night", atmosphere="Silence, freezing, smell of recycled fear and ozone")
+    assert "space" in style["tags"] and "city" not in style["tags"] and "void of space" in ss.style_prompt(style, ["space"])
+    assert style["lighting"] == "cold moonlit" and "never daylight" in style["forced_elements"]["time"]  # the hour of the brief, not only the words of the context
+    assert style["grade"] == "cold steel blue"  # the atmosphere says freezing
+    assert not set(style["materials"]) & {"carved wood", "dusty fabric", "cracked stone", "wet asphalt"}  # metal and glass, not an old town
+    assert "no daylight comes in" in ss.style_prompt(style, ["shelter"])  # every kind of place of the story keeps its rule, not only the winning one
+    keyword_only = ss.style_from_context(context, random.Random(0))
+    assert "city" in keyword_only["tags"]  # without places the old behaviour is kept
+
+
+def test_a_shot_hour_is_a_change_only_when_it_is_daylight_or_another_hour():
+    assert not ss.changes_the_hour("night", "night") and not ss.changes_the_hour("it is night: dark", "night") and not ss.changes_the_hour(None, "night")
+    assert ss.changes_the_hour("it is dawn: golden light", "night") and ss.changes_the_hour("it is dusk", "night") and ss.changes_the_hour("daylight", "daylight")

@@ -72,3 +72,27 @@ def test_the_run_skips_what_is_done_switches_the_app_family_and_records_every_st
 def test_every_step_that_needs_the_gpu_family_is_mapped_and_the_order_is_the_documented_one():
     assert sa.STEPS == ("story", "cards", "closeups", "stills", "voices", "animate", "qc", "post", "render", "caption")
     assert sa.FAMILY == {"cards": "krea2", "closeups": "krea2", "stills": "krea2", "animate": "s2v", "qc": "s2v", "post": "s2v"}
+
+
+def test_a_wrong_picture_is_made_again_with_another_seed_after_the_model_is_unloaded(tmp_path, monkeypatch):
+    pipeline = make(tmp_path, monkeypatch)
+    plan = {**PLAN, "brief": {"world": {"setting": "a station", "atmosphere": "cold", "hour": "night"}}, "locations": [{"id": "deck", "description": "the deck"}]}
+    plan["shots"] = [dict(PLAN["shots"][0], location="deck")]
+    pipeline.plan_path.write_text(json.dumps(plan), encoding="utf-8")
+    pipeline.cards_dir.mkdir(parents=True)
+    (pipeline.cards_dir / "cards.json").write_text(json.dumps({"characters": {}, "style": {}}), encoding="utf-8")
+    (pipeline.run / "stills").mkdir(parents=True)
+    (pipeline.run / "stills" / "s001.png").write_bytes(b"x")
+    events = []
+    answers = iter([{"place_seen": "a sunlit arcade", "sunlight_or_blue_sky": True, "matches_world": 1, "action_visible": True, "collage_or_split_panels": False, "garbled_text": False, "problems": []},
+                    {"place_seen": "a metal deck", "sunlight_or_blue_sky": False, "matches_world": 5, "action_visible": True, "collage_or_split_panels": False, "garbled_text": False, "problems": []}])
+
+    def fake_ask(prompt, schema, image, seed):
+        events.append("judge")
+        return next(answers)
+    fake_ask.unload = lambda: events.append("unload")
+    monkeypatch.setattr(sa.sj, "ollama_vision", lambda model: fake_ask)
+    monkeypatch.setattr(sa.sst, "make_stills", lambda plan, cards, out, only=None, seed_shift=0: events.append(f"make {sorted(only)} +{seed_shift}"))
+    result = pipeline.check_stills(types.SimpleNamespace(model="m"))
+    assert events == ["judge", "unload", "make ['s001'] +1000", "judge", "unload"]  # the GPU is freed before the pictures are made
+    assert result["problems_left"] == [] and result["rounds"][0]["wrong"] == {"s001": ["sunlight or a blue sky in a world without daylight", "the place does not belong to the world (a sunlit arcade)"]}

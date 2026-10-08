@@ -104,3 +104,15 @@ def test_a_choice_shot_whose_character_list_is_empty_still_shows_the_two_main_ch
     plan = {"characters": [{"id": "c1"}, {"id": "c2"}]}
     assert sr.choice_ids(plan, {"in_shot": []}) == ["c1", "c2"] and sr.choice_ids(plan, {"in_shot": ["c2", "c1"]}) == ["c2", "c1"]
     assert sr.choice_ids(plan, {"in_shot": ["c1"]}) == ["c1", "c2"] and sr.choice_ids(plan, {"in_shot": ["zz"]}) == ["c1", "c2"]
+
+
+def test_the_default_shake_is_a_short_irregular_jolt_not_a_constant_regular_wobble():
+    new = [sr.shake_offset(i / 30, 1.0, 0.7, "impact") for i in range(90)]
+    old = [sr.shake_offset(i / 30, 1.0, 0.7, "legacy") for i in range(90)]
+    amplitude = lambda series, a, b: max(abs(x) + abs(y) for x, y in series[a:b])
+    assert amplitude(new, 0, 15) > 3 * amplitude(new, 60, 90)  # it dies out within about a second
+    assert amplitude(new, 0, 15) < 0.5 * amplitude(old, 0, 15) and amplitude(new, 60, 90) < 0.1 * amplitude(old, 60, 90)  # and it is far smaller than the old one
+    assert sr.shake_offset(1.0, 0.0, 0.3) == (0.0, 0.0)
+    xs = [x for x, _ in new[:30]]
+    crossings = sum(1 for a, b in zip(xs, xs[1:]) if a * b < 0)
+    assert crossings >= 2  # it does move, with several frequencies
