@@ -50,6 +50,7 @@ METHODS = {
     "i2v_pov6": {"engine": "i2v", "profile": "lightx2v6", "style": "pov", "note": "the same with 6 steps (the user: plan C of the valve test, as good)"},
     "i2v_offer_hands": {"engine": "i2v", "profile": "lightx2v4", "style": "offer_hands", "note": "the two hold out their open hands slowly toward you, look at you, blink (plan A of the offer test: THE way for the choice moment)"},
     "i2v_offer_step": {"engine": "i2v", "profile": "lightx2v4", "style": "offer_step", "note": "the two step forward together holding out their hands, slow push-in (plan B of the offer test: kept as the alternative)"},
+    "i2v_scene": {"engine": "i2v", "profile": "lightx2v4", "style": "scene", "note": "I2V for a place without people: the camera move of the director (the user: S2V only when a character speaks)"},
     "i2v_idle": {"engine": "i2v", "profile": "lightx2v4", "style": "idle", "note": "a person waits, looks at the camera, blinks, breathes (no audio: the face is free to blink)"},
     "qwen_identity": {"engine": "qwen_edit", "note": "Qwen-Image-Edit-2511 puts the person of the close-up (reference) into the scene: the face stays the same"},
 }
@@ -75,6 +76,9 @@ SEED = [
     ("crowd", "i2v_lightx4", "untested", "to compare"),
     ("wide_with_character", "text_still", "fails", "a wide still described by text gives a stranger, not the character of the close-up (user feedback + auto_ab_1)"),
     ("wide_with_character", "qwen_identity", "untested", "to test in the identity experiment"),
+    ("scene_camera_move", "i2v_scene", "untested", "user: S2V only when a character speaks or shouts, so places go to I2V too: to look at on the first scenes of the final run"),
+    ("establishing_epic", "i2v_scene", "untested", "same: to look at on the hook picture of the final run"),
+    ("crowd", "i2v_scene", "untested", "same"),
     # the user's choices after the lab of 2026-10-08 (videos looked at by the user)
     ("person_locomotion", "i2v_action", "works", "user: Elara runs, plan C (action prompt) or D (camera follows); Kael walks: B, C, D good"),
     ("person_locomotion", "i2v_follow", "works", "user: Elara runs, plan D (camera follows); Kael walks: good"),

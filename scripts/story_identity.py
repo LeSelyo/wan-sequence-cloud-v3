@@ -41,8 +41,20 @@ def prompt_two(first: dict, second: dict) -> str:
     return TWO.format(first=person_word(first), second=person_word(second))
 
 
+def faces_seen(run: Path) -> dict[str, bool]:
+    """What the vision model saw in the stills (run/stills_judge_N.json, the later rounds win): is a face or a whole body in the picture? A picture of a hand on a rung or of a holster does not get a face."""
+    import json
+    seen: dict[str, bool] = {}
+    for path in sorted(run.glob("stills_judge_*.json")):
+        for shot_id, verdict in json.loads(path.read_text(encoding="utf-8")).items():
+            if "person_visible" in verdict.get("answer", {}):
+                seen[shot_id] = bool(verdict["answer"]["person_visible"])
+    return seen
+
+
 def jobs(plan: dict, cards: dict, run: Path) -> list[dict]:
     characters = {c["id"]: c for c in plan["characters"]}
+    seen = faces_seen(run)
     made: list[dict] = []
     offer_ids = [s["id"] for s in plan["shots"] if s["kind"] in ("offer", "choice")]
     first_offer = next((s for s in plan["shots"] if s["kind"] == "offer" and s.get("still")), None)
@@ -51,7 +63,7 @@ def jobs(plan: dict, cards: dict, run: Path) -> list[dict]:
         made.append({"id": TWO_SHOT_ID, "scene": run / "stills" / f"{first_offer['id']}.png", "refs": [reference_of(cards, c1["id"]), reference_of(cards, c2["id"])], "prompt": prompt_two(c1, c2), "shots": offer_ids})
     for shot in plan["shots"]:
         people = [i for i in shot.get("in_shot", []) if i in characters]
-        if shot["kind"] not in WITH_PEOPLE or not shot.get("still") or not people:
+        if shot["kind"] not in WITH_PEOPLE or not shot.get("still") or not people or seen.get(shot["id"]) is False:
             continue
         if len(people) >= 2:
             first, second = characters[people[0]], characters[people[1]]

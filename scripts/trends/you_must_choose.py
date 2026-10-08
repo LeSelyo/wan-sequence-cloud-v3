@@ -145,7 +145,8 @@ RULES
 - Keep every picture PHYSICALLY TRUE to this world: no rain, wind, sea or handheld breathing where this world has none (a lunar dome, a vacuum, a desert...); use its own light, dust, steam, sparks, snow.
 - "fx": zoom 0.03 to 0.08; shake 0 to 1 (above 0.7 only on impacts, chases, crashes); flash true only on a shock.
 - "camera" in {{cameras}}. "time": only when the hour of the picture differs from "{{hour}}" (e.g. the dawn of a good ending), English, e.g. "it is dawn: golden light".
-- The grandiose picture of the world, for the first shot: {{scale_image}}.
+- Every direction starts with "n": the NUMBER of its shot in the list below (1, 2, 3...), so that the pictures stay aligned with the lines: direction n is for shot n, never for another one.
+- The grandiose picture of the world is for the FIRST shot only, never reuse it: {{scale_image}}. Every other shot has its OWN picture, made from ITS line.
 
 APPROVED EXAMPLES of pictures and camera moves (other plots, copy only the level of detail):
 {{examples}}
@@ -194,9 +195,9 @@ LINES_SCHEMA = {"type": "object", "properties": {"lines": {"type": "array", "ite
                                                                                                                        "in_shot": {"type": "array", "items": {"type": "string"}}},
                                                                                          "required": ["text", "location", "in_shot"]}}}, "required": ["lines"]}
 DIRECTIONS_SCHEMA = {"type": "object", "properties": {"directions": {"type": "array", "items": {"type": "object", "properties": {
-    "still": {"type": "string"}, "motion": {"type": "string"}, "camera": {"type": "string", "enum": CAMERAS},
+    "n": {"type": "integer"}, "still": {"type": "string"}, "motion": {"type": "string"}, "camera": {"type": "string", "enum": CAMERAS},
     "fx": {"type": "object", "properties": {"zoom": {"type": "number"}, "shake": {"type": "number"}, "flash": {"type": "boolean"}}, "required": ["zoom", "shake", "flash"]}, "time": {"type": "string"}},
-    "required": ["still", "motion", "camera", "fx"]}}}, "required": ["directions"]}
+    "required": ["n", "still", "motion", "camera", "fx"]}}}, "required": ["directions"]}
 JUDGE_SCHEMA = {"type": "object", "properties": {k: {"type": "integer"} for k in ("hook", "coherence", "clues", "twist", "voice", "faithfulness", "variety")} | {"weakness": {"type": "string"}},
                 "required": ["hook", "coherence", "clues", "twist", "voice", "faithfulness", "variety", "weakness"]}
 
@@ -255,4 +256,16 @@ LAST LINES:
 {{lines}}
 
 Answer with the JSON only."""
+CLARITY_PROMPT = """[[STAGE:clarity]]
+You are the SCRIPT DOCTOR of a short-video studio. A viewer sees ONE part of a short story told to him or her ("you"), line by line, once, with no pause. Find the lines this viewer cannot understand: a reference
+to someone or something never introduced, a phrase that makes no sense, a sudden change nobody caused. Be strict but fair: short punchy lines are fine, nonsense is not.
+
+THE LINES BEFORE THIS PART (context): {{previous}}
+
+THE LINES OF THIS PART (numbered):
+{{lines}}
+
+Answer with the JSON only: the numbers of the confusing lines with a short reason (an empty list when every line is clear)."""
+CLARITY_SCHEMA = {"type": "object", "properties": {"confusing": {"type": "array", "items": {"type": "object", "properties": {"n": {"type": "integer"}, "why": {"type": "string"}}, "required": ["n", "why"]}}},
+                  "required": ["confusing"]}
 VERIFIER_SCHEMA = {"type": "object", "properties": {"polarity": {"type": "string", "enum": ["good", "bad", "mixed"]}, "reason": {"type": "string"}, "suspense": {"type": "boolean"}}, "required": ["polarity", "reason", "suspense"]}

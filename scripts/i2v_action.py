@@ -35,6 +35,7 @@ STYLES = {
     "action": "{motion}, real steps and body movement, arms swinging, clothes and hair moving, natural weight and balance, the whole body in motion.",
     "follow": "{motion}, real steps and body movement, arms swinging, clothes and hair moving; the camera follows the movement smoothly at the same speed, steady, cinematic.",
     "pov": "{motion}",  # the motion written by the director already says what the hands do and what moves
+    "scene": "{motion}",  # a place, an object, a landscape: the camera move and what moves in it, as written by the director
     "offer_hands": "{pair} slowly stretch their open hands toward the camera, their fingers reaching, they look at the viewer, blink, small head movements",
     "offer_step": "{pair} step forward together toward the camera and hold out their open hands, urgent faces, the camera pushes slowly in",
     "offer_next": "{pair} keep holding out their open hands toward the camera, steady urgent faces, blink, small head movements, the camera pushes in a little more",

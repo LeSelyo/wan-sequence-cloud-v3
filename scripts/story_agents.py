@@ -343,9 +343,20 @@ def validate_lines(answer: dict, beats: list[dict], location_ids: list[str], max
     return problems
 
 
+def verify_clarity(llm, trend, picked: list[dict], lines: list[dict], previous: str, seed: int = 0) -> list[str]:
+    """The script doctor: a viewer who sees the lines once must understand them (nothing refers to what was never shown, no nonsense phrase). A verifier that cannot answer never blocks the story."""
+    numbered = "\n".join(f"{n + 1}. {l.get('text', '')}" for n, l in enumerate(lines))
+    try:
+        verdict = llm(fill(trend.CLARITY_PROMPT, {"previous": previous, "lines": numbered}), trend.CLARITY_SCHEMA, seed=seed)
+    except Exception:
+        return []
+    return [f"line {item['n']} is confusing for a viewer who sees it once ({item['why'][:120]}): rewrite it so that it is clear, introduce what it refers to" for item in verdict.get("confusing", [])
+            if isinstance(item.get("n"), int) and 1 <= item["n"] <= len(lines)][:4]
+
+
 def soft_writer_problem(problem: str) -> bool:
     """The problems of a written chunk that do not make it unusable: lines a little long on average, an ending that reads MIXED (a teaser question left open), an ending that closes everything."""
-    return problem.startswith("the lines are too long on average") or ("must end" in problem and "read MIXED" in problem) or problem.startswith("the last line closes everything")
+    return problem.startswith("the lines are too long on average") or " is confusing for a viewer" in problem or ("must end" in problem and "read MIXED" in problem) or problem.startswith("the last line closes everything")
 
 
 def verify_polarity(llm, trend, lines: list[dict], expected: str, seed: int = 0) -> list[str]:
@@ -383,7 +394,8 @@ def run_writer(brief: dict, outline: dict, params: dict, trend, llm, library_exa
         answer, problems, attempts = (None, ["no model"], 0) if llm is None else call_agent(
             llm, prompt, trend.LINES_SCHEMA,
             lambda a: validate_lines(a, picked, location_ids, trend.MAX_SPOKEN_WORDS, average, getattr(trend, "MAX_OFFER_WORDS", None)) + validate_independence(a.get("lines", []), picked, brief)
-            + (verify_polarity(llm, trend, a.get("lines", []), expected, seed=params["seed"]) if expected and not validate_lines(a, picked, location_ids, trend.MAX_SPOKEN_WORDS) else []),
+            + (verify_polarity(llm, trend, a.get("lines", []), expected, seed=params["seed"]) if expected and not validate_lines(a, picked, location_ids, trend.MAX_SPOKEN_WORDS) else [])
+            + (verify_clarity(llm, trend, picked, a.get("lines", []), previous, seed=params["seed"]) if hasattr(trend, "CLARITY_PROMPT") and not validate_lines(a, picked, location_ids, trend.MAX_SPOKEN_WORDS) else []),
             seed=params["seed"] + 7 * chunk[0], soft=soft_writer_problem)
         from_model = answer is not None
         if answer is None:
@@ -401,6 +413,8 @@ def validate_directions(answer: dict, picked: list[dict], trend) -> list[str]:
         return [f"{len(items)} directions but {len(picked)} shots: one per shot, same order"]
     problems = []
     for i, (item, shot) in enumerate(zip(items, picked)):
+        if item.get("n") != i + 1:  # a list shifted by one shot puts every picture on the line before it
+            problems.append(f"direction {i + 1} says n={item.get('n')}: the directions come in the order of the shots and each one repeats the number of its shot")
         if se.count_words(item.get("motion", "")) < 4:  # every shot needs its acting or camera move, a talking shot too
             problems.append(f"shot {i + 1}: a motion of at least 4 words is needed (for a talk shot: how the character acts while speaking)")
         if shot["kind"] in ("talk", "choice"):
@@ -446,7 +460,7 @@ def run_director(brief: dict, shots: list[dict], params: dict, trend, llm, examp
         answer, problems, attempts = (None, ["no model"], 0) if llm is None else call_agent(llm, prompt, trend.DIRECTIONS_SCHEMA, lambda a: validate_directions(a, picked, trend), seed=params["seed"] + 13 * start)
         if answer is None:
             locations = {loc["id"]: loc["description"] for loc in brief["locations"]}
-            answer = {"directions": [{"still": "" if s["kind"] in ("talk", "choice") else f"{s['text']}, {locations.get(s['location'], '')}", "motion": f"{trend.CAMERA_MOVES[(start + n) % len(trend.CAMERA_MOVES)]}, rain, handheld",
+            answer = {"directions": [{"still": "" if s["kind"] in ("talk", "choice") else f"{s['text']}, {locations.get(s['location'], '')}", "motion": f"{trend.CAMERA_MOVES[(start + n) % len(trend.CAMERA_MOVES)]}, slow, cinematic",
                                       "camera": s.get("camera_hint", "wide"), "fx": {"zoom": 0.05, "shake": 0.0, "flash": False}} for n, s in enumerate(picked)]}
         report["chunks"].append({"shots": len(picked), "source": "llm" if llm and not problems else "template", "attempts": attempts, "problems": problems[:3]})
         for n, item in enumerate(answer["directions"]):
@@ -494,6 +508,28 @@ def shot_text(shot: dict) -> str:
 
 
 # ---------------------------------------------------------------------------------------------- assembly, judge, the whole chain
+def offer_still(brief: dict, location: str) -> str:
+    """The picture of the choice moment, the same for both offer shots: both characters side by side facing the camera, c1 on the left, each holding out an open hand. It is the scene the identity pass puts the two
+    real faces into."""
+    first, second = brief["characters"][0], brief["characters"][1]
+    place = next((l["description"] for l in brief.get("locations", []) if l["id"] == location), "")
+
+    def who(c: dict) -> str:
+        return f"{'a woman' if c['gender'] == 'f' else 'a man'} ({c['wardrobe'].rstrip('. ')})"
+    text = f"Two people stand side by side, close together, facing the camera: on the left {who(first)}, on the right {who(second)}; both hold out one open hand toward the camera, serious faces, {place.rstrip('. ')}"
+    return " ".join(text.split()[:48])
+
+
+def unify_offer_scene(shots: list[dict], brief: dict) -> None:
+    """The two offers and the choice are ONE scene in ONE place: the place of the choice (the model gave each offer the place of what it promises). The two offer shots get the same two-shot picture."""
+    choice = next((s for s in shots if s["kind"] == "choice"), None)
+    if choice:
+        for shot in shots:
+            if shot["kind"] == "offer":
+                shot["location"] = choice["location"]
+                shot["still"] = offer_still(brief, choice["location"])
+
+
 def assemble_story(brief: dict, outline: dict, lines: list[dict], directions: list[dict], endings: dict, trend) -> dict:
     c1, c2 = brief["characters"][0], brief["characters"][1]
     shots = []
@@ -509,6 +545,7 @@ def assemble_story(brief: dict, outline: dict, lines: list[dict], directions: li
         if beat["kind"] == "offer":
             shot["in_shot"] = ["c1", "c2"]  # the ONLY moment where both are in the picture, both holding out a hand
             shot["offer_of"] = beat["speaker"]  # whose proposal it is
+            shot["still"] = offer_still(brief, line["location"])  # the same two-shot picture for both offers, made by code
             if getattr(trend, "OFFER_VOICE", "narrator") == "narrator":
                 shot["speaker"] = "narrator"  # the narrator quotes it: no mouth has to follow a voice
             if shots and shots[-1]["kind"] == "offer" and getattr(trend, "OFFER_OVERLAP", 0.0) > 0:
@@ -524,6 +561,7 @@ def assemble_story(brief: dict, outline: dict, lines: list[dict], directions: li
             shot["ending"] = endings[letter]
             shot["tag"] = f"ENDING {letter}: {outline['ending_label_' + letter.lower()].upper()}"
         shots.append(shot)
+    unify_offer_scene(shots, brief)
     return {"title": brief["title"], "hook_title": outline["hook_title"].strip(), "logline": brief["world"]["premise"], "substitutions": brief.get("substitutions", []),
             "characters": [{k: c[k] for k in ("id", "name", "role", "gender", "age", "look", "wardrobe")} for c in (c1, c2)], "shots": shots, "end_card": outline["closing_question"].strip(),
             "end_card_small": f"A: {outline['ending_label_a'].upper()}  ·  B: {outline.get('ending_label_b', '').upper()}\nFOLLOW FOR PART 2".strip(), "caption": outline["caption"].strip()}

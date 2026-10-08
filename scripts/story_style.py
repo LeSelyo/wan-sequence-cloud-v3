@@ -45,11 +45,11 @@ CONTEXT_RULES = [  # the FIRST rule with a matching whole word wins, so the spec
     (("space", "moon", "spaceship", "planet", "alien", "orbit", "orbiting", "orbital", "spacecraft", "starship", "vacuum", "airlock", "satellite"), "low-key warm practical lights", "35mm cinematic", "warm bronze monochrome", "photoreal 3D render, fine film grain",
      "one small winged emblem on the uniforms and on a few doors", ["space", "window"]),
     (("bunker", "shelter", "underground", "siege", "war", "survivor"), "firelight and embers", "documentary 28mm", "desaturated bleach bypass", "gritty documentary realism",
-     "a repeated stencilled number on every crate and door", ["shelter"]),
+     "a stencilled number on a few crates and doors", ["shelter"]),
     (("sea", "ship", "island", "storm", "ocean", "flood", "flooded", "boat", "river", "dam"), "overcast flat daylight", "24mm wide handheld", "cold steel blue", "photoreal practical set, subtle grain",
      "a recurring rope-knot symbol", ["sea", "window"]),
     (("city", "office", "politic", "news", "election", "street"), "dusk blue hour", "50mm shallow depth of field", "teal and amber", "photoreal practical set, subtle grain",
-     "one recurring colour on every sign and uniform", ["city", "window"]),
+     "one recurring colour on a few signs and uniforms", ["city", "window"]),
 ]
 TIME_RULES = [  # (whole words of the context, lighting, what the light must always be): the hour told by the story beats the lighting of the kind of place
     ({"night", "midnight", "nightfall", "moonlit"}, "cold moonlit", "it is night in every shot: dark sky, the only light comes from lamps, windows and spotlights, never daylight"),
@@ -122,7 +122,10 @@ def style_from_context(context: str, rng: random.Random, name: str | None = None
     hour_words = set(re.findall(r"[a-z]+", (hour or "").lower())) | words
     for time_words, hour_lighting, hour_sentence in TIME_RULES:
         if hour_words & time_words:
-            lighting, forced["time"] = hour_lighting, hour_sentence
+            if rule and rule[6][0] == "shelter":  # underground the hour changes nothing: the lamps and the fire keep the light of the place (a moonlit bunker is nonsense)
+                forced["time"] = "there is no daylight and no sky in any shot: the only light comes from lamps, emergency lights, screens and fire"
+            else:
+                lighting, forced["time"] = hour_lighting, hour_sentence
             break
     palette = list(rng.choice(PALETTES))
     if set(re.findall(r"[a-z]+", atmosphere.lower())) & COLD_WORDS:

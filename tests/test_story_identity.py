@@ -23,6 +23,15 @@ def test_the_identity_jobs_cover_the_people_shots_and_the_one_scene_of_the_choic
     assert "man from Picture 2 on the left and the woman from Picture 3 on the right" in jobs["two_shot"]["prompt"] and "holding out one open hand" in jobs["two_shot"]["prompt"]
 
 
+def test_a_picture_without_a_face_or_a_body_does_not_get_one(tmp_path):
+    """The vision model said s005 shows only a hand: the identity pass would paint a face where there is a holster or a wrist."""
+    import json
+    (tmp_path / "stills_judge_1.json").write_text(json.dumps({"s005": {"answer": {"person_visible": False}}, "s002": {"answer": {"person_visible": True}}}), encoding="utf-8")
+    assert {j["id"] for j in sid.jobs(PLAN, CARDS, tmp_path)} == {"two_shot"}
+    (tmp_path / "stills_judge_2.json").write_text(json.dumps({"s005": {"answer": {"person_visible": True}}}), encoding="utf-8")  # a later round saw a face after the picture was made again
+    assert {j["id"] for j in sid.jobs(PLAN, CARDS, tmp_path)} == {"two_shot", "s005"}
+
+
 def test_the_wardrobe_of_the_character_is_written_in_the_prompt(tmp_path):
     """Lab 2026-10-08: without it Elara ran in black instead of her white chef's coat."""
     prompt = {j["id"]: j for j in sid.jobs(PLAN, CARDS, tmp_path)}["s005"]["prompt"]

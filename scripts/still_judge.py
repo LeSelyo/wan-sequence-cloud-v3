@@ -29,10 +29,11 @@ SCHEMA = {
         "collage_or_split_panels": {"type": "boolean"},
         "impossible_geometry": {"type": "boolean"},
         "same_person": {"type": "boolean"},
+        "person_visible": {"type": "boolean"},
         "garbled_text": {"type": "boolean"},
         "problems": {"type": "array", "items": {"type": "string", "maxLength": 140}, "maxItems": 4},
     },
-    "required": ["place_seen", "sunlight_or_blue_sky", "matches_world", "action_visible", "collage_or_split_panels", "impossible_geometry", "same_person", "garbled_text", "problems"],
+    "required": ["place_seen", "sunlight_or_blue_sky", "matches_world", "action_visible", "collage_or_split_panels", "impossible_geometry", "same_person", "person_visible", "garbled_text", "problems"],
 }
 PROMPT = ("You check ONE picture made for a short cinematic story. Every person in it is fictional.\n"
           "THE WORLD of the story: {setting}. Atmosphere: {atmosphere}. Hour: {hour}.\n"
@@ -47,6 +48,7 @@ PROMPT = ("You check ONE picture made for a short cinematic story. Every person 
           "- collage_or_split_panels: true if the picture is made of several panels or a collage.\n"
           "- impossible_geometry: true if something is physically impossible or glitched: a window inside a window or a second room stacked above the first, duplicated or melted objects, merged bodies, extra limbs or fingers, an emblem repeated everywhere.\n"
           "- same_person: {same_person_rule}\n"
+          "- person_visible: true if a person's FACE or whole body can be seen (only a hand, an arm, a back too far to tell, or nobody = false). Not a reason to reject the picture.\n"
           "- garbled_text: true if a sign or a label has unreadable or invented letters.\n"
           "- problems: a short list of what is wrong with the picture for THIS story (empty if nothing).")
 SAME_PERSON_NONE = "always true here (there is no reference portrait)."

@@ -71,7 +71,10 @@ class CannedModel:
             return {"lines": [{"text": self.by_text[t]["text"], "location": self.by_text[t]["location"], "in_shot": self.by_text[t]["in_shot"]} for t in purposes]}
         if stage == "director":
             texts = re.findall(r"^\d+\. \[[^\]]+\] (.*)$", prompt.split("SHOTS (")[1], flags=re.M)
-            return {"directions": [{"still": self.by_text[t].get("still") or "", "motion": self.by_text[t]["motion"], "camera": self.by_text[t]["camera"], "fx": {"zoom": 0.05, "shake": 0.0, "flash": False}} for t in texts]}
+            return {"directions": [{"n": i + 1, "still": self.by_text[t].get("still") or "", "motion": self.by_text[t]["motion"], "camera": self.by_text[t]["camera"], "fx": {"zoom": 0.05, "shake": 0.0, "flash": False}}
+                                   for i, t in enumerate(texts)]}
+        if stage == "clarity":
+            return {"confusing": []}
         if stage == "verifier":
             lines = prompt.lower()
             return {"polarity": "bad" if ("collected" in lines or "never rescued" in lines) else "good", "reason": "canned"}
@@ -162,8 +165,8 @@ def test_the_acts_always_come_in_the_order_of_the_story_in_the_budget_the_prompt
 
 def test_a_talking_shot_needs_a_motion_too_so_the_director_is_asked_again():
     shots = [{"kind": "talk", "text": "x"}, {"kind": "narration", "text": "y"}]
-    answer = {"directions": [{"still": "", "motion": "", "camera": "close", "fx": {"zoom": 0.05, "shake": 0, "flash": False}},
-                             {"still": "a wide photograph of a flooded street at night with a boat and a light, rain falling hard", "motion": "slow push-in on the boat, rain, handheld", "camera": "wide",
+    answer = {"directions": [{"n": 1, "still": "", "motion": "", "camera": "close", "fx": {"zoom": 0.05, "shake": 0, "flash": False}},
+                             {"n": 2, "still": "a wide photograph of a flooded street at night with a boat and a light, rain falling hard", "motion": "slow push-in on the boat, rain, handheld", "camera": "wide",
                               "fx": {"zoom": 0.05, "shake": 0, "flash": False}}]}
     problems = sa.validate_directions(answer, shots, TREND)
     assert len(problems) == 1 and problems[0].startswith("shot 1: a motion")
@@ -312,6 +315,18 @@ def test_the_offer_shot_puts_both_in_the_picture_and_a_branch_never_shows_the_ot
     assert shots[2]["in_shot"] == ["c1"] and shots[3]["in_shot"] == ["c2"]
 
 
+def test_the_offers_and_the_choice_are_one_scene_in_the_place_of_the_choice():
+    brief = {"title": "T", "world": {"premise": "p", "hour": "night"}, "locations": [{"id": "vent", "description": "A vent shaft."}, {"id": "corridor", "description": "A red-lit corridor."}],
+             "characters": [{"id": "c1", "name": "Kael", "role": "r", "gender": "m", "age": 40, "look": "l", "wardrobe": "Fatigues."}, {"id": "c2", "name": "Elara", "role": "r", "gender": "f", "age": 40, "look": "l", "wardrobe": "A white coat."}]}
+    base = {"fx": {"zoom": 0.05, "shake": 0.0, "flash": False}, "camera": "medium", "motion": "m", "still": "s"}
+    beats = [{"act": "offers", "branch": "main", "kind": "offer", "speaker": "c1", "purpose": "p"}, {"act": "offers", "branch": "main", "kind": "offer", "speaker": "c2", "purpose": "p"},
+             {"act": "choice", "branch": "main", "kind": "choice", "speaker": "narrator", "purpose": "p"}]
+    lines = [{"text": "Kael offers the vent.", "location": "vent", "in_shot": []}, {"text": "Elara offers the clean room.", "location": "vent", "in_shot": []}, {"text": "Choose now.", "location": "corridor", "in_shot": []}]
+    outline = {"hook_title": "x", "beats": beats, "ending_label_a": "A", "ending_label_b": "B", "closing_question": "q", "caption": "c"}
+    shots = sa.assemble_story(brief, outline, lines, [dict(base) for _ in beats], {"A": "bad", "B": "good"}, TREND)["shots"]
+    assert [s["location"] for s in shots] == ["corridor", "corridor", "corridor"] and "red-lit corridor" in shots[0]["still"] and shots[0]["still"] == shots[1]["still"]
+
+
 def test_a_chunk_with_only_soft_problems_keeps_the_best_answer_of_the_model_never_a_template():
     answers = iter([{"n": 1}, {"n": 2}, {"n": 3}])
 
@@ -325,3 +340,34 @@ def test_a_chunk_with_only_soft_problems_keeps_the_best_answer_of_the_model_neve
     assert hard[0] is None  # a line over the limit is not a matter of taste
     assert sa.soft_writer_problem("this branch must end GOOD for you but its last lines read BAD (x)") is False  # the opposite outcome is a real failure
     assert sa.soft_writer_problem("this branch must end GOOD for you but its last lines read MIXED (x)") is True
+
+
+def test_a_list_of_directions_shifted_by_one_shot_is_refused():
+    """Found in the final run: the pictures of the last shots of a branch were the ones of the line before. Each direction repeats the number of its shot."""
+    shots = [{"kind": "narration", "text": "a"}, {"kind": "narration", "text": "b"}, {"kind": "narration", "text": "c"}]
+    item = {"still": "a wide photograph of a flooded street at night with a boat and a light, rain falling hard", "motion": "slow push-in on the boat now", "camera": "wide", "fx": {"zoom": 0.05, "shake": 0, "flash": False}}
+    right = {"directions": [{**item, "n": 1}, {**item, "n": 2}, {**item, "n": 3}]}
+    assert sa.validate_directions(right, shots, TREND) == []
+    shifted = {"directions": [{**item, "n": 1}, {**item, "n": 3}, {**item, "n": 4}]}
+    problems = sa.validate_directions(shifted, shots, TREND)
+    assert len(problems) == 2 and "direction 2 says n=3" in problems[0]
+    assert "reuse it" in TREND.DIRECTOR_PROMPT  # the grandiose picture of the world is for the first shot only
+
+
+def test_the_script_doctor_sends_a_confusing_line_back_to_the_writer_as_a_soft_problem():
+    def llm(prompt, schema, seed=0):
+        assert "[[STAGE:clarity]]" in prompt and "2. Blood on cuff? No, a bird." in prompt
+        return {"confusing": [{"n": 2, "why": "a bird has never been mentioned"}, {"n": 9, "why": "out of range"}]}
+    lines = [{"text": "She preps the kit."}, {"text": "Blood on cuff? No, a bird."}]
+    problems = sa.verify_clarity(llm, TREND, [{}, {}], lines, "(the start)")
+    assert problems == ["line 2 is confusing for a viewer who sees it once (a bird has never been mentioned): rewrite it so that it is clear, introduce what it refers to"]
+    assert sa.soft_writer_problem(problems[0]) is True  # a matter of taste after three attempts: the best answer of the model is kept
+    assert sa.verify_clarity(lambda prompt, schema, seed=0: 1 / 0, TREND, [{}], lines[:1], "x") == []  # a doctor that cannot answer never blocks the story
+
+
+def test_the_two_offer_shots_get_the_same_two_shot_picture_made_by_code():
+    brief = {"locations": [{"id": "corridor", "description": "A narrow red-lit corridor of the bunker."}],
+             "characters": [{"id": "c1", "gender": "m", "wardrobe": "Military fatigues, dog tags."}, {"id": "c2", "gender": "f", "wardrobe": "White coat, stethoscope."}]}
+    still = sa.offer_still(brief, "corridor")
+    assert "on the left a man (Military fatigues, dog tags)" in still and "on the right a woman (White coat, stethoscope)" in still and "both hold out one open hand toward the camera" in still
+    assert "narrow red-lit corridor" in still and len(still.split()) <= 48
