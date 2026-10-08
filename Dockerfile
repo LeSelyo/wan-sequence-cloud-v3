@@ -152,7 +152,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
       build-essential ca-certificates curl ffmpeg gosu python3 python3-dev libgl1 libglib2.0-0 \
-      fontconfig fonts-dejavu-core && \
+      fontconfig fonts-dejavu-core xz-utils && \
     apt-get clean
 
 # Montserrat ExtraBold (SIL OFL) for the Hormozi-style captions: Ubuntu 22.04 has no
@@ -165,6 +165,29 @@ RUN mkdir -p /usr/local/share/fonts/montserrat && \
       -o /usr/local/share/fonts/montserrat/Montserrat-ExtraBold.ttf && \
     echo "${MONTSERRAT_EXTRABOLD_SHA256}  /usr/local/share/fonts/montserrat/Montserrat-ExtraBold.ttf" | sha256sum -c - && \
     fc-cache -f && fc-list | grep -qi "Montserrat"
+
+# Recent FFmpeg. The apt package above is Ubuntu 22.04's 4.4.2 (kept only as a fallback and for its libraries); the montage code
+# (app/montage.py: jump cut shots with xfade shutter wipes, the smooth `rock` shake with perspective/fillborders) and the trend
+# scripts are written and tested against FFmpeg 8. BtbN's static GPL build of the 8.1 stable branch (libx264, libass...) is unpacked
+# in /opt/ffmpeg and put first in PATH; FFMPEG_BIN / FFPROBE_BIN make the service use it explicitly.
+# FFMPEG_URL tracks the rolling "latest" release of the 8.1 branch (point releases only). For a reproducible image pin both:
+#   --build-arg FFMPEG_URL=<a dated autobuild-... release asset> --build-arg FFMPEG_SHA256=<its sha256>
+# The checksum is always printed in the build log; it is only verified when FFMPEG_SHA256 is set.
+ARG FFMPEG_URL=https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-linux64-gpl-8.1.tar.xz
+ARG FFMPEG_SHA256=
+RUN set -eux; \
+    curl -fsSL --retry 3 "${FFMPEG_URL}" -o /tmp/ffmpeg.tar.xz; \
+    sha256sum /tmp/ffmpeg.tar.xz; \
+    if [ -n "${FFMPEG_SHA256}" ]; then echo "${FFMPEG_SHA256}  /tmp/ffmpeg.tar.xz" | sha256sum -c -; fi; \
+    mkdir -p /opt/ffmpeg; \
+    tar -xJf /tmp/ffmpeg.tar.xz -C /opt/ffmpeg --strip-components=1; \
+    rm -f /tmp/ffmpeg.tar.xz; \
+    /opt/ffmpeg/bin/ffmpeg -version | head -n 1; \
+    /opt/ffmpeg/bin/ffmpeg -hide_banner -filters > /tmp/ffmpeg_filters.txt; \
+    /opt/ffmpeg/bin/ffmpeg -hide_banner -encoders > /tmp/ffmpeg_encoders.txt; \
+    for name in xfade fillborders perspective rotate pad overlay ass; do grep -qw "$name" /tmp/ffmpeg_filters.txt; done; \
+    grep -qw libx264 /tmp/ffmpeg_encoders.txt; \
+    rm -f /tmp/ffmpeg_filters.txt /tmp/ffmpeg_encoders.txt
 
 COPY --from=python-builder /opt/venv /opt/venv
 COPY --from=python-builder /opt/ComfyUI /opt/ComfyUI
@@ -186,7 +209,10 @@ RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin appuser && \
     chmod +x /app/scripts/entrypoint.sh /app/scripts/build-and-push.sh \
       /app/scripts/smoke_runtime.sh /app/scripts/preflight-release.sh
 
-ENV PATH=/opt/venv/bin:$PATH \
+ENV PATH=/opt/venv/bin:/opt/ffmpeg/bin:$PATH \
+    FFMPEG_BIN=/opt/ffmpeg/bin/ffmpeg \
+    FFPROBE_BIN=/opt/ffmpeg/bin/ffprobe \
+    TREND_CAPTION_FONTSDIR=/usr/local/share/fonts/montserrat \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     DATA_ROOT=/workspace \

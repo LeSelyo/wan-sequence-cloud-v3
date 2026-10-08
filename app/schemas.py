@@ -22,6 +22,11 @@ class Mode(str, Enum):
     # positions in one clip, not just a start/end pair. The app builds the actual
     # control_video/control_masks fed to WanVaceToVideo from Shot.keyframes.
     VACE = "vace"
+    # Jump cut: a montage shot made of still images (generated with /v1/images, uploaded, or read from the
+    # inputs directory) cut together by FFmpeg on the server. No GPU, no ComfyUI workflow: the options
+    # (per-image duration ratios, hard cut / shake / shutter-wipe transitions, constant camera shake) are in
+    # JumpCutSpec. The shot lasts frames / fps seconds like any other shot, so it concatenates with Wan shots.
+    JUMPCUT = "jumpcut"
 
 
 class LoraUse(BaseModel):
@@ -128,6 +133,38 @@ class ImageGenerationRequest(BaseModel):
         return self
 
 
+# Mirrors scripts/trend_philosopher.py (BURST_TRANSITIONS, CONSTANT_SHAKES); tests/test_jumpcut_shot.py checks they stay in step.
+JumpCutTransition = Literal["cut", "shake", "wipe_left", "wipe_right", "swing"]
+JumpCutShake = Literal["jitter", "roll", "handheld", "sway", "rock", "drift"]
+JUMPCUT_MIN_IMAGE_SECONDS = 0.05
+
+
+class JumpCutSpec(BaseModel):
+    """What a jump cut shot shows and how it is cut. Every field has a default, so {"images": [...]} is a complete request."""
+
+    model_config = ConfigDict(extra="forbid")
+    images: list[InputImage] = Field(min_length=2, max_length=40, description="The stills, in the order they are shown.")
+    # One number per image: image i stays ratios[i] / sum(ratios) of the shot ([1, 1, 2, 1] on 5 s = 1, 1, 2, 1 s). More ratios than
+    # images cycle through the images. None = automatic: shuffled images, each shown cut_min_seconds..cut_max_seconds.
+    ratios: list[float] | None = Field(default=None, min_length=1, max_length=200)
+    # How one image gives way to the next: "cut" hard cut, "shake" hard cut + a jolt, "wipe_left"/"wipe_right" shutter wipe, "swing" the wipe alternates.
+    transition: JumpCutTransition = "cut"
+    transition_seconds: float = Field(default=0.10, gt=0.0, le=1.0)
+    # A constant camera shake on top of the transitions, for the whole shot ("rock" = slow, smooth, framing unchanged).
+    constant_shake: JumpCutShake | None = None
+    constant_shake_amount: float = Field(default=1.0, gt=0.0, le=3.0)
+    cut_min_seconds: float = Field(default=0.2, ge=JUMPCUT_MIN_IMAGE_SECONDS, le=5.0)
+    cut_max_seconds: float = Field(default=0.4, ge=JUMPCUT_MIN_IMAGE_SECONDS, le=5.0)
+
+    @model_validator(mode="after")
+    def coherent(self):
+        if self.ratios is not None and any(value <= 0 for value in self.ratios):
+            raise ValueError("ratios must all be positive")
+        if self.cut_min_seconds > self.cut_max_seconds:
+            raise ValueError("cut_min_seconds must not exceed cut_max_seconds")
+        return self
+
+
 class Shot(BaseModel):
     id: str = Field(pattern=r"^[a-zA-Z0-9_-]{1,64}$")
     mode: Mode
@@ -167,9 +204,16 @@ class Shot(BaseModel):
     cfg: float = Field(default=5.0, ge=0.0, le=20.0)
     turbo_mode: bool = False
     loras: list[LoraUse] = Field(default_factory=list, max_length=8)
+    # jumpcut shots only (see Mode.JUMPCUT)
+    jumpcut: JumpCutSpec | None = None
 
     @model_validator(mode="after")
     def mode_inputs(self):
+        if self.mode == Mode.JUMPCUT:
+            _check_jumpcut_shot(self)
+            return self
+        if self.jumpcut is not None:
+            raise ValueError("jumpcut is only accepted for jumpcut shots")
         if self.turbo_mode:
             if self.mode not in {Mode.T2V, Mode.TEXT_IMAGE_TO_VIDEO, Mode.I2V}:
                 raise ValueError("turbo_mode is supported only for T2V/I2V workflows")
@@ -249,6 +293,25 @@ class Shot(BaseModel):
         # Note: turbo_mode is already rejected for these modes by the earlier
         # "turbo_mode is supported only for T2V/I2V workflows" check above.
         return self
+
+
+def _check_jumpcut_shot(shot: "Shot") -> None:
+    if shot.jumpcut is None:
+        raise ValueError("jumpcut requires the jumpcut options (at least its images)")
+    gpu_inputs = (
+        shot.start_image, shot.end_image, shot.generate_start_image, shot.driving_video, shot.keyframes or None, shot.loras or None,
+    )
+    if any(item is not None for item in gpu_inputs) or shot.turbo_mode:
+        raise ValueError(
+            "a jumpcut shot is rendered by FFmpeg from jumpcut.images: start_image, end_image, generate_start_image, "
+            "driving_video, keyframes, loras and turbo_mode are not accepted"
+        )
+    if shot.jumpcut.ratios:
+        shortest = shot.frames / shot.fps * min(shot.jumpcut.ratios) / sum(shot.jumpcut.ratios)
+        if shortest < JUMPCUT_MIN_IMAGE_SECONDS:
+            raise ValueError(
+                f"with these ratios an image would stay only {shortest:.3f} s: use fewer ratios, a longer shot (frames), or less extreme ratios"
+            )
 
 
 class Transition(BaseModel):

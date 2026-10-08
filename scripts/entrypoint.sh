@@ -13,6 +13,8 @@ UVICORN_BIN="$VENV_BIN/uvicorn"
 PYTHON_BIN="${ENTRYPOINT_PYTHON_BIN:-$PYTHON_BIN}"
 UVICORN_BIN="${ENTRYPOINT_UVICORN_BIN:-$UVICORN_BIN}"
 export PATH="$VENV_BIN:${PATH:-/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin}"
+# /opt/ffmpeg/bin: the recent static FFmpeg of the image (Dockerfile), ahead of the Ubuntu 4.4.2 package even when the host replaces PATH
+export PATH="${FFMPEG_DIR:-/opt/ffmpeg/bin}:$PATH"
 
 for executable in "$PYTHON_BIN" "$UVICORN_BIN"; do
   if [[ ! -x "$executable" ]]; then
@@ -36,6 +38,8 @@ export BUNDLED_MODEL_MANIFEST="$BUNDLE_MANIFEST"
 # Triton JIT-compiles the SageAttention kernels on first use; pointing its cache at
 # the persistent data volume means that one-off cost is paid once, not per restart.
 export TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-${DATA_ROOT}/cache/triton}"
+# !!! SageAttention ON is right for Wan and Krea2, but Qwen-Image-Edit (scripts/comfy_edit.py) returns BLACK images with it (NaN) !!!
+# For the image-EDIT family start with COMFY_USE_SAGE_ATTENTION=0 (full restart; one model family at a time). comfy_edit.py refuses to run if it sees Sage on.
 COMFY_USE_SAGE_ATTENTION="${COMFY_USE_SAGE_ATTENTION:-1}"
 # Enables comfy_kitchen's Triton backend (apply_rope, quantize_per_tensor_fp8, ...).
 # Requires build-essential + python3-dev in the image (see Dockerfile) — without them

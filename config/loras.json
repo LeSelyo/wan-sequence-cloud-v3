@@ -293,6 +293,42 @@
       "url": "https://civitai.com/api/download/models/859463",
       "source_page": "https://civitai.com/models/768440?modelVersionId=859463",
       "license_note": "CivitAI metadata: image use and Civitai rental/commercial use of outputs allowed; credit to the creator required; derivatives allowed. Verify current terms before commercial deployment."
+    },
+    "krea2_turbo_anime_enhance": {
+      "id": "krea2_turbo_anime_enhance",
+      "kind": "lora",
+      "label": "[Krea2 Turbo] Anime Enhance",
+      "family": "krea2",
+      "targets": ["keyframe"],
+      "default_target": "keyframe",
+      "version_id": 3160819,
+      "filename": "hina_Krea2Turbo_animeEnhance_v1.0.safetensors",
+      "size_bytes": 234704568,
+      "sha256": "6e727060dbdf69fcc61274d51dca95a96caf9f6043c23649bce92eda97537cea",
+      "trigger_words": ["anime style"],
+      "recommended_weight": 0.8,
+      "source": "civitai",
+      "url": "https://civitai.com/api/download/models/3160819",
+      "source_page": "https://civitai.com/models/2803539/krea2-turbo-anime-enhance-lora",
+      "license_note": "CivitAI metadata: image and Civitai rental use; derivatives disabled. Recommended weight 0.4 to 1.0. Verify current terms before commercial deployment."
+    },
+    "krea2_gurren_lagann_style": {
+      "id": "krea2_gurren_lagann_style",
+      "kind": "lora",
+      "label": "Gurren Lagann anime style (Krea 2, 1500 steps)",
+      "family": "krea2",
+      "targets": ["keyframe"],
+      "default_target": "keyframe",
+      "version_id": 3113331,
+      "filename": "krea_gurren-step00001500.safetensors",
+      "size_bytes": 234703744,
+      "sha256": "8b477fa7b5494497352bbbd558f8ebdc8b872ec595ac8cbc703d19154f73c2f1",
+      "trigger_words": ["GurrenLagannStyle"],
+      "recommended_weight": 1.0,
+      "source": "civitai",
+      "url": "https://civitai.com/api/download/models/3113331",
+      "source_page": "https://civitai.com/models/2765922/gurren-lagann-anime-style-krea-2-lora",
+      "license_note": "CivitAI metadata: image, Civitai rental, rent, sell; derivatives allowed. Style LoRA (600+ screencaps); strength 1 is standard, 2.5-3 when combined with other LoRAs."
     }
   }
 }

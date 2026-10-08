@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Callable
 
 from .job_store import JobStore
-from .schemas import SequenceRequest
+from .schemas import Mode, SequenceRequest
 from .settings import Settings
 
 
@@ -19,9 +19,14 @@ class AdmissionError(ValueError):
         self.status_code = status_code
 
 
+JUMPCUT_COST_UNITS = 0.02  # an FFmpeg montage of stills: CPU only, a tiny fraction of a diffusion shot
+
+
 def estimate_cost_units(request: SequenceRequest) -> float:
     return sum(
-        shot.width * shot.height * shot.frames * shot.steps / REFERENCE_WORK
+        JUMPCUT_COST_UNITS
+        if shot.mode == Mode.JUMPCUT
+        else shot.width * shot.height * shot.frames * shot.steps / REFERENCE_WORK
         for shot in request.shots
     )
 

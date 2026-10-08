@@ -12,6 +12,7 @@ from fastapi import Depends, FastAPI, File, HTTPException, Response, UploadFile,
 from fastapi.responses import FileResponse
 
 from .catalog import catalog
+from . import montage
 from .limits import AdmissionError, admit_job
 from .image_uploads import ImageUploadError, store_uploaded_image
 from .orchestrator import (
@@ -116,6 +117,12 @@ async def ping(response: Response) -> dict:
 @app.get("/v1/catalog", dependencies=[Depends(require_api_token)])
 async def get_catalog() -> dict:
     return catalog()
+
+
+@app.get("/v1/montage", dependencies=[Depends(require_api_token)])
+async def get_montage_options() -> dict:
+    """What can be chosen for an FFmpeg montage shot (mode "jumpcut" in POST /v1/jobs) and which FFmpeg this server runs."""
+    return await asyncio.to_thread(montage.options)
 
 
 @app.post(

@@ -1,0 +1,28 @@
+{
+  "id": "demo_jumpcut_001",
+  "transition": {"type": "cut"},
+  "shots": [
+    {
+      "id": "rafale",
+      "mode": "jumpcut",
+      "width": 832,
+      "height": 480,
+      "frames": 121,
+      "fps": 24,
+      "seed": 7,
+      "jumpcut": {
+        "images": [
+          {"image_id": "img_00000000000000000000000000000001"},
+          {"image_id": "img_00000000000000000000000000000002"},
+          {"image_id": "img_00000000000000000000000000000003"},
+          {"image_id": "img_00000000000000000000000000000004"}
+        ],
+        "ratios": [1, 1, 2, 1],
+        "transition": "swing",
+        "transition_seconds": 0.1,
+        "constant_shake": "rock",
+        "constant_shake_amount": 1.0
+      }
+    }
+  ]
+}

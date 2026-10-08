@@ -208,3 +208,16 @@ class CapabilityAndKeyframeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ModelFoldersAreDeclaredToComfyUI(unittest.TestCase):
+    def test_every_folder_the_catalogue_downloads_into_is_declared_in_extra_model_paths(self):
+        """A model in a folder ComfyUI does not know is downloaded but INVISIBLE (AudioEncoderLoader listed no model for wav2vec2 until `audio_encoders` was declared)."""
+        import json
+        from pathlib import Path
+        root = Path(__file__).resolve().parent.parent
+        catalog = json.loads((root / "config" / "base_models.json").read_text(encoding="utf-8"))
+        declared = {line.split(":", 1)[1].strip() for line in (root / "config" / "extra_model_paths.yaml").read_text(encoding="utf-8").splitlines()
+                    if line.startswith("  ") and ":" in line and "base_path" not in line}
+        folders = {spec["relative_path"].split("/")[0] for spec in catalog["items"].values()}
+        self.assertEqual(sorted(folders - declared), [])

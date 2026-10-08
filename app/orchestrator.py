@@ -17,6 +17,7 @@ from .catalog import lora_entry, validate_lora_for_stage
 from .comfy import bind_workflow, inject_loras, output_files, queue_and_wait
 from .driving_video import normalize_driving_video, probe_video, to_square_coords, trim_video
 from .job_store import JobStore
+from . import montage
 from .lora_downloads import ensure_lora
 from .readiness import (
     TURBO_ITEMS,
@@ -44,6 +45,13 @@ def validate_request_compatibility(request: SequenceRequest) -> None:
         for image in (shot.start_image, shot.end_image):
             if image is not None and image.image_id:
                 resolve_generated_image(image.image_id)
+        if shot.mode == Mode.JUMPCUT:  # FFmpeg only: no workflow, no LoRA, no model
+            for image in shot.jumpcut.images:
+                if image.image_id:
+                    resolve_generated_image(image.image_id)
+            if not settings.app_test_mode:
+                montage.validate_jumpcut(shot.jumpcut)
+            continue
         if shot.driving_video is not None and shot.driving_video.job_id:
             resolve_job_video(shot.driving_video.job_id)
         if shot.mode == Mode.T2V:
@@ -461,7 +469,24 @@ async def run_image_job(image_id: str, request: ImageGenerationRequest) -> None:
         )
 
 
+async def render_jumpcut_shot(shot: Shot, job_dir: Path) -> Path:
+    """A jump cut shot: the stills of shot.jumpcut cut together by FFmpeg (app/montage.py) for frames / fps seconds."""
+    spec = shot.jumpcut
+    images = [await materialize_image(image, job_dir, f"{shot.id}_jc{index:02d}") for index, image in enumerate(spec.images)]
+    work_dir = job_dir / f"{shot.id}_jumpcut"  # build_jumpcut keeps its intermediate files next to its output
+    rendered = await asyncio.to_thread(
+        montage.render_jumpcut, spec, images, work_dir / "jumpcut.mp4",
+        width=shot.width, height=shot.height, fps=shot.fps, seconds=shot.frames / shot.fps, seed=_seed(shot.seed),
+    )
+    target = job_dir / f"{shot.id}.mp4"
+    shutil.move(str(rendered), target)
+    shutil.rmtree(work_dir, ignore_errors=True)
+    return target
+
+
 async def render_shot(shot: Shot, job_dir: Path) -> Path:
+    if shot.mode == Mode.JUMPCUT:
+        return await render_jumpcut_shot(shot, job_dir)
     start = await (_generate_keyframe(shot, job_dir) if shot.generate_start_image else materialize_image(shot.start_image, job_dir, f"{shot.id}_start")) if (shot.generate_start_image or shot.start_image) else None
     end = await materialize_image(shot.end_image, job_dir, f"{shot.id}_end") if shot.end_image else None
     start_name = stage_for_comfy(start, job_dir.name, shot.id, "start") if start else None
@@ -584,20 +609,24 @@ def _trim_to_driving(video: Path, driving_frames: int) -> None:
     os.replace(trimmed, video)
 
 
-def concatenate(videos: list[Path], output: Path, transition: str, duration: float) -> None:
+def concatenate(videos: list[Path], output: Path, transition: str, duration: float, *, reencode: bool = False) -> None:
+    """reencode: join by re-encoding the video (no audio) instead of copying the streams. Needed when a shot did not come out of the
+    same encoder as the others (a jump cut rendered by FFmpeg next to Wan clips): stream copy then risks glitches at the joins."""
+    ffmpeg = montage.ffmpeg_binary()
     if len(videos) == 1:
         shutil.copy2(videos[0], output)
         return
     if transition == "cut":
         manifest = output.with_suffix(".txt")
         manifest.write_text("".join(f"file '{p.as_posix()}'\n" for p in videos), encoding="utf-8")
-        cmd = ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(manifest), "-c", "copy", str(output)]
+        codec = ["-an", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "17"] if reencode else ["-c", "copy"]
+        cmd = [ffmpeg, "-y", "-f", "concat", "-safe", "0", "-i", str(manifest), *codec, str(output)]
     else:
         # Normalize all shots, then chain video-only crossfades. Audio can be added as a later mix stage.
         probes = []
         for path in videos:
             result = subprocess.run(
-                ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(path)],
+                [montage.ffprobe_binary(), "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(path)],
                 check=True, capture_output=True, text=True,
             )
             probes.append(float(result.stdout.strip()))
@@ -607,7 +636,7 @@ def concatenate(videos: list[Path], output: Path, transition: str, duration: flo
             filters.append(f"{previous}[{index}:v]xfade=transition=fade:duration={duration}:offset={offset}{out}")
             previous = out
             offset += probes[index] - duration
-        cmd = ["ffmpeg", "-y"]
+        cmd = [ffmpeg, "-y"]
         for path in videos:
             cmd += ["-i", str(path)]
         cmd += ["-filter_complex", ";".join(filters), "-map", previous, "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p", str(output)]
@@ -645,7 +674,10 @@ async def run_job(request: SequenceRequest) -> None:
                 )
                 videos.append(await render_shot(shot, job_dir))
             final = job_dir / "sequence.mp4"
-            await asyncio.to_thread(concatenate, videos, final, request.transition.type, request.transition.duration_seconds)
+            await asyncio.to_thread(
+                concatenate, videos, final, request.transition.type, request.transition.duration_seconds,
+                reencode=any(shot.mode == Mode.JUMPCUT for shot in request.shots),
+            )
             store.update(
                 job_id,
                 status="completed",

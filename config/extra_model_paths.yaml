@@ -8,3 +8,4 @@ cloud_models:
   upscale_models: upscale_models
   clip_vision: clip_visions
   detection: detection
+  audio_encoders: audio_encoders

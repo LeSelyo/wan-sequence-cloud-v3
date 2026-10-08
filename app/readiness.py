@@ -6,6 +6,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from .montage import ffmpeg_status
 from .settings import Settings
 from scripts.download_utils import sha256_file
 
@@ -237,6 +238,9 @@ def check_capabilities(settings: Settings, profile: str) -> dict[str, Any]:
         details["ready"] for details in supported_engines
     )
     capabilities["image_generation"] = {"ready": image_ready, "engines": engines}
+    # FFmpeg montage (jump cut shots): reported, never required by a profile (the video families above do not depend on it)
+    ffmpeg = ffmpeg_status()
+    capabilities["montage"] = {"ready": bool(ffmpeg.get("ready")), "ffmpeg": ffmpeg}
     required = catalog.get("profile_capabilities", {}).get(profile, [])
     capabilities["required"] = required
     capabilities["required_ready"] = all(
