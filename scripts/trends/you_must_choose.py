@@ -10,7 +10,7 @@ the BRIEF that the analyst agent extracts from the context. `PROMPT_VERSION` cha
 from __future__ import annotations
 
 NAME = "you_must_choose"
-PROMPT_VERSION = "2026-10-08.3"
+PROMPT_VERSION = "2026-10-09.1"
 KINDS = ["narration", "talk", "pov", "choice", "twist", "rewind"]
 CAMERAS = ["wide", "medium", "close", "pov"]
 LOCATION_TAGS = ["space", "sea", "city", "shelter", "window", "forest", "desert", "ice", "underground"]  # the tags that make the style prompt force what a kind of place must always show
@@ -80,7 +80,9 @@ WHAT EACH ACT MUST DO
 
 RULES
 - The clues: c1's hidden truth and c2's hidden truth must each be hinted at in the OFFERS act (one clue each) and CONFIRMED in their branch (branch A confirms c1's, branch B confirms c2's).
-- Branch A ends {{ending_a}} for you, branch B ends {{ending_b}} for you; each last beat is a twist that RECASTS what you believed, with a short UPPERCASE ending label ("COLLECTED", "THE CURE"...).
+- ENDINGS. Branch A: {{mood_a}}
+  Branch B: {{mood_b}}
+  Each branch has a twist beat that RECASTS what you believed, with a short UPPERCASE ending label ("COLLECTED", "THE CURE"...).
 - Every beat has: act, branch (main for hook/setup/offers/choice, A or B after the choice; the rewind has branch B), kind, speaker (narrator, c1 or c2; only kind talk is spoken by c1 or c2), and "purpose" = ONE sentence
   saying what happens and what the picture shows.
 - The first beat is a hook (kind narration or pov). Make the hook's spoken idea contain the biggest keyword of the brief. Vary the beats: no two consecutive beats with the same purpose.
@@ -97,7 +99,9 @@ WRITER_PROMPT = """[[STAGE:writer]]
 You are the WRITER of a short-video studio, trend "you must choose". Write the SPOKEN LINES of the beats below, in order, one line per beat, in {{language}}.
 
 RULES
-- At most {{max_words}} words per line, short punchy sentences, natural speech, no stage directions, no quotation marks. Second person for the narrator ("you").
+- At most {{max_words}} words per line and about {{avg_words}} words on AVERAGE (the whole video must stay near {{total_words}} words): most lines are short, only a twist may be longer. Short punchy sentences, natural
+  speech, no stage directions, no quotation marks. Second person for the narrator ("you").
+- THE ENDING OF THIS PART: {{ending_mood}}
 - kind talk = the character SAYS it to you in the scene (c1 and c2 do not sound alike: use their voice_style and their public promise). The other kinds are the narrator.
 - Respect each beat's purpose, keep the story continuous with the previous lines, never repeat a line or an opening word three times in a row.
 - Facts that must appear somewhere: {{must_include}}.
@@ -181,3 +185,57 @@ DIRECTIONS_SCHEMA = {"type": "object", "properties": {"directions": {"type": "ar
     "required": ["still", "motion", "camera", "fx"]}}}, "required": ["directions"]}
 JUDGE_SCHEMA = {"type": "object", "properties": {k: {"type": "integer"} for k in ("hook", "coherence", "clues", "twist", "voice", "faithfulness", "variety")} | {"weakness": {"type": "string"}},
                 "required": ["hook", "coherence", "clues", "twist", "voice", "faithfulness", "variety", "weakness"]}
+
+
+# ---------------------------------------------------------------------------------------------- the moods of the endings (what "bad" and "good" must mean in the words)
+ENDING_MOOD = {
+    "bad": "it ends BAD for you: the twist shows that the person you chose lied to you or used you, and you lose your freedom, your people or your life. Not a happy ending, no last-second rescue.",
+    "good": "it ends GOOD for you: the twist shows that the person you chose was really on your side, or that you were the hero all along; you are saved and the ending feels earned. NO death, NO betrayal, NO horror at the end.",
+}
+OPEN_MOOD = "(the story is still open here: nobody is saved or lost yet)"
+
+# ---------------------------------------------------------------------------------------------- FROM NOTHING: the IDEA agent invents the context of a video from a random seed
+IDEA_WORLDS = [  # (the place, what is happening to it, the hour)
+    ("a flooded megacity", "the sea has swallowed the streets and keeps rising", "night"),
+    ("a drifting spaceship", "the sun it orbits is dying and the hull is cracking", "dusk"),
+    ("a mountain village", "an avalanche has buried the road and the last cable car is dead", "night"),
+    ("an underground bunker", "the air filters are failing after a war on the surface", "night"),
+    ("an oil platform in the ocean", "a monstrous storm is tearing it apart", "dusk"),
+    ("a desert city", "a black sun has risen and the heat melts the streets", "day"),
+    ("a space station above a dark Earth", "the lights of every city below have gone out", "night"),
+    ("a burning forest town", "a wall of fire is closing in from every side", "dusk"),
+    ("a frozen harbor", "an endless winter has locked the ships in the ice", "dawn"),
+    ("a clifftop monastery", "the sea is rising to the walls and a fog hides the coast", "dusk"),
+    ("a train crossing a ruined continent", "the rails ahead are gone and something follows the train", "night"),
+    ("a lunar colony", "the moon is breaking apart under the domes", "night"),
+    ("a research base in a jungle", "a strange fog has swallowed the camp and the radio is silent", "dawn"),
+    ("an island city", "a tsunami warning has sounded and the bridges are collapsing", "day"),
+    ("a skyscraper in a sandstorm", "the whole city is buried in a wall of red dust", "day"),
+    ("a lighthouse on a dying coast", "the tide never goes out any more and the sky is green", "dusk"),
+]
+IDEA_ROLES = [("ship captain", "doctor"), ("engineer", "priest"), ("soldier", "nurse"), ("smuggler", "scientist"), ("pilot", "teacher"), ("firefighter", "journalist"),
+              ("mechanic", "mayor"), ("hunter", "botanist"), ("police officer", "street musician"), ("monk", "geologist"), ("radio operator", "chef"), ("guide", "surgeon")]
+IDEA_TONES = ["tense", "bleak", "paranoid", "desperate", "cold", "eerie"]
+IDEA_PROMPT = """[[STAGE:idea]]
+You are the IDEA writer of a short-video studio, trend "you must choose" (a second-person story: two characters each offer to save you, you choose, each choice has an ending with a twist). Nobody gave you a
+subject: a random seed gives the bones, you invent the rest.
+
+SEED (follow it): place = {{setting}} | what is happening = {{premise}} | hour = {{hour}} | the two characters who offer to save you = a {{role_a}} and a {{role_b}} | tone = {{tone}}
+
+Write the CONTEXT of ONE video: three or four sentences in English that say WHERE and WHEN we are, WHAT is happening to the world, who YOU are and what you need, and that two strangers each offer to save you
+(name their two roles). Be concrete and vivid, add one surprising detail of your own, no real people or brands, do not tell how it ends. Also give a short title (2 to 4 words).
+
+Answer with the JSON only."""
+IDEA_SCHEMA = {"type": "object", "properties": {"title": {"type": "string"}, "context": {"type": "string"}}, "required": ["title", "context"]}
+
+VERIFIER_PROMPT = """[[STAGE:verifier]]
+You are the VERIFIER of a short-video studio. Read the LAST LINES of one branch of a "you must choose" story and say how the story ENDS FOR THE VIEWER ("you"):
+- "good": you are saved, you win, or you turn out to be the hero, and the tone is hopeful;
+- "bad": you die, are captured, used, betrayed or lose something essential, and the tone is dark;
+- "mixed": neither clearly.
+
+LAST LINES:
+{{lines}}
+
+Answer with the JSON only."""
+VERIFIER_SCHEMA = {"type": "object", "properties": {"polarity": {"type": "string", "enum": ["good", "bad", "mixed"]}, "reason": {"type": "string"}}, "required": ["polarity", "reason"]}

@@ -71,6 +71,12 @@ class CannedModel:
         if stage == "director":
             texts = re.findall(r"^\d+\. \[[^\]]+\] (.*)$", prompt.split("SHOTS (")[1], flags=re.M)
             return {"directions": [{"still": self.by_text[t].get("still") or "", "motion": self.by_text[t]["motion"], "camera": self.by_text[t]["camera"], "fx": {"zoom": 0.05, "shake": 0.0, "flash": False}} for t in texts]}
+        if stage == "verifier":
+            lines = prompt.lower()
+            return {"polarity": "bad" if ("collected" in lines or "never rescued" in lines) else "good", "reason": "canned"}
+        if stage == "idea":
+            roles = re.search(r"a (.+?) and a (.+?) \| tone", prompt)
+            return {"title": "Flood", "context": f"The water is rising fast at night. You are alone on a roof and the city is lost. Two strangers each offer to save you: a {roles.group(1)} and a {roles.group(2)}."}
         if stage == "judge":
             return {"hook": 8, "coherence": 8, "clues": 7, "twist": 8, "voice": 7, "faithfulness": 9, "variety": 8, "weakness": "none"}
         raise AssertionError(stage)
@@ -160,3 +166,43 @@ def test_a_talking_shot_needs_a_motion_too_so_the_director_is_asked_again():
                               "fx": {"zoom": 0.05, "shake": 0, "flash": False}}]}
     problems = sa.validate_directions(answer, shots, TREND)
     assert len(problems) == 1 and problems[0].startswith("shot 1: a motion")
+
+
+def test_from_nothing_the_idea_agent_draws_the_bones_by_seed_and_invents_the_context(library, monkeypatch):
+    model = CannedModel()
+    monkeypatch.setattr(TREND, "budget", lambda seconds, branches: CannedModel.counts(model.plan["shots"]))
+    plan = sa.make_plan(None, {"target_seconds": 150, "endings": {"A": "bad", "B": "good"}}, seed=7, llm=model, library=library, voices=[])
+    assert model.calls[0] == "idea" and model.calls[1] == "analyst" and plan["provenance"]["context"] == "rng" and plan["idea"]["source"] == "llm" and plan["context"]
+    first = sa.draw_seed_elements({"seed": 7}, TREND)
+    assert first == sa.draw_seed_elements({"seed": 7}, TREND) and plan["idea"]["bones"] == first
+    assert len({json.dumps(sa.draw_seed_elements({"seed": n}, TREND), sort_keys=True) for n in range(30)}) >= 20  # different seeds, different worlds
+    nothing = sa.make_plan(None, {"target_seconds": 60}, seed=7, llm=None, library=library, voices=[])
+    assert nothing["idea"]["source"] == "template" and first["role_a"] in nothing["context"] and first["role_b"] in nothing["context"] and nothing["shots"]
+
+
+def test_a_branch_that_ends_the_wrong_way_is_sent_back_to_the_writer_with_the_reason(library, monkeypatch):
+    class WrongEnding(CannedModel):
+        def __call__(self, prompt, schema, seed=0):
+            answer = super().__call__(prompt, schema, seed)
+            stage = re.search(r"\[\[STAGE:(\w+)\]\]", prompt).group(1)
+            if stage == "writer" and "it ends GOOD for you" in prompt and not getattr(self, "spoiled", False):
+                self.spoiled = True  # the first answer for the good branch ends in death: the verifier says bad
+                answer["lines"][-1]["text"] = "You were collected."
+                answer["lines"][-2]["text"] = "You were never rescued."
+            return answer
+
+    model = WrongEnding()
+    monkeypatch.setattr(TREND, "budget", lambda seconds, branches: CannedModel.counts(model.plan["shots"]))
+    plan = sa.make_plan(CONTEXT, {"target_seconds": 150, "endings": {"A": "bad", "B": "good"}}, seed=1, llm=model, library=library, voices=[])
+    chunk = plan["agents"]["writer"]["chunks"][2]
+    assert getattr(model, "spoiled", False) and chunk["attempts"] == 2 and chunk["source"] == "llm" and "polarity" not in json.dumps(chunk)
+    assert model.calls.count("verifier") >= 3
+
+
+def test_the_writer_is_asked_for_short_lines_on_average_and_told_when_a_chunk_is_too_long():
+    beats = [{}, {}, {}]
+    long_lines = {"lines": [{"text": "one two three four five six seven eight nine ten eleven", "location": "boat", "in_shot": []} for _ in beats]}
+    problems = sa.validate_lines(long_lines, beats, ["boat"], 14, avg_words=7)
+    assert len(problems) >= 1 and "too long on average" in problems[0]
+    ok = {"lines": [{"text": f"short line {n}", "location": "boat", "in_shot": []} for n in range(3)]}
+    assert sa.validate_lines(ok, beats, ["boat"], 14, avg_words=7) == []

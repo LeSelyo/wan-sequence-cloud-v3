@@ -1,6 +1,7 @@
 """THE PROCEDURE: three lines of context in, a finished "you must choose" TikTok video out (story, characters, pictures, voices, animated clips, face-detail pass, montage, sound, caption), every step resumable,
 every number measured and written to report.json. Nothing is hand-made: the story is written by the model on the box (scripts/story_writer.py), everything else by the steps below.
 
+    python scripts/story_auto.py run NAME                              (FROM NOTHING: no context at all, the idea agent invents the subject from the seed: the trend A/B is the only input)
     python scripts/story_auto.py run NAME "A flooded city at night. Two strangers on a rescue boat each offer to save you: a ship captain and a doctor." --seconds 150 [--language en] [--seed 1] [--branches 2]
     python scripts/story_auto.py run NAME --plan my_plan.json          (a plan written elsewhere: the story step is skipped)
     python scripts/story_auto.py status NAME                           (which steps are done, what is missing)
@@ -162,7 +163,7 @@ class Pipeline:
         if args.story_method == "single":  # one call writes the whole plan (kept to compare with the chain)
             plan = sw.make_story_plan(args.context, given, args.seed, (lambda prompt, schema: llm(prompt, schema, seed=args.seed or 0)) if llm else None)
         else:  # the chain of agents of the trend (analyst, planner, writer, director + the checks)
-            plan = ag.make_plan(args.context, given, args.seed, llm, trend_name=args.trend, candidates=args.candidates, judge=args.judge, outline_candidates=args.outline_candidates)
+            plan = ag.make_plan(args.context or None, given, args.seed, llm, trend_name=args.trend, candidates=args.candidates, judge=args.judge, outline_candidates=args.outline_candidates)
         self.plan_path.write_text(json.dumps(plan, indent=1, ensure_ascii=False), encoding="utf-8")
         judged = (plan.get("agents") or {}).get("judge")
         lib.StoryLibrary().add(plan, approved=False, author="llm" if llm else "template", scores=judged or {}, entry_id=self.name)  # kept, but only an APPROVED story is ever used as an example
@@ -321,8 +322,6 @@ def main() -> None:
         for step, (done, detail) in pipeline.status().items():
             print(f"{'OK ' if done else '-- '} {step:9} {detail}")
         return
-    if not args.plan and not pipeline.plan_path.exists() and not args.context:
-        raise SystemExit("give the three lines of context (or --plan PLAN.json)")
     pipeline.go(args)
 
 

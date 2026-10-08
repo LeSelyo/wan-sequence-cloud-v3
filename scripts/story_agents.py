@@ -76,6 +76,43 @@ def call_agent(llm, prompt: str, schema: dict, check, attempts: int = 3, seed: i
     return None, problems, attempts
 
 
+# ---------------------------------------------------------------------------------------------- stage 0: the IDEA agent (a context out of nothing)
+def draw_seed_elements(params: dict, trend) -> dict:
+    """The bones of a story drawn by the seed from the pools of the trend: a place and what happens to it, an hour, two roles, a tone. The same seed always draws the same bones."""
+    rnd = random.Random(params["seed"] * 31 + 5)
+    setting, premise, hour = rnd.choice(trend.IDEA_WORLDS)
+    role_a, role_b = rnd.choice(trend.IDEA_ROLES)
+    if rnd.random() < 0.5:
+        role_a, role_b = role_b, role_a
+    return {"setting": setting, "premise": premise, "hour": hour, "role_a": role_a, "role_b": role_b, "tone": rnd.choice(trend.IDEA_TONES)}
+
+
+def validate_idea(answer: dict, bones: dict) -> list[str]:
+    context = answer.get("context", "")
+    problems = []
+    if len(re.findall(r"[.!?]", context)) < 3 or se.count_words(context) < 30:
+        problems.append("the context needs three or four sentences (at least 30 words)")
+    for role in (bones["role_a"], bones["role_b"]):
+        if role.split()[-1].lower() not in context.lower():
+            problems.append(f"the role '{role}' must be named in the context")
+    if not answer.get("title", "").strip():
+        problems.append("a short title is needed")
+    return problems
+
+
+def run_idea(params: dict, trend, llm) -> tuple[str, dict]:
+    """FROM NOTHING: the context of the video is invented. Returns (context, report). Without a model the bones become a plain three-sentence context."""
+    bones = draw_seed_elements(params, trend)
+    plain = f"{bones['setting'].capitalize()}, {bones['hour']}. {bones['premise'].capitalize()}. Two strangers each offer to save you: a {bones['role_a']} and a {bones['role_b']}."
+    if llm is None:
+        return plain, {"source": "template", "bones": bones}
+    prompt = fill(trend.IDEA_PROMPT, {"setting": bones["setting"], "premise": bones["premise"], "hour": bones["hour"], "role_a": bones["role_a"], "role_b": bones["role_b"], "tone": bones["tone"]})
+    answer, problems, attempts = call_agent(llm, prompt, trend.IDEA_SCHEMA, lambda a: validate_idea(a, bones), seed=params["seed"])
+    if answer is None:
+        return plain, {"source": "template", "bones": bones, "attempts": attempts, "problems": problems[:3]}
+    return answer["context"].strip(), {"source": "llm", "bones": bones, "attempts": attempts, "title": answer["title"]}
+
+
 # ---------------------------------------------------------------------------------------------- stage 1: the analyst
 def validate_brief(brief: dict, trend) -> list[str]:
     problems = []
@@ -146,6 +183,8 @@ def expected_branch(act: str) -> str:
 def validate_outline(outline: dict, counts: dict[str, int], endings: dict, trend) -> list[str]:
     problems = []
     beats = outline.get("beats", [])
+    if abs(len(beats) - sum(counts.values())) > 2:
+        problems.append(f"{len(beats)} beats in total, {sum(counts.values())} are needed (a video of the right length)")
     order = [act for act in trend.ACT_PURPOSE if act in counts]
     sequence = [b.get("act") for b in beats]
     expected = [act for act in order for _ in range(counts[act])]
@@ -213,8 +252,8 @@ def outline_score(outline: dict, brief: dict) -> float:
 
 
 def run_planner(brief: dict, counts: dict, endings: dict, params: dict, trend, llm, candidates: int = 1) -> tuple[dict, dict]:
-    prompt = fill(trend.PLANNER_PROMPT, {"structure": structure_text(counts), "act_purposes": "\n".join(f"- {act}: {trend.ACT_PURPOSE[act]}" for act in counts), "ending_a": endings["A"].upper(),
-                                        "ending_b": endings.get("B", "none").upper(), "language": {"en": "English", "fr": "French"}[params["language"]], "brief": compact_brief(brief)})
+    prompt = fill(trend.PLANNER_PROMPT, {"structure": structure_text(counts), "act_purposes": "\n".join(f"- {act}: {trend.ACT_PURPOSE[act]}" for act in counts),
+                                        "mood_a": trend.ENDING_MOOD[endings["A"]], "mood_b": trend.ENDING_MOOD[endings["B"]] if "B" in endings else "(there is no branch B in this video)", "language": {"en": "English", "fr": "French"}[params["language"]], "brief": compact_brief(brief)})
     best, report = None, {"candidates": []}
     for k in range(candidates if llm else 0):
         outline, problems, attempts = call_agent(llm, prompt, trend.OUTLINE_SCHEMA, lambda o: validate_outline(o, counts, endings, trend), seed=params["seed"] + 100 * k)
@@ -236,11 +275,15 @@ def chunks_of(beats: list[dict]) -> list[list[int]]:
     return [g for g in groups if g]
 
 
-def validate_lines(answer: dict, beats: list[dict], location_ids: list[str], max_words: int) -> list[str]:
+def validate_lines(answer: dict, beats: list[dict], location_ids: list[str], max_words: int, avg_words: float | None = None) -> list[str]:
     lines = answer.get("lines", [])
     problems = []
     if len(lines) != len(beats):
         return [f"{len(lines)} lines but {len(beats)} beats: one line per beat, same order"]
+    if avg_words:
+        mean = sum(se.count_words(l.get("text", "")) for l in lines) / len(lines)
+        if mean > 1.3 * avg_words:
+            problems.append(f"the lines are too long on average ({mean:.1f} words): aim for about {avg_words:.0f} words per line, shorten most of them")
     seen = set()
     for i, (line, beat) in enumerate(zip(lines, beats)):
         words = se.count_words(line.get("text", ""))
@@ -254,19 +297,39 @@ def validate_lines(answer: dict, beats: list[dict], location_ids: list[str], max
     return problems
 
 
-def run_writer(brief: dict, outline: dict, params: dict, trend, llm, library_examples: str) -> tuple[list[dict], dict]:
+def verify_polarity(llm, trend, lines: list[dict], expected: str, seed: int = 0) -> list[str]:
+    """Ask a small separate question: how do the last lines of this branch END for the viewer? A branch that must end good and reads bad (or the reverse) is a problem the writer is told about."""
+    tail = "\n".join(f"- {l['text']}" for l in lines[-6:])
+    try:
+        verdict = llm(fill(trend.VERIFIER_PROMPT, {"lines": tail}), trend.VERIFIER_SCHEMA, seed=seed)
+    except Exception:
+        return []  # a verifier that cannot answer never blocks the story
+    if verdict["polarity"] == expected:
+        return []
+    return [f"this branch must end {expected.upper()} for you but its last lines read {verdict['polarity'].upper()} ({verdict['reason'][:140]}): rewrite the last lines so that they end {expected.upper()}"]
+
+
+def run_writer(brief: dict, outline: dict, params: dict, trend, llm, library_examples: str, endings: dict | None = None) -> tuple[list[dict], dict]:
     beats = outline["beats"]
+    average = params["target_seconds"] * se.WORDS_PER_SECOND[params["language"]] * 0.85 / max(1, len(beats))
     location_ids = [loc["id"] for loc in brief["locations"]]
     lines: list[dict | None] = [None] * len(beats)
     report = {"chunks": []}
     for chunk in chunks_of(beats):
         picked = [beats[i] for i in chunk]
+        acts = {b["act"] for b in picked}
+        branch_letter = "A" if "branch_a" in acts else "B" if "branch_b" in acts else None
+        expected = (endings or {}).get(branch_letter) if branch_letter else None
+        mood = trend.ENDING_MOOD[expected] if expected else trend.OPEN_MOOD
         previous = " / ".join(l["text"] for l in lines[:chunk[0]][-5:] if l) or "(this is the start)"
         prompt = fill(trend.WRITER_PROMPT, {"language": {"en": "English", "fr": "French"}[params["language"]], "max_words": trend.MAX_SPOKEN_WORDS, "must_include": "; ".join(brief["must_include"]) or "(none)",
                                            "location_ids": location_ids, "brief": compact_brief(brief), "previous_lines": previous, "count": len(picked), "examples": library_examples or "(none yet)",
+                                           "avg_words": f"{average:.0f}", "total_words": int(params["target_seconds"] * se.WORDS_PER_SECOND[params["language"]] * 0.85), "ending_mood": mood,
                                            "beats": "\n".join(f"{n + 1}. [{b['kind']}, speaker {b['speaker']}] {b['purpose']}" for n, b in enumerate(picked))})
-        answer, problems, attempts = (None, ["no model"], 0) if llm is None else call_agent(llm, prompt, trend.LINES_SCHEMA, lambda a: validate_lines(a, picked, location_ids, trend.MAX_SPOKEN_WORDS),
-                                                                                             seed=params["seed"] + 7 * chunk[0])
+        answer, problems, attempts = (None, ["no model"], 0) if llm is None else call_agent(
+            llm, prompt, trend.LINES_SCHEMA,
+            lambda a: validate_lines(a, picked, location_ids, trend.MAX_SPOKEN_WORDS, average) + (verify_polarity(llm, trend, a.get("lines", []), expected, seed=params["seed"]) if expected and not validate_lines(a, picked, location_ids, trend.MAX_SPOKEN_WORDS) else []),
+            seed=params["seed"] + 7 * chunk[0])
         if answer is None:
             answer = {"lines": [{"text": " ".join(b["purpose"].split()[:trend.MAX_SPOKEN_WORDS - 2]), "location": location_ids[0], "in_shot": []} for b in picked]}
         report["chunks"].append({"beats": len(picked), "source": "llm" if llm and not problems else "template", "attempts": attempts, "problems": problems[:3]})
@@ -388,7 +451,7 @@ def judge_plan(context: str, plan: dict, trend, llm) -> dict | None:
     return {**scores, "mean": round(sum(numeric) / len(numeric), 2)}
 
 
-def make_plan(context: str, given: dict | None = None, seed: int | None = None, llm=None, trend_name: str = "you_must_choose", candidates: int = 1, judge: bool = False,
+def make_plan(context: str | None = None, given: dict | None = None, seed: int | None = None, llm=None, trend_name: str = "you_must_choose", candidates: int = 1, judge: bool = False,
               outline_candidates: int = 1, voices: list[dict] | None = None, library: lib.StoryLibrary | None = None, exclude_examples: set[str] | None = None) -> dict:
     """The whole chain for one context. `llm(prompt, schema, seed=...) -> dict`; None = no model (every stage uses its fallback). With candidates > 1 the whole chain runs several times and the
     judge picks the best."""
@@ -401,6 +464,12 @@ def make_plan(context: str, given: dict | None = None, seed: int | None = None, 
         endings = {"A": endings["A"]}
     provenance["endings"] = "given" if endings_given else "rng"
     library = library if library is not None else lib.StoryLibrary()
+    idea_report = None
+    if not (context or "").strip():  # NOTHING was given: the idea agent invents the subject from the seed
+        context, idea_report = run_idea(params, trend, llm)
+        provenance["context"] = "rng"
+    else:
+        provenance["context"] = "given"
     best = None
     unload = getattr(llm, "unload", None)
     for k in range(max(1, candidates)):
@@ -410,7 +479,7 @@ def make_plan(context: str, given: dict | None = None, seed: int | None = None, 
         counts = trend.budget(params["target_seconds"], params["branches"])
         outline, report_p = run_planner(brief, counts, endings, run_params, trend, llm, outline_candidates)
         examples = library.examples_text(brief, k=2, exclude=exclude_examples)
-        lines, report_w = run_writer(brief, outline, run_params, trend, llm, examples)
+        lines, report_w = run_writer(brief, outline, run_params, trend, llm, examples, endings)
         provisional = [{"kind": b["kind"], "branch": b["branch"], "text": l["text"], "location": l["location"], "in_shot": l.get("in_shot", [])} for b, l in zip(outline["beats"], lines)]
         directions, report_d = run_director(brief, provisional, run_params, trend, llm, library.director_examples_text(brief, k=2, exclude=exclude_examples))
         story = assemble_story(brief, outline, lines, directions, endings, trend)
@@ -418,6 +487,7 @@ def make_plan(context: str, given: dict | None = None, seed: int | None = None, 
         location_ids = [loc["id"] for loc in brief["locations"]]
         problems = sw.validate_story(story, run_params, endings, location_ids)
         plan = finish_plan(story, brief, context, run_params, provenance, endings, location_ids, voices)
+        plan["idea"] = idea_report
         plan["agents"] = {"trend": trend.NAME, "prompts": prompt_fingerprint(trend), "analyst": report_a, "planner": report_p, "writer": report_w, "director": report_d, "rhythm": rhythm,
                           "problems_left": problems, "seconds": round(time.time() - started, 1)}
         plan["story_source"] = "chain: " + ", ".join(f"{n}={plan['agents'][n]['source']}" for n in ("analyst", "planner")) + ", writer=" + ("llm" if all(c["source"] == "llm" for c in report_w["chunks"]) else "partly template") \
