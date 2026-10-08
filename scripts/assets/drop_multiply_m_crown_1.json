@@ -1,0 +1,12 @@
+{
+ "note": "positions read by eye on m_crown_1 turned clockwise (576x1024). event = the main crown; inpaint = every splash and the droplet of the still; allowed = water only (no grass, no rocks)",
+ "event": {"x": 150, "y": 295, "rx": 85, "ry": 115},
+ "inpaint": [
+  {"x": 150, "y": 295, "rx": 85, "ry": 115},
+  {"x": 365, "y": 510, "rx": 45, "ry": 55},
+  {"x": 480, "y": 695, "rx": 30, "ry": 35},
+  {"x": 290, "y": 288, "rx": 18, "ry": 18}
+ ],
+ "allowed": [[40, 60, 330, 900], [330, 470, 470, 800]],
+ "depth": {"near_weight": [0.6, 0.4], "far_scale": 0.3}
+}

@@ -1,0 +1,2036 @@
+{
+ "version": 1,
+ "frozen": "2026-10-05",
+ "note": "Everything needed to replay a shot EXACTLY: same prompt, same LoRAs and weights, same size, same seeds (still and clip). `python scripts/trend_rain_anime.py recipes` lists them, `replay NAME` regenerates through the API.",
+ "finishing": {
+  "rotation": "clockwise",
+  "final_size": [
+   576,
+   1024
+  ],
+  "final_fps": 30,
+  "filter": "minterpolate=fps=30:mi_mode=mci:mc_mode=aobmc:vsbmc=1:me_mode=bidir,transpose=1,scale=576:1024:flags=lanczos,eq=saturation=1.08:contrast=1.04,noise=alls=3:allf=t,format=yuv420p"
+ },
+ "styles": {
+  "shinkai": {
+   "label": "prompt only (Shinkai painting)",
+   "loras": [],
+   "prefix": ""
+  },
+  "enhance": {
+   "label": "Anime Enhance LoRA 0.8",
+   "loras": [
+    [
+     "krea2_turbo_anime_enhance",
+     0.8
+    ]
+   ],
+   "prefix": "anime style, "
+  },
+  "enhance_strong": {
+   "label": "Anime Enhance LoRA 1.0",
+   "loras": [
+    [
+     "krea2_turbo_anime_enhance",
+     1.0
+    ]
+   ],
+   "prefix": "anime style, "
+  },
+  "gurren": {
+   "label": "Gurren Lagann LoRA 1.0",
+   "loras": [
+    [
+     "krea2_gurren_lagann_style",
+     1.0
+    ]
+   ],
+   "prefix": "GurrenLagannStyle, "
+  },
+  "gurren_strong": {
+   "label": "Gurren Lagann LoRA 1.6",
+   "loras": [
+    [
+     "krea2_gurren_lagann_style",
+     1.6
+    ]
+   ],
+   "prefix": "GurrenLagannStyle, "
+  },
+  "enhance_gurren_18": {
+   "label": "Anime Enhance 0.7 + Gurren Lagann 1.8",
+   "loras": [
+    [
+     "krea2_turbo_anime_enhance",
+     0.7
+    ],
+    [
+     "krea2_gurren_lagann_style",
+     1.8
+    ]
+   ],
+   "prefix": "anime style, GurrenLagannStyle, "
+  },
+  "enhance_gurren": {
+   "label": "Anime Enhance 0.7 + Gurren Lagann 1.5",
+   "loras": [
+    [
+     "krea2_turbo_anime_enhance",
+     0.7
+    ],
+    [
+     "krea2_gurren_lagann_style",
+     1.5
+    ]
+   ],
+   "prefix": "anime style, GurrenLagannStyle, "
+  }
+ },
+ "low_shadow_phrase": "soft even diffused daylight, no cast shadows, shadowless flat high-key lighting, bright clean colours, every detail clearly visible",
+ "post": {
+  "tool": "scripts/rain_drop_post.py",
+  "defaults": {
+   "speed": 2.0,
+   "reach": 30.0,
+   "feather": 80.0,
+   "kernel": 9,
+   "reflect_window": 3,
+   "aspect": 0.85,
+   "rain_rate": 150.0,
+   "water_share": 0.55,
+   "opacity": 0.45,
+   "length": 70.0,
+   "fall_speed": 1800.0,
+   "flight": 0.11,
+   "ripple_life": 0.5,
+   "angle": 12.0,
+   "black_share": 0.3,
+   "white": [
+    255,
+    255,
+    255
+   ],
+   "blue_day": [
+    190,
+    228,
+    255
+   ],
+   "blue_night": [
+    110,
+    160,
+    235
+   ],
+   "dark_day": [
+    70,
+    85,
+    130
+   ],
+   "dark_night": [
+    5,
+    5,
+    25
+   ],
+   "night": null,
+   "seed": 1,
+   "targeted": 0,
+   "stop_margin": 10.0,
+   "t_white": [
+    255,
+    255,
+    255
+   ],
+   "t_black": [
+    10,
+    8,
+    30
+   ],
+   "t_blue": [
+    90,
+    170,
+    255
+   ],
+   "steady": false,
+   "reflect_ref_frames": 0,
+   "ring_strength": 0.35,
+   "warp": null,
+   "shrink": 65.0,
+   "ramp": 50.0,
+   "fade_warp": 140.0,
+   "style": "general"
+  },
+  "levels": {
+   "normal": {},
+   "exaggerated": {
+    "speed": 3.0,
+    "reach": 0.0,
+    "feather": 60.0,
+    "kernel": 11,
+    "reflect_window": 4,
+    "rain_rate": 320.0,
+    "opacity": 0.75,
+    "length": 120.0,
+    "fall_speed": 2200.0
+   }
+  },
+  "reference_seed": 1372175472,
+  "rain_styles": {
+   "general": {
+    "label": "v4 general rain: glassy drops with a mostly white trail over the whole picture, small ripples on the water, steadier reflection, far rings calmed",
+    "set": {}
+   },
+   "calm_targeted": {
+    "label": "v3: far ripples calmed, faint black/white/blue drops each aimed at a real impact (they stop outside its core)",
+    "set": {
+     "rain_rate": 0.0,
+     "targeted": 14,
+     "reflect_window": 0,
+     "opacity": 0.3,
+     "length": 70.0,
+     "fall_speed": 1500.0
+    }
+   },
+   "pinch": {
+    "label": "v2: ripples pulled toward each impact by a radial warp, 1.5x speed (kept for the record: bent lines on the reference clip)",
+    "set": {
+     "rain_rate": 0.0,
+     "targeted": 14,
+     "reflect_window": 0,
+     "opacity": 0.3,
+     "length": 70.0,
+     "fall_speed": 1500.0,
+     "warp": "pinch",
+     "speed": 1.5,
+     "reach": -1.0
+    }
+   },
+   "steady": {
+    "label": "steady reflection (balanced): the reflected painting is held steady (+-12 frames), 35 percent of the far ring strokes kept, the impact cores untouched, general rain on top",
+    "set": {
+     "steady": true,
+     "reflect_window": 12,
+     "ring_strength": 0.35
+    }
+   },
+   "steady_still": {
+    "label": "steady reflection (very calm): +-20 frames, only 12 percent of the far ring strokes, rings stay close to the impacts",
+    "set": {
+     "steady": true,
+     "reflect_window": 20,
+     "ring_strength": 0.12,
+     "reach": 10.0,
+     "feather": 60.0
+    }
+   },
+   "steady_keep": {
+    "label": "steady reflection (lively): +-8 frames, 70 percent of the far ring strokes kept, the water still moves but the painting is steadier",
+    "set": {
+     "steady": true,
+     "reflect_window": 8,
+     "ring_strength": 0.7,
+     "reach": 60.0,
+     "feather": 90.0
+    }
+   },
+   "steady_first": {
+    "label": "steady reflection (frozen painting): the reflected painting is the one of the first 6 frames, before the waves spread, for the whole clip; 30 percent of the far ring strokes kept; impact cores untouched",
+    "set": {
+     "steady": true,
+     "reflect_ref_frames": 6,
+     "ring_strength": 0.3
+    }
+   }
+  },
+  "styles_note": "All rain styles coexist as choices (--style general|calm_targeted|pinch); none replaces another. The tool never overwrites an existing output.",
+  "outputs_on_the_reference": {
+   "pinch": "refdrop/c_big_enhance_gurren_2_rain_v2.mp4 (v2: bent lines/curved horizon reported by the user on this clip, kept as a choice)",
+   "calm_targeted": "refdrop/c_big_enhance_gurren_2_rain_v3.mp4 and ..._v3_exagere.mp4",
+   "general": "refdrop/c_big_enhance_gurren_2_rain_general.mp4 and ..._general_exagere.mp4",
+   "steady": "refdrop/c_big_enhance_gurren_2_rain_steady.mp4",
+   "steady_still": "refdrop/c_big_enhance_gurren_2_rain_steady_still.mp4",
+   "steady_keep": "refdrop/c_big_enhance_gurren_2_rain_steady_keep.mp4",
+   "steady_first": "refdrop/c_big_enhance_gurren_2_rain_steady_first.mp4"
+  },
+  "user_feedback": "2026-10-05: the general-rain drops in the air are good; the impacts of the calm_a/b/c stills were rejected (crown, solid/water confusion, not like the reference craters) and the ripple dispersion that deforms the reflection makes the video hard to watch -> keep the reference impacts, steady the reflection (steady* styles, phase H clips)"
+ },
+ "recipes": {
+  "e_bird_flat_enhance_1": {
+   "status": "validated",
+   "note": "validated by the user 2026-10-05 (clean)",
+   "style": "enhance",
+   "still": {
+    "engine": "krea2",
+    "prompt": "anime style, a small sparrow perched on a wet branch with green leaves, seen from below against a bright pale sky, water droplets on the leaves, soft even diffused daylight, no cast shadows, shadowless flat high-key lighting, bright clean colours, every detail clearly visible, sharp detail on the bird and the leaves, Makoto Shinkai style anime background painting, hand-painted, extremely detailed, rich and varied vivid colours (emerald and leaf greens, teal, cobalt blue, warm gold, soft pink and lavender), luminous volumetric light, cinematic composition, clean crisp painted shapes, no text, no watermark",
+    "width": 1024,
+    "height": 576,
+    "seed": 1913820983,
+    "loras": [
+     {
+      "id": "krea2_turbo_anime_enhance",
+      "weight": 0.8,
+      "target": "keyframe"
+     }
+    ]
+   },
+   "clip": {
+    "prompt": "the bird spreads its wings and takes flight, leaves tremble, droplets scatter, light rain, static camera",
+    "seed": 1913820983,
+    "frames": 49,
+    "fps": 16,
+    "turbo_mode": true
+   },
+   "timings_s": {
+    "still": 16.7,
+    "clip_wall": 79.0
+   }
+  },
+  "e_bird_flat_enhance_gurren_18_1": {
+   "status": "validated",
+   "note": "validated by the user 2026-10-05 (clean)",
+   "style": "enhance_gurren_18",
+   "still": {
+    "engine": "krea2",
+    "prompt": "anime style, GurrenLagannStyle, a small sparrow perched on a wet branch with green leaves, seen from below against a bright pale sky, water droplets on the leaves, soft even diffused daylight, no cast shadows, shadowless flat high-key lighting, bright clean colours, every detail clearly visible, sharp detail on the bird and the leaves, Makoto Shinkai style anime background painting, hand-painted, extremely detailed, rich and varied vivid colours (emerald and leaf greens, teal, cobalt blue, warm gold, soft pink and lavender), luminous volumetric light, cinematic composition, clean crisp painted shapes, no text, no watermark",
+    "width": 1024,
+    "height": 576,
+    "seed": 984982403,
+    "loras": [
+     {
+      "id": "krea2_turbo_anime_enhance",
+      "weight": 0.7,
+      "target": "keyframe"
+     },
+     {
+      "id": "krea2_gurren_lagann_style",
+      "weight": 1.8,
+      "target": "keyframe"
+     }
+    ]
+   },
+   "clip": {
+    "prompt": "the bird spreads its wings and takes flight, leaves tremble, droplets scatter, light rain, static camera",
+    "seed": 984982403,
+    "frames": 49,
+    "fps": 16,
+    "turbo_mode": true
+   },
+   "timings_s": {
+    "still": 26.0,
+    "clip_wall": 42.6
+   }
+  },
+  "e2_benchcat_sit": {
+   "status": "validated",
+   "note": "validated by the user 2026-10-05 (clean); angle stable with the locked seed",
+   "style": "enhance_gurren_18",
+   "still": {
+    "engine": "krea2",
+    "prompt": "anime style, GurrenLagannStyle, a wooden park bench seen from above at a fixed stable angle, the camera high above looking down at the bench from the front, the bench centred, raindrops on the wood, a few fallen leaves, a cat sitting upright on the bench looking at the camera, overcast sky, soft shadowless ambient light, no direct sunlight, no cast shadows on the ground, no dappled tree shadows, flat even lighting, bright clean colours, every detail clearly visible, Makoto Shinkai style anime background painting, hand-painted, extremely detailed, rich and varied vivid colours (emerald and leaf greens, teal, cobalt blue, warm gold, soft pink and lavender), luminous volumetric light, cinematic composition, clean crisp painted shapes, no text, no watermark",
+    "width": 1024,
+    "height": 576,
+    "seed": 1673283009,
+    "loras": [
+     {
+      "id": "krea2_turbo_anime_enhance",
+      "weight": 0.7,
+      "target": "keyframe"
+     },
+     {
+      "id": "krea2_gurren_lagann_style",
+      "weight": 1.8,
+      "target": "keyframe"
+     }
+    ]
+   },
+   "clip": {
+    "prompt": "the cat blinks slowly and flicks its tail, raindrops fall softly, static locked-off camera with no camera movement",
+    "seed": 1673283009,
+    "frames": 49,
+    "fps": 16,
+    "turbo_mode": true
+   },
+   "timings_s": {
+    "still": 16.8,
+    "clip_wall": 52.8
+   }
+  },
+  "e_sign_enhance_gurren_18_1": {
+   "status": "validated",
+   "note": "validated by the user 2026-10-05 (clean)",
+   "style": "enhance_gurren_18",
+   "still": {
+    "engine": "krea2",
+    "prompt": "anime style, GurrenLagannStyle, extreme close-up of a very detailed old street sign on a metal pole, enamel plates with abstract pictograms, rust, peeling paint, screws and raindrops, the street blurred behind with a strong depth of field, soft even diffused daylight, no cast shadows, shadowless flat high-key lighting, bright clean colours, every detail clearly visible, Makoto Shinkai style anime background painting, hand-painted, extremely detailed, rich and varied vivid colours (emerald and leaf greens, teal, cobalt blue, warm gold, soft pink and lavender), luminous volumetric light, cinematic composition, clean crisp painted shapes, no text, no watermark",
+    "width": 1024,
+    "height": 576,
+    "seed": 171701465,
+    "loras": [
+     {
+      "id": "krea2_turbo_anime_enhance",
+      "weight": 0.7,
+      "target": "keyframe"
+     },
+     {
+      "id": "krea2_gurren_lagann_style",
+      "weight": 1.8,
+      "target": "keyframe"
+     }
+    ]
+   },
+   "clip": {
+    "prompt": "raindrops slide down the enamel plates and drip from the edges, tiny light reflections move, static camera",
+    "seed": 171701465,
+    "frames": 49,
+    "fps": 16,
+    "turbo_mode": true
+   },
+   "timings_s": {
+    "still": 16.7,
+    "clip_wall": 54.0
+   }
+  },
+  "e_topcrowd_enhance_gurren_18_1": {
+   "status": "validated",
+   "note": "validated by the user 2026-10-05 (clean)",
+   "style": "enhance_gurren_18",
+   "still": {
+    "engine": "krea2",
+    "prompt": "anime style, GurrenLagannStyle, high angle camera looking down on a rainy street corner, people with colourful umbrellas cropped by the top edge of the frame so that only their umbrellas and shoulders are visible, strong depth of field, sharp foreground and blurred background, soft even diffused daylight, no cast shadows, shadowless flat high-key lighting, bright clean colours, every detail clearly visible, Makoto Shinkai style anime background painting, hand-painted, extremely detailed, rich and varied vivid colours (emerald and leaf greens, teal, cobalt blue, warm gold, soft pink and lavender), luminous volumetric light, cinematic composition, clean crisp painted shapes, no text, no watermark",
+    "width": 1024,
+    "height": 576,
+    "seed": 490690444,
+    "loras": [
+     {
+      "id": "krea2_turbo_anime_enhance",
+      "weight": 0.7,
+      "target": "keyframe"
+     },
+     {
+      "id": "krea2_gurren_lagann_style",
+      "weight": 1.8,
+      "target": "keyframe"
+     }
+    ]
+   },
+   "clip": {
+    "prompt": "the people walk slowly, umbrellas sway, rain falls, reflections shimmer on the wet street, static camera",
+    "seed": 490690444,
+    "frames": 49,
+    "fps": 16,
+    "turbo_mode": true
+   },
+   "timings_s": {
+    "still": 16.4,
+    "clip_wall": 53.8
+   }
+  },
+  "e_train_enhance_gurren_18_1": {
+   "status": "validated",
+   "note": "validated by the user 2026-10-05 (clean)",
+   "style": "enhance_gurren_18",
+   "still": {
+    "engine": "krea2",
+    "prompt": "anime style, GurrenLagannStyle, a yellow commuter train passing through a quiet suburb in the rain, a railway crossing with warning lights, wet road reflections, lush green hills behind, light rain falling while bright sun breaks through the clouds, everything wet and glistening, sparkling reflections, blue dusk light with warm lamps glowing, Makoto Shinkai style anime background painting, hand-painted, extremely detailed, rich and varied vivid colours (emerald and leaf greens, teal, cobalt blue, warm gold, soft pink and lavender), luminous volumetric light, cinematic composition, clean crisp painted shapes, no text, no watermark",
+    "width": 1024,
+    "height": 576,
+    "seed": 1452803111,
+    "loras": [
+     {
+      "id": "krea2_turbo_anime_enhance",
+      "weight": 0.7,
+      "target": "keyframe"
+     },
+     {
+      "id": "krea2_gurren_lagann_style",
+      "weight": 1.8,
+      "target": "keyframe"
+     }
+    ]
+   },
+   "clip": {
+    "prompt": "the train passes slowly from right to left, warning lights blink, rain falls, static camera",
+    "seed": 1452803111,
+    "frames": 49,
+    "fps": 16,
+    "turbo_mode": true
+   },
+   "timings_s": {
+    "still": 16.5,
+    "clip_wall": 54.6
+   }
+  },
+  "e2_corner_overcast": {
+   "status": "validated",
+   "note": "validated by the user 2026-10-05 (clean)",
+   "style": "enhance_gurren_18",
+   "still": {
+    "engine": "krea2",
+    "prompt": "anime style, GurrenLagannStyle, a quiet Japanese street corner seen from slightly above, a utility pole with cables, a red vending machine, a parked bicycle, potted plants, wet pavement, shallow depth of field with a sharp foreground and a softly blurred background, overcast sky, soft shadowless ambient light, no direct sunlight, no cast shadows on the ground, no dappled tree shadows, flat even lighting, bright clean colours, every detail clearly visible, Makoto Shinkai style anime background painting, hand-painted, extremely detailed, rich and varied vivid colours (emerald and leaf greens, teal, cobalt blue, warm gold, soft pink and lavender), luminous volumetric light, cinematic composition, clean crisp painted shapes, no text, no watermark",
+    "width": 1024,
+    "height": 576,
+    "seed": 1158932900,
+    "loras": [
+     {
+      "id": "krea2_turbo_anime_enhance",
+      "weight": 0.7,
+      "target": "keyframe"
+     },
+     {
+      "id": "krea2_gurren_lagann_style",
+      "weight": 1.8,
+      "target": "keyframe"
+     }
+    ]
+   },
+   "clip": {
+    "prompt": "rain falls softly, the vending machine light glows, drops drip from the cables, static camera",
+    "seed": 1158932900,
+    "frames": 49,
+    "fps": 16,
+    "turbo_mode": true
+   },
+   "timings_s": {
+    "still": 16.7,
+    "clip_wall": 53.5
+   }
+  },
+  "e_table_enhance_gurren_18_1": {
+   "status": "rejected",
+   "note": "user: a real flooding problem (streams run along the table edge); keep the still, change the motion prompt or the clip seed",
+   "style": "enhance_gurren_18",
+   "still": {
+    "engine": "krea2",
+    "prompt": "anime style, GurrenLagannStyle, close-up of a small wooden table on the street facing the facade of a building, detailed objects on it: a teacup with steam, a small potted plant, an old radio, a bunch of keys, a folded umbrella, raindrops, the facade with windows and flower pots softly blurred behind, nothing looks toward the horizon, soft even diffused daylight, no cast shadows, shadowless flat high-key lighting, bright clean colours, every detail clearly visible, Makoto Shinkai style anime background painting, hand-painted, extremely detailed, rich and varied vivid colours (emerald and leaf greens, teal, cobalt blue, warm gold, soft pink and lavender), luminous volumetric light, cinematic composition, clean crisp painted shapes, no text, no watermark",
+    "width": 1024,
+    "height": 576,
+    "seed": 1430866415,
+    "loras": [
+     {
+      "id": "krea2_turbo_anime_enhance",
+      "weight": 0.7,
+      "target": "keyframe"
+     },
+     {
+      "id": "krea2_gurren_lagann_style",
+      "weight": 1.8,
+      "target": "keyframe"
+     }
+    ]
+   },
+   "clip": {
+    "prompt": "steam rises from the cup, raindrops fall on the table and the objects, the plant leaves tremble, static camera",
+    "seed": 1430866415,
+    "frames": 49,
+    "fps": 16,
+    "turbo_mode": true
+   },
+   "timings_s": {
+    "still": 16.5,
+    "clip_wall": 53.0
+   }
+  },
+  "e2_benchcat_sleep": {
+   "status": "rejected",
+   "note": "user: strange cat (the curled cat reads as a blue face in motion); change the clip seed or use the sitting cat",
+   "style": "enhance_gurren_18",
+   "still": {
+    "engine": "krea2",
+    "prompt": "anime style, GurrenLagannStyle, a wooden park bench seen from above at a fixed stable angle, the camera high above looking down at the bench from the front, the bench centred, raindrops on the wood, a few fallen leaves, a cat curled up asleep on the bench, overcast sky, soft shadowless ambient light, no direct sunlight, no cast shadows on the ground, no dappled tree shadows, flat even lighting, bright clean colours, every detail clearly visible, Makoto Shinkai style anime background painting, hand-painted, extremely detailed, rich and varied vivid colours (emerald and leaf greens, teal, cobalt blue, warm gold, soft pink and lavender), luminous volumetric light, cinematic composition, clean crisp painted shapes, no text, no watermark",
+    "width": 1024,
+    "height": 576,
+    "seed": 1673283009,
+    "loras": [
+     {
+      "id": "krea2_turbo_anime_enhance",
+      "weight": 0.7,
+      "target": "keyframe"
+     },
+     {
+      "id": "krea2_gurren_lagann_style",
+      "weight": 1.8,
+      "target": "keyframe"
+     }
+    ]
+   },
+   "clip": {
+    "prompt": "the cat blinks slowly and flicks its tail, raindrops fall softly, static locked-off camera with no camera movement",
+    "seed": 1673283009,
+    "frames": 49,
+    "fps": 16,
+    "turbo_mode": true
+   },
+   "timings_s": {
+    "still": 16.5,
+    "clip_wall": 42.3
+   }
+  },
+  "c_big_enhance_gurren_2": {
+   "status": "reference",
+   "note": "reference clip (puddle drops, Anime Enhance 0.7 + Gurren 1.5); used for the drop/spread post-process with the impacts file",
+   "style": "enhance_gurren",
+   "still": {
+    "engine": "krea2",
+    "prompt": "anime style, GurrenLagannStyle, high angle point of view looking down diagonally toward the lower right, camera tilted, the puddle fills the whole picture, a close-up of a puddle on wet pavement, only the puddle and its reflection of bright blue sky, white and pink clouds and the sun, bright sunlight breaking through the rain, sparkling reflections, huge heavy glossy raindrops with bright highlights frozen in the air above the water and big splash crowns, many large ripples colliding, Makoto Shinkai style anime background painting, hand-painted, extremely detailed, rich and varied vivid colours (emerald and leaf greens, teal, cobalt blue, warm gold, soft pink and lavender), luminous volumetric light, cinematic composition, clean crisp painted shapes, no text, no watermark",
+    "width": 1024,
+    "height": 576,
+    "seed": 1372175472,
+    "loras": [
+     {
+      "id": "krea2_turbo_anime_enhance",
+      "weight": 0.7,
+      "target": "keyframe"
+     },
+     {
+      "id": "krea2_gurren_lagann_style",
+      "weight": 1.5,
+      "target": "keyframe"
+     }
+    ]
+   },
+   "clip": {
+    "prompt": "many raindrops keep falling into the puddle, splash crowns pop up and concentric ripples spread, overlap and collide, the reflection of the sky and clouds shimmers, static camera, light rain",
+    "seed": 1372175472,
+    "frames": 49,
+    "fps": 16,
+    "turbo_mode": true
+   },
+   "timings_s": {
+    "still": 13.5,
+    "clip_wall": 42.7
+   },
+   "impacts": "scripts/assets/impacts_c_big_enhance_gurren_2.json",
+   "post_outputs": {
+    "normal": "results/trend_rain_anime/refdrop/c_big_enhance_gurren_2_rain_v3.mp4",
+    "exaggerated": "results/trend_rain_anime/refdrop/c_big_enhance_gurren_2_rain_v3_exagere.mp4"
+   }
+  },
+  "g_calm_a": {
+   "status": "rejected",
+   "note": "less ripple/dispersion than the reference, volcano-shaped impact; same seed and LoRAs as the reference, only the prompt tail changes; waiting for the user's choice | REJECTED by the user: impact not similar to the reference (crown, solid/water confusion), none of calm_a/b/c resembles the base impacts",
+   "style": "enhance_gurren",
+   "still": {
+    "engine": "krea2",
+    "prompt": "anime style, GurrenLagannStyle, high angle point of view looking down diagonally toward the lower right, camera tilted, the puddle fills the whole picture, a close-up of a puddle on wet pavement, only the puddle and its reflection of bright blue sky, white and pink clouds and the sun, bright sunlight breaking through the rain, sparkling reflections, a few huge heavy glossy raindrops with bright highlights frozen in the air above the water, each impact is a tall sharp volcano-shaped splash crown with a dark crater and a raised rim, calm still water around each impact with only one thin faint ripple, the reflected sky and clouds stay perfectly calm and undistorted, Makoto Shinkai style anime background painting, hand-painted, extremely detailed, rich and varied vivid colours (emerald and leaf greens, teal, cobalt blue, warm gold, soft pink and lavender), luminous volumetric light, cinematic composition, clean crisp painted shapes, no text, no watermark",
+    "width": 1024,
+    "height": 576,
+    "seed": 1372175472,
+    "loras": [
+     {
+      "id": "krea2_turbo_anime_enhance",
+      "weight": 0.7,
+      "target": "keyframe"
+     },
+     {
+      "id": "krea2_gurren_lagann_style",
+      "weight": 1.5,
+      "target": "keyframe"
+     }
+    ]
+   },
+   "clip": {
+    "prompt": "raindrops fall and hit the water, each impact makes a volcano-shaped splash crown with a dark crater that rises then collapses, the water around each impact stays calm with only a tiny faint ripple, the reflection of the sky and clouds stays still and undistorted, static camera, light rain",
+    "seed": 1372175472,
+    "frames": 49,
+    "fps": 16,
+    "turbo_mode": true
+   },
+   "timings_s": {
+    "still": 26.3,
+    "clip_wall": 74.3
+   }
+  },
+  "g_calm_b": {
+   "status": "rejected",
+   "note": "less ripple/dispersion than the reference, volcano-shaped impact; same seed and LoRAs as the reference, only the prompt tail changes; waiting for the user's choice",
+   "style": "enhance_gurren",
+   "still": {
+    "engine": "krea2",
+    "prompt": "anime style, GurrenLagannStyle, high angle point of view looking down diagonally toward the lower right, camera tilted, the puddle fills the whole picture, a close-up of a puddle on wet pavement, only the puddle and its reflection of bright blue sky, white and pink clouds and the sun, bright sunlight breaking through the rain, sparkling reflections, huge heavy glossy raindrops with bright highlights frozen in the air above the water and big splash crowns shaped like small volcanoes with a dark crater, almost no ripples, smooth glassy mirror water, undistorted calm reflection, Makoto Shinkai style anime background painting, hand-painted, extremely detailed, rich and varied vivid colours (emerald and leaf greens, teal, cobalt blue, warm gold, soft pink and lavender), luminous volumetric light, cinematic composition, clean crisp painted shapes, no text, no watermark",
+    "width": 1024,
+    "height": 576,
+    "seed": 1372175472,
+    "loras": [
+     {
+      "id": "krea2_turbo_anime_enhance",
+      "weight": 0.7,
+      "target": "keyframe"
+     },
+     {
+      "id": "krea2_gurren_lagann_style",
+      "weight": 1.5,
+      "target": "keyframe"
+     }
+    ]
+   },
+   "clip": {
+    "prompt": "raindrops fall and hit the water, each impact makes a volcano-shaped splash crown with a dark crater that rises then collapses, the water around each impact stays calm with only a tiny faint ripple, the reflection of the sky and clouds stays still and undistorted, static camera, light rain",
+    "seed": 1372175472,
+    "frames": 49,
+    "fps": 16,
+    "turbo_mode": true
+   },
+   "timings_s": {
+    "still": 16.8,
+    "clip_wall": 42.8
+   }
+  },
+  "g_calm_c": {
+   "status": "rejected",
+   "note": "less ripple/dispersion than the reference, volcano-shaped impact; same seed and LoRAs as the reference, only the prompt tail changes; waiting for the user's choice",
+   "style": "enhance_gurren",
+   "still": {
+    "engine": "krea2",
+    "prompt": "anime style, GurrenLagannStyle, high angle point of view looking down diagonally toward the lower right, camera tilted, the puddle fills the whole picture, a close-up of a puddle on wet pavement, only the puddle and its reflection of bright blue sky, white and pink clouds and the sun, bright sunlight breaking through the rain, sparkling reflections, four volcano-shaped splash craters with dark hollow centres, raised rims and bright highlights on a perfectly calm mirror-like puddle, no concentric ripples, no waves, the reflection of the clouds is smooth and sharp, Makoto Shinkai style anime background painting, hand-painted, extremely detailed, rich and varied vivid colours (emerald and leaf greens, teal, cobalt blue, warm gold, soft pink and lavender), luminous volumetric light, cinematic composition, clean crisp painted shapes, no text, no watermark",
+    "width": 1024,
+    "height": 576,
+    "seed": 1372175472,
+    "loras": [
+     {
+      "id": "krea2_turbo_anime_enhance",
+      "weight": 0.7,
+      "target": "keyframe"
+     },
+     {
+      "id": "krea2_gurren_lagann_style",
+      "weight": 1.5,
+      "target": "keyframe"
+     }
+    ]
+   },
+   "clip": {
+    "prompt": "raindrops fall and hit the water, each impact makes a volcano-shaped splash crown with a dark crater that rises then collapses, the water around each impact stays calm with only a tiny faint ripple, the reflection of the sky and clouds stays still and undistorted, static camera, light rain",
+    "seed": 1372175472,
+    "frames": 49,
+    "fps": 16,
+    "turbo_mode": true
+   },
+   "timings_s": {
+    "still": 16.7,
+    "clip_wall": 42.7
+   }
+  },
+  "h_calm": {
+   "status": "candidate",
+   "note": "the REFERENCE still (good impacts) re-animated with a calm-water motion prompt; post: steady_first / steady_still. Impacts file = the reference's",
+   "style": "enhance_gurren",
+   "still": {
+    "engine": "krea2",
+    "prompt": "anime style, GurrenLagannStyle, high angle point of view looking down diagonally toward the lower right, camera tilted, the puddle fills the whole picture, a close-up of a puddle on wet pavement, only the puddle and its reflection of bright blue sky, white and pink clouds and the sun, bright sunlight breaking through the rain, sparkling reflections, huge heavy glossy raindrops with bright highlights frozen in the air above the water and big splash crowns, many large ripples colliding, Makoto Shinkai style anime background painting, hand-painted, extremely detailed, rich and varied vivid colours (emerald and leaf greens, teal, cobalt blue, warm gold, soft pink and lavender), luminous volumetric light, cinematic composition, clean crisp painted shapes, no text, no watermark",
+    "width": 1024,
+    "height": 576,
+    "seed": 1372175472,
+    "loras": [
+     {
+      "id": "krea2_turbo_anime_enhance",
+      "weight": 0.7,
+      "target": "keyframe"
+     },
+     {
+      "id": "krea2_gurren_lagann_style",
+      "weight": 1.5,
+      "target": "keyframe"
+     }
+    ]
+   },
+   "clip": {
+    "prompt": "the splash craters from the raindrops settle slowly, the water surface around them stays flat and calm, the reflection of the sky and clouds stays perfectly still and undistorted, no ripples, no waves, static camera, light rain",
+    "seed": 1372175472,
+    "frames": 49,
+    "fps": 16,
+    "turbo_mode": true
+   },
+   "impacts": "scripts/assets/impacts_c_big_enhance_gurren_2.json",
+   "timings_s": {
+    "clip_wall": 53.3
+   }
+  },
+  "h_onering": {
+   "status": "candidate",
+   "note": "the REFERENCE still (good impacts) re-animated with a calm-water motion prompt; post: steady_first / steady_still. Impacts file = the reference's",
+   "style": "enhance_gurren",
+   "still": {
+    "engine": "krea2",
+    "prompt": "anime style, GurrenLagannStyle, high angle point of view looking down diagonally toward the lower right, camera tilted, the puddle fills the whole picture, a close-up of a puddle on wet pavement, only the puddle and its reflection of bright blue sky, white and pink clouds and the sun, bright sunlight breaking through the rain, sparkling reflections, huge heavy glossy raindrops with bright highlights frozen in the air above the water and big splash crowns, many large ripples colliding, Makoto Shinkai style anime background painting, hand-painted, extremely detailed, rich and varied vivid colours (emerald and leaf greens, teal, cobalt blue, warm gold, soft pink and lavender), luminous volumetric light, cinematic composition, clean crisp painted shapes, no text, no watermark",
+    "width": 1024,
+    "height": 576,
+    "seed": 1372175472,
+    "loras": [
+     {
+      "id": "krea2_turbo_anime_enhance",
+      "weight": 0.7,
+      "target": "keyframe"
+     },
+     {
+      "id": "krea2_gurren_lagann_style",
+      "weight": 1.5,
+      "target": "keyframe"
+     }
+    ]
+   },
+   "clip": {
+    "prompt": "a few raindrops keep falling into the water, each impact is a small crater with a bright highlight that closes quickly, at most one thin faint ring that fades at once, the reflected sky and clouds stay sharp and unmoving, static camera",
+    "seed": 1372175472,
+    "frames": 49,
+    "fps": 16,
+    "turbo_mode": true
+   },
+   "impacts": "scripts/assets/impacts_c_big_enhance_gurren_2.json",
+   "timings_s": {
+    "clip_wall": 53.1
+   }
+  },
+  "h_mirror": {
+   "status": "candidate",
+   "note": "the REFERENCE still (good impacts) re-animated with a calm-water motion prompt; post: steady_first / steady_still. Impacts file = the reference's",
+   "style": "enhance_gurren",
+   "still": {
+    "engine": "krea2",
+    "prompt": "anime style, GurrenLagannStyle, high angle point of view looking down diagonally toward the lower right, camera tilted, the puddle fills the whole picture, a close-up of a puddle on wet pavement, only the puddle and its reflection of bright blue sky, white and pink clouds and the sun, bright sunlight breaking through the rain, sparkling reflections, huge heavy glossy raindrops with bright highlights frozen in the air above the water and big splash crowns, many large ripples colliding, Makoto Shinkai style anime background painting, hand-painted, extremely detailed, rich and varied vivid colours (emerald and leaf greens, teal, cobalt blue, warm gold, soft pink and lavender), luminous volumetric light, cinematic composition, clean crisp painted shapes, no text, no watermark",
+    "width": 1024,
+    "height": 576,
+    "seed": 1372175472,
+    "loras": [
+     {
+      "id": "krea2_turbo_anime_enhance",
+      "weight": 0.7,
+      "target": "keyframe"
+     },
+     {
+      "id": "krea2_gurren_lagann_style",
+      "weight": 1.5,
+      "target": "keyframe"
+     }
+    ]
+   },
+   "clip": {
+    "prompt": "tiny drops fall in the air and the existing craters pulse gently, the puddle surface is a still mirror, the reflection of the clouds is unmoving, static camera, almost no motion",
+    "seed": 1372175472,
+    "frames": 49,
+    "fps": 16,
+    "turbo_mode": true
+   },
+   "impacts": "scripts/assets/impacts_c_big_enhance_gurren_2.json",
+   "timings_s": {
+    "clip_wall": 53.2
+   }
+  },
+  "h_calm_s2": {
+   "status": "candidate",
+   "note": "the REFERENCE still (good impacts) re-animated with a calm-water motion prompt; post: steady_first / steady_still. Impacts file = the reference's",
+   "style": "enhance_gurren",
+   "still": {
+    "engine": "krea2",
+    "prompt": "anime style, GurrenLagannStyle, high angle point of view looking down diagonally toward the lower right, camera tilted, the puddle fills the whole picture, a close-up of a puddle on wet pavement, only the puddle and its reflection of bright blue sky, white and pink clouds and the sun, bright sunlight breaking through the rain, sparkling reflections, huge heavy glossy raindrops with bright highlights frozen in the air above the water and big splash crowns, many large ripples colliding, Makoto Shinkai style anime background painting, hand-painted, extremely detailed, rich and varied vivid colours (emerald and leaf greens, teal, cobalt blue, warm gold, soft pink and lavender), luminous volumetric light, cinematic composition, clean crisp painted shapes, no text, no watermark",
+    "width": 1024,
+    "height": 576,
+    "seed": 1372175472,
+    "loras": [
+     {
+      "id": "krea2_turbo_anime_enhance",
+      "weight": 0.7,
+      "target": "keyframe"
+     },
+     {
+      "id": "krea2_gurren_lagann_style",
+      "weight": 1.5,
+      "target": "keyframe"
+     }
+    ]
+   },
+   "clip": {
+    "prompt": "the splash craters from the raindrops settle slowly, the water surface around them stays flat and calm, the reflection of the sky and clouds stays perfectly still and undistorted, no ripples, no waves, static camera, light rain",
+    "seed": 20261005,
+    "frames": 49,
+    "fps": 16,
+    "turbo_mode": true
+   },
+   "impacts": "scripts/assets/impacts_c_big_enhance_gurren_2.json",
+   "timings_s": {
+    "clip_wall": 53.4
+   }
+  },
+  "i_small_1": {
+   "status": "candidate",
+   "note": "smaller impacts derived from calm_a (same wording, small impacts, wide calm water) so the video model can generate other similar impacts; waiting for the user's choice",
+   "style": "enhance_gurren",
+   "still": {
+    "engine": "krea2",
+    "prompt": "anime style, GurrenLagannStyle, high angle point of view looking down diagonally toward the lower right, camera tilted, the puddle fills the whole picture, a close-up of a puddle on wet pavement, only the puddle and its reflection of bright blue sky, white and pink clouds and the sun, bright sunlight breaking through the rain, sparkling reflections, a few small glossy raindrops with bright highlights frozen in the air above the water, each impact is a small sharp volcano-shaped splash crown with a dark crater and a raised rim, the impacts are small in the frame with a wide expanse of calm still water around them, only one thin faint ripple, the reflected sky and clouds stay perfectly calm and undistorted, Makoto Shinkai style anime background painting, hand-painted, extremely detailed, rich and varied vivid colours (emerald and leaf greens, teal, cobalt blue, warm gold, soft pink and lavender), luminous volumetric light, cinematic composition, clean crisp painted shapes, no text, no watermark",
+    "width": 1024,
+    "height": 576,
+    "seed": 1372175472,
+    "loras": [
+     {
+      "id": "krea2_turbo_anime_enhance",
+      "weight": 0.7,
+      "target": "keyframe"
+     },
+     {
+      "id": "krea2_gurren_lagann_style",
+      "weight": 1.5,
+      "target": "keyframe"
+     }
+    ]
+   },
+   "clip": {
+    "prompt": "more small raindrops fall onto the calm water, each one makes a small volcano-shaped splash crown with a dark crater and a raised rim that rises then collapses, leaving only one thin faint ring, the water around stays calm, the reflection of the sky and clouds stays still, static camera, light rain",
+    "seed": 1372175472,
+    "frames": 49,
+    "fps": 16,
+    "turbo_mode": true
+   },
+   "timings_s": {
+    "still": 26.1,
+    "clip_wall": 73.8
+   }
+  },
+  "i_small_2": {
+   "status": "candidate",
+   "note": "smaller impacts derived from calm_a (same wording, small impacts, wide calm water) so the video model can generate other similar impacts; waiting for the user's choice",
+   "style": "enhance_gurren",
+   "still": {
+    "engine": "krea2",
+    "prompt": "anime style, GurrenLagannStyle, high angle point of view looking down diagonally toward the lower right, camera tilted, the puddle fills the whole picture, a close-up of a puddle on wet pavement, only the puddle and its reflection of bright blue sky, white and pink clouds and the sun, bright sunlight breaking through the rain, sparkling reflections, two or three tiny glossy raindrops frozen in the air and tiny volcano-shaped splash crowns with a dark crater and a raised rim, very small in the frame, far from the camera, a vast expanse of perfectly calm mirror-like water around them, one thin faint ripple, the reflection of the sky and clouds is calm and undistorted, Makoto Shinkai style anime background painting, hand-painted, extremely detailed, rich and varied vivid colours (emerald and leaf greens, teal, cobalt blue, warm gold, soft pink and lavender), luminous volumetric light, cinematic composition, clean crisp painted shapes, no text, no watermark",
+    "width": 1024,
+    "height": 576,
+    "seed": 1372175472,
+    "loras": [
+     {
+      "id": "krea2_turbo_anime_enhance",
+      "weight": 0.7,
+      "target": "keyframe"
+     },
+     {
+      "id": "krea2_gurren_lagann_style",
+      "weight": 1.5,
+      "target": "keyframe"
+     }
+    ]
+   },
+   "clip": {
+    "prompt": "more small raindrops fall onto the calm water, each one makes a small volcano-shaped splash crown with a dark crater and a raised rim that rises then collapses, leaving only one thin faint ring, the water around stays calm, the reflection of the sky and clouds stays still, static camera, light rain",
+    "seed": 1372175472,
+    "frames": 49,
+    "fps": 16,
+    "turbo_mode": true
+   },
+   "timings_s": {
+    "still": 16.6,
+    "clip_wall": 42.5
+   }
+  },
+  "i_small_3": {
+   "status": "candidate",
+   "note": "smaller impacts derived from calm_a (same wording, small impacts, wide calm water) so the video model can generate other similar impacts; waiting for the user's choice",
+   "style": "enhance_gurren",
+   "still": {
+    "engine": "krea2",
+    "prompt": "anime style, GurrenLagannStyle, high angle point of view looking down diagonally toward the lower right, camera tilted, the puddle fills the whole picture, a close-up of a puddle on wet pavement, only the puddle and its reflection of bright blue sky, white and pink clouds and the sun, bright sunlight breaking through the rain, sparkling reflections, a few small glossy raindrops with bright highlights frozen in the air above the water, each impact is a small sharp volcano-shaped splash crown with a dark crater and a raised rim, the impacts are small in the frame with a wide expanse of calm still water around them, only one thin faint ripple, the reflected sky and clouds stay perfectly calm and undistorted, Makoto Shinkai style anime background painting, hand-painted, extremely detailed, rich and varied vivid colours (emerald and leaf greens, teal, cobalt blue, warm gold, soft pink and lavender), luminous volumetric light, cinematic composition, clean crisp painted shapes, no text, no watermark",
+    "width": 1024,
+    "height": 576,
+    "seed": 20261005,
+    "loras": [
+     {
+      "id": "krea2_turbo_anime_enhance",
+      "weight": 0.7,
+      "target": "keyframe"
+     },
+     {
+      "id": "krea2_gurren_lagann_style",
+      "weight": 1.5,
+      "target": "keyframe"
+     }
+    ]
+   },
+   "clip": {
+    "prompt": "more small raindrops fall onto the calm water, each one makes a small volcano-shaped splash crown with a dark crater and a raised rim that rises then collapses, leaving only one thin faint ring, the water around stays calm, the reflection of the sky and clouds stays still, static camera, light rain",
+    "seed": 20261005,
+    "frames": 49,
+    "fps": 16,
+    "turbo_mode": true
+   },
+   "timings_s": {
+    "still": 16.5,
+    "clip_wall": 42.7
+   }
+  },
+  "i_edit": {
+   "status": "candidate",
+   "note": "calm_a itself with its big crown scaled to 50 percent and the water under it rebuilt by diffusion (scripts/assets/shrink_impact.py); the edited PNG is the still",
+   "style": "enhance_gurren",
+   "still": {
+    "engine": "krea2",
+    "prompt": "anime style, GurrenLagannStyle, high angle point of view looking down diagonally toward the lower right, camera tilted, the puddle fills the whole picture, a close-up of a puddle on wet pavement, only the puddle and its reflection of bright blue sky, white and pink clouds and the sun, bright sunlight breaking through the rain, sparkling reflections, a few huge heavy glossy raindrops with bright highlights frozen in the air above the water, each impact is a tall sharp volcano-shaped splash crown with a dark crater and a raised rim, calm still water around each impact with only one thin faint ripple, the reflected sky and clouds stay perfectly calm and undistorted, Makoto Shinkai style anime background painting, hand-painted, extremely detailed, rich and varied vivid colours (emerald and leaf greens, teal, cobalt blue, warm gold, soft pink and lavender), luminous volumetric light, cinematic composition, clean crisp painted shapes, no text, no watermark",
+    "width": 1024,
+    "height": 576,
+    "seed": 1372175472,
+    "loras": [
+     {
+      "id": "krea2_turbo_anime_enhance",
+      "weight": 0.7,
+      "target": "keyframe"
+     },
+     {
+      "id": "krea2_gurren_lagann_style",
+      "weight": 1.5,
+      "target": "keyframe"
+     }
+    ],
+    "edit": {
+     "operation": "shrink_impact",
+     "scale": 0.5,
+     "centre": [
+      322,
+      420
+     ],
+     "radii": [
+      200,
+      105
+     ],
+     "script": "scripts/assets/shrink_impact.py",
+     "file": "results/trend_rain_anime/phaseI/g_calm_a_small_edit.png"
+    }
+   },
+   "clip": {
+    "prompt": "more small raindrops fall onto the calm water, each one makes a small volcano-shaped splash crown with a dark crater and a raised rim that rises then collapses, leaving only one thin faint ring, the water around stays calm, the reflection of the sky and clouds stays still, static camera, light rain",
+    "seed": 1372175472,
+    "frames": 49,
+    "fps": 16,
+    "turbo_mode": true
+   },
+   "timings_s": {
+    "clip_wall": 42.9
+   }
+  },
+  "k_craters": {
+   "status": "reference_style",
+   "note": "KEPT by the user (2026-10-05) as a new REFERENCE RAIN STYLE next to the others: small round craters/drops with bright highlights, scaled by depth of field; the only acceptable file of phase K (the user's file KPu6m1hQy... is k_craters.mp4)",
+   "style": "enhance_gurren",
+   "still": {
+    "engine": "krea2",
+    "prompt": "anime style, GurrenLagannStyle, high angle point of view looking down diagonally toward the lower right, camera tilted, the puddle fills the whole picture, a close-up of a puddle on wet pavement, only the puddle and its reflection of bright blue sky, white and pink clouds and the sun, bright sunlight breaking through the rain, sparkling reflections, many small round raindrop craters with a dark hollow centre and a bright highlight, glossy drops frozen in the air, the drops are small and get smaller and less detailed the farther they are from the camera, the close ones sharp, the far ones tiny and soft, strong depth of field, the water between them stays calm with only faint thin ripples, Makoto Shinkai style anime background painting, hand-painted, extremely detailed, rich and varied vivid colours (emerald and leaf greens, teal, cobalt blue, warm gold, soft pink and lavender), luminous volumetric light, cinematic composition, clean crisp painted shapes, no text, no watermark",
+    "width": 1024,
+    "height": 576,
+    "seed": 1372175472,
+    "loras": [
+     {
+      "id": "krea2_turbo_anime_enhance",
+      "weight": 0.7,
+      "target": "keyframe"
+     },
+     {
+      "id": "krea2_gurren_lagann_style",
+      "weight": 1.5,
+      "target": "keyframe"
+     }
+    ]
+   },
+   "clip": {
+    "prompt": "many small raindrops keep falling into the puddle, small craters pop up and fade with only faint thin ripples, the reflection of the sky and clouds shimmers softly, static camera, light rain",
+    "seed": 1372175472,
+    "frames": 49,
+    "fps": 16,
+    "turbo_mode": true
+   },
+   "timings_s": {
+    "still": 25.9,
+    "clip_wall": 73.9
+   }
+  },
+  "k_multi": {
+   "status": "rejected",
+   "note": "REJECTED by the user: the multi-style mix attempt failed, no style mixing possible",
+   "style": "enhance_gurren",
+   "still": {
+    "engine": "krea2",
+    "prompt": "anime style, GurrenLagannStyle, high angle point of view looking down diagonally toward the lower right, camera tilted, the puddle fills the whole picture, a close-up of a puddle on wet pavement, only the puddle and its reflection of bright blue sky, white and pink clouds and the sun, bright sunlight breaking through the rain, sparkling reflections, many small raindrops of several kinds scattered over the whole puddle: round craters with a dark hollow and a bright highlight, small volcano-shaped splash crowns with a raised rim, tiny glassy beads frozen in the air, the drops are small and get smaller and less detailed the farther they are from the camera, the close ones sharp, the far ones tiny and soft, strong depth of field, the water between them stays calm with only faint thin ripples, Makoto Shinkai style anime background painting, hand-painted, extremely detailed, rich and varied vivid colours (emerald and leaf greens, teal, cobalt blue, warm gold, soft pink and lavender), luminous volumetric light, cinematic composition, clean crisp painted shapes, no text, no watermark",
+    "width": 1024,
+    "height": 576,
+    "seed": 1372175472,
+    "loras": [
+     {
+      "id": "krea2_turbo_anime_enhance",
+      "weight": 0.7,
+      "target": "keyframe"
+     },
+     {
+      "id": "krea2_gurren_lagann_style",
+      "weight": 1.5,
+      "target": "keyframe"
+     }
+    ]
+   },
+   "clip": {
+    "prompt": "many small raindrops keep falling into the puddle, small craters pop up and fade with only faint thin ripples, the reflection of the sky and clouds shimmers softly, static camera, light rain",
+    "seed": 1372175472,
+    "frames": 49,
+    "fps": 16,
+    "turbo_mode": true
+   },
+   "timings_s": {
+    "still": 19.6,
+    "clip_wall": 42.5
+   }
+  },
+  "k_pencil": {
+   "status": "rejected",
+   "note": "REJECTED by the user: the multi-style mix attempt failed, no style mixing possible",
+   "style": "enhance_gurren",
+   "still": {
+    "engine": "krea2",
+    "prompt": "anime style, GurrenLagannStyle, high angle point of view looking down diagonally toward the lower right, camera tilted, the puddle fills the whole picture, a close-up of a puddle on wet pavement, only the puddle and its reflection of bright blue sky, white and pink clouds and the sun, bright sunlight breaking through the rain, sparkling reflections, many small raindrops of several kinds: round craters with a dark hollow and a bright highlight, small volcano-shaped splash crowns, tiny glassy beads in the air, every drop traced with a thin light white pencil outline, delicate hand-drawn white line art, the drops are small and get smaller and less detailed the farther they are from the camera, the close ones sharp, the far ones tiny and soft, strong depth of field, the water between them stays calm with only faint thin ripples, Makoto Shinkai style anime background painting, hand-painted, extremely detailed, rich and varied vivid colours (emerald and leaf greens, teal, cobalt blue, warm gold, soft pink and lavender), luminous volumetric light, cinematic composition, clean crisp painted shapes, no text, no watermark",
+    "width": 1024,
+    "height": 576,
+    "seed": 1372175472,
+    "loras": [
+     {
+      "id": "krea2_turbo_anime_enhance",
+      "weight": 0.7,
+      "target": "keyframe"
+     },
+     {
+      "id": "krea2_gurren_lagann_style",
+      "weight": 1.5,
+      "target": "keyframe"
+     }
+    ]
+   },
+   "clip": {
+    "prompt": "many small raindrops keep falling into the puddle, small craters pop up and fade with only faint thin ripples, the reflection of the sky and clouds shimmers softly, static camera, light rain",
+    "seed": 1372175472,
+    "frames": 49,
+    "fps": 16,
+    "turbo_mode": true
+   },
+   "timings_s": {
+    "still": 16.5,
+    "clip_wall": 43.2
+   }
+  },
+  "k_multi_s2": {
+   "status": "rejected",
+   "note": "REJECTED by the user: the multi-style mix attempt failed, no style mixing possible",
+   "style": "enhance_gurren",
+   "still": {
+    "engine": "krea2",
+    "prompt": "anime style, GurrenLagannStyle, high angle point of view looking down diagonally toward the lower right, camera tilted, the puddle fills the whole picture, a close-up of a puddle on wet pavement, only the puddle and its reflection of bright blue sky, white and pink clouds and the sun, bright sunlight breaking through the rain, sparkling reflections, many small raindrops of several kinds scattered over the whole puddle: round craters with a dark hollow and a bright highlight, small volcano-shaped splash crowns with a raised rim, tiny glassy beads frozen in the air, the drops are small and get smaller and less detailed the farther they are from the camera, the close ones sharp, the far ones tiny and soft, strong depth of field, the water between them stays calm with only faint thin ripples, Makoto Shinkai style anime background painting, hand-painted, extremely detailed, rich and varied vivid colours (emerald and leaf greens, teal, cobalt blue, warm gold, soft pink and lavender), luminous volumetric light, cinematic composition, clean crisp painted shapes, no text, no watermark",
+    "width": 1024,
+    "height": 576,
+    "seed": 20261005,
+    "loras": [
+     {
+      "id": "krea2_turbo_anime_enhance",
+      "weight": 0.7,
+      "target": "keyframe"
+     },
+     {
+      "id": "krea2_gurren_lagann_style",
+      "weight": 1.5,
+      "target": "keyframe"
+     }
+    ]
+   },
+   "clip": {
+    "prompt": "many small raindrops keep falling into the puddle, small craters pop up and fade with only faint thin ripples, the reflection of the sky and clouds shimmers softly, static camera, light rain",
+    "seed": 20261005,
+    "frames": 49,
+    "fps": 16,
+    "turbo_mode": true
+   },
+   "timings_s": {
+    "still": 16.5,
+    "clip_wall": 42.8
+   }
+  },
+  "m_crown_1": {
+   "status": "candidate",
+   "note": "calm_a form only, small at generation (crown or volcano), scaled by depth like k_craters; i2v with falling droplets: the stills keep the form but the video model spreads the first splash into big rings and shows no clear falling droplets",
+   "style": "enhance_gurren",
+   "still": {
+    "engine": "krea2",
+    "prompt": "anime style, GurrenLagannStyle, high angle point of view looking down diagonally toward the lower right, camera tilted, the puddle fills the whole picture, a close-up of a puddle on wet pavement, only the puddle and its reflection of bright blue sky, white and pink clouds and the sun, bright sunlight breaking through the rain, sparkling reflections, a few small glossy raindrops with bright highlights frozen in the air above the water, each impact is a small sharp splash crown with a dark crater and a raised rim, the splashes are small and get smaller and less detailed the farther they are from the camera, the close ones sharp, the far ones tiny and soft, strong depth of field, the water between them stays calm with only one thin faint ripple, the reflected sky and clouds stay perfectly calm and undistorted, Makoto Shinkai style anime background painting, hand-painted, extremely detailed, rich and varied vivid colours (emerald and leaf greens, teal, cobalt blue, warm gold, soft pink and lavender), luminous volumetric light, cinematic composition, clean crisp painted shapes, no text, no watermark",
+    "width": 1024,
+    "height": 576,
+    "seed": 1372175472,
+    "loras": [
+     {
+      "id": "krea2_turbo_anime_enhance",
+      "weight": 0.7,
+      "target": "keyframe"
+     },
+     {
+      "id": "krea2_gurren_lagann_style",
+      "weight": 1.5,
+      "target": "keyframe"
+     }
+    ]
+   },
+   "clip": {
+    "prompt": "small droplets fall from above into the calm water one after another, each impact makes a small splash with a dark crater and a raised rim that rises then collapses, leaving only one thin faint ring, the water around stays calm, the reflection of the sky and clouds stays still, static camera, light rain",
+    "seed": 1372175472,
+    "frames": 49,
+    "fps": 16,
+    "turbo_mode": true
+   },
+   "timings_s": {
+    "still": 25.9,
+    "clip_wall": 79.1
+   }
+  },
+  "m_volcano_1": {
+   "status": "candidate",
+   "note": "calm_a form only, small at generation (crown or volcano), scaled by depth like k_craters; i2v with falling droplets: the stills keep the form but the video model spreads the first splash into big rings and shows no clear falling droplets",
+   "style": "enhance_gurren",
+   "still": {
+    "engine": "krea2",
+    "prompt": "anime style, GurrenLagannStyle, high angle point of view looking down diagonally toward the lower right, camera tilted, the puddle fills the whole picture, a close-up of a puddle on wet pavement, only the puddle and its reflection of bright blue sky, white and pink clouds and the sun, bright sunlight breaking through the rain, sparkling reflections, a few small glossy raindrops with bright highlights frozen in the air above the water, each impact is a small volcano-shaped splash, a cone with a dark crater at its top and a raised rim, the splashes are small and get smaller and less detailed the farther they are from the camera, the close ones sharp, the far ones tiny and soft, strong depth of field, the water between them stays calm with only one thin faint ripple, the reflected sky and clouds stay perfectly calm and undistorted, Makoto Shinkai style anime background painting, hand-painted, extremely detailed, rich and varied vivid colours (emerald and leaf greens, teal, cobalt blue, warm gold, soft pink and lavender), luminous volumetric light, cinematic composition, clean crisp painted shapes, no text, no watermark",
+    "width": 1024,
+    "height": 576,
+    "seed": 1372175472,
+    "loras": [
+     {
+      "id": "krea2_turbo_anime_enhance",
+      "weight": 0.7,
+      "target": "keyframe"
+     },
+     {
+      "id": "krea2_gurren_lagann_style",
+      "weight": 1.5,
+      "target": "keyframe"
+     }
+    ]
+   },
+   "clip": {
+    "prompt": "small droplets fall from above into the calm water one after another, each impact makes a small splash with a dark crater and a raised rim that rises then collapses, leaving only one thin faint ring, the water around stays calm, the reflection of the sky and clouds stays still, static camera, light rain",
+    "seed": 1372175472,
+    "frames": 49,
+    "fps": 16,
+    "turbo_mode": true
+   },
+   "timings_s": {
+    "still": 16.6,
+    "clip_wall": 42.7
+   }
+  },
+  "m_droplets_1": {
+   "status": "candidate",
+   "note": "calm_a form only, small at generation (crown or volcano), scaled by depth like k_craters; i2v with falling droplets: the stills keep the form but the video model spreads the first splash into big rings and shows no clear falling droplets",
+   "style": "enhance_gurren",
+   "still": {
+    "engine": "krea2",
+    "prompt": "anime style, GurrenLagannStyle, high angle point of view looking down diagonally toward the lower right, camera tilted, the puddle fills the whole picture, a close-up of a puddle on wet pavement, only the puddle and its reflection of bright blue sky, white and pink clouds and the sun, bright sunlight breaking through the rain, sparkling reflections, a few tiny droplets falling in the air above a calm puddle with bright highlights, below them small volcano-shaped splashes with a dark crater and a raised rim, the splashes are small and get smaller and less detailed the farther they are from the camera, the close ones sharp, the far ones tiny and soft, strong depth of field, the water between them stays calm with only one thin faint ripple, the reflected sky and clouds stay perfectly calm and undistorted, Makoto Shinkai style anime background painting, hand-painted, extremely detailed, rich and varied vivid colours (emerald and leaf greens, teal, cobalt blue, warm gold, soft pink and lavender), luminous volumetric light, cinematic composition, clean crisp painted shapes, no text, no watermark",
+    "width": 1024,
+    "height": 576,
+    "seed": 1372175472,
+    "loras": [
+     {
+      "id": "krea2_turbo_anime_enhance",
+      "weight": 0.7,
+      "target": "keyframe"
+     },
+     {
+      "id": "krea2_gurren_lagann_style",
+      "weight": 1.5,
+      "target": "keyframe"
+     }
+    ]
+   },
+   "clip": {
+    "prompt": "small droplets fall from above into the calm water one after another, each impact makes a small splash with a dark crater and a raised rim that rises then collapses, leaving only one thin faint ring, the water around stays calm, the reflection of the sky and clouds stays still, static camera, light rain",
+    "seed": 1372175472,
+    "frames": 49,
+    "fps": 16,
+    "turbo_mode": true
+   },
+   "timings_s": {
+    "still": 19.6,
+    "clip_wall": 42.8
+   }
+  },
+  "m_crown_2": {
+   "status": "candidate",
+   "note": "calm_a form only, small at generation (crown or volcano), scaled by depth like k_craters; i2v with falling droplets: the stills keep the form but the video model spreads the first splash into big rings and shows no clear falling droplets",
+   "style": "enhance_gurren",
+   "still": {
+    "engine": "krea2",
+    "prompt": "anime style, GurrenLagannStyle, high angle point of view looking down diagonally toward the lower right, camera tilted, the puddle fills the whole picture, a close-up of a puddle on wet pavement, only the puddle and its reflection of bright blue sky, white and pink clouds and the sun, bright sunlight breaking through the rain, sparkling reflections, a few small glossy raindrops with bright highlights frozen in the air above the water, each impact is a small sharp splash crown with a dark crater and a raised rim, the splashes are small and get smaller and less detailed the farther they are from the camera, the close ones sharp, the far ones tiny and soft, strong depth of field, the water between them stays calm with only one thin faint ripple, the reflected sky and clouds stay perfectly calm and undistorted, Makoto Shinkai style anime background painting, hand-painted, extremely detailed, rich and varied vivid colours (emerald and leaf greens, teal, cobalt blue, warm gold, soft pink and lavender), luminous volumetric light, cinematic composition, clean crisp painted shapes, no text, no watermark",
+    "width": 1024,
+    "height": 576,
+    "seed": 20261005,
+    "loras": [
+     {
+      "id": "krea2_turbo_anime_enhance",
+      "weight": 0.7,
+      "target": "keyframe"
+     },
+     {
+      "id": "krea2_gurren_lagann_style",
+      "weight": 1.5,
+      "target": "keyframe"
+     }
+    ]
+   },
+   "clip": {
+    "prompt": "small droplets fall from above into the calm water one after another, each impact makes a small splash with a dark crater and a raised rim that rises then collapses, leaving only one thin faint ring, the water around stays calm, the reflection of the sky and clouds stays still, static camera, light rain",
+    "seed": 20261005,
+    "frames": 49,
+    "fps": 16,
+    "turbo_mode": true
+   },
+   "timings_s": {
+    "still": 16.5,
+    "clip_wall": 42.6
+   }
+  },
+  "m_volcano_2": {
+   "status": "candidate",
+   "note": "calm_a form only, small at generation (crown or volcano), scaled by depth like k_craters; i2v with falling droplets: the stills keep the form but the video model spreads the first splash into big rings and shows no clear falling droplets",
+   "style": "enhance_gurren",
+   "still": {
+    "engine": "krea2",
+    "prompt": "anime style, GurrenLagannStyle, high angle point of view looking down diagonally toward the lower right, camera tilted, the puddle fills the whole picture, a close-up of a puddle on wet pavement, only the puddle and its reflection of bright blue sky, white and pink clouds and the sun, bright sunlight breaking through the rain, sparkling reflections, a few small glossy raindrops with bright highlights frozen in the air above the water, each impact is a small volcano-shaped splash, a cone with a dark crater at its top and a raised rim, the splashes are small and get smaller and less detailed the farther they are from the camera, the close ones sharp, the far ones tiny and soft, strong depth of field, the water between them stays calm with only one thin faint ripple, the reflected sky and clouds stay perfectly calm and undistorted, Makoto Shinkai style anime background painting, hand-painted, extremely detailed, rich and varied vivid colours (emerald and leaf greens, teal, cobalt blue, warm gold, soft pink and lavender), luminous volumetric light, cinematic composition, clean crisp painted shapes, no text, no watermark",
+    "width": 1024,
+    "height": 576,
+    "seed": 20261005,
+    "loras": [
+     {
+      "id": "krea2_turbo_anime_enhance",
+      "weight": 0.7,
+      "target": "keyframe"
+     },
+     {
+      "id": "krea2_gurren_lagann_style",
+      "weight": 1.5,
+      "target": "keyframe"
+     }
+    ]
+   },
+   "clip": {
+    "prompt": "small droplets fall from above into the calm water one after another, each impact makes a small splash with a dark crater and a raised rim that rises then collapses, leaving only one thin faint ring, the water around stays calm, the reflection of the sky and clouds stays still, static camera, light rain",
+    "seed": 20261005,
+    "frames": 49,
+    "fps": 16,
+    "turbo_mode": true
+   },
+   "timings_s": {
+    "still": 19.7,
+    "clip_wall": 42.8
+   }
+  },
+  "s_rainy_street": {
+   "status": "reference",
+   "note": "kept as a REFERENCE by the user (2026-10-05); Krea2 still in the style of the first trend video",
+   "style": "enhance_gurren_18",
+   "still": {
+    "seed": 465287435,
+    "loras": [
+     {
+      "id": "krea2_turbo_anime_enhance",
+      "weight": 0.7,
+      "target": "keyframe"
+     },
+     {
+      "id": "krea2_gurren_lagann_style",
+      "weight": 1.8,
+      "target": "keyframe"
+     }
+    ],
+    "prompt": "anime style, GurrenLagannStyle, a quiet city street crossing on a rainy day with sunlight breaking through the clouds, wet pavement reflecting the sky, shops with warm lights, deserted, nobody around, Makoto Shinkai style anime background painting, hand-painted, extremely detailed, rich and varied vivid colours (emerald and leaf greens, teal, cobalt blue, warm gold, soft pink and lavender), luminous volumetric light, cinematic composition, clean crisp painted shapes, no text, no watermark",
+    "width": 1024,
+    "height": 576,
+    "engine": "krea2",
+    "steps": null
+   },
+   "clip": {
+    "prompt": "rain falls softly, reflections shimmer on the wet street, leaves of the trees tremble slightly, static camera",
+    "seed": 465287435,
+    "frames": 49,
+    "fps": 16,
+    "turbo_mode": true
+   },
+   "timings_s": {
+    "clip_wall": 53.1
+   }
+  },
+  "s_station": {
+   "status": "reference",
+   "note": "kept as a REFERENCE by the user (2026-10-05); Krea2 still in the style of the first trend video",
+   "style": "enhance_gurren_18",
+   "still": {
+    "seed": 1993088378,
+    "loras": [
+     {
+      "id": "krea2_turbo_anime_enhance",
+      "weight": 0.7,
+      "target": "keyframe"
+     },
+     {
+      "id": "krea2_gurren_lagann_style",
+      "weight": 1.8,
+      "target": "keyframe"
+     }
+    ],
+    "prompt": "anime style, GurrenLagannStyle, an empty railway station platform in the rain with a train waiting and puddles reflecting the evening sky, deserted, nobody around, Makoto Shinkai style anime background painting, hand-painted, extremely detailed, rich and varied vivid colours (emerald and leaf greens, teal, cobalt blue, warm gold, soft pink and lavender), luminous volumetric light, cinematic composition, clean crisp painted shapes, no text, no watermark",
+    "width": 1024,
+    "height": 576,
+    "engine": "krea2",
+    "steps": null
+   },
+   "clip": {
+    "prompt": "rain falls, the lights of the train glow, reflections ripple in the puddles, static camera",
+    "seed": 1993088378,
+    "frames": 49,
+    "fps": 16,
+    "turbo_mode": true
+   },
+   "timings_s": {
+    "clip_wall": 53.2
+   }
+  },
+  "s_dew_web": {
+   "status": "reference",
+   "note": "kept as a REFERENCE by the user (2026-10-05); Krea2 still in the style of the first trend video",
+   "style": "enhance",
+   "still": {
+    "seed": 341796204,
+    "loras": [
+     {
+      "id": "krea2_turbo_anime_enhance",
+      "weight": 0.8,
+      "target": "keyframe"
+     }
+    ],
+    "prompt": "anime style, a spider web covered with dewdrops in the morning sun just after the rain, a soft blurred green garden behind, extreme close-up, Makoto Shinkai style anime background painting, hand-painted, extremely detailed, rich and varied vivid colours (emerald and leaf greens, teal, cobalt blue, warm gold, soft pink and lavender), luminous volumetric light, cinematic composition, clean crisp painted shapes, no text, no watermark",
+    "width": 1024,
+    "height": 576,
+    "engine": "krea2",
+    "steps": null
+   },
+   "clip": {
+    "prompt": "dewdrops tremble and a few slide along the threads, light sparkles, a gentle breeze moves the web, static camera",
+    "seed": 341796204,
+    "frames": 49,
+    "fps": 16,
+    "turbo_mode": true
+   },
+   "timings_s": {
+    "clip_wall": 52.9
+   }
+  },
+  "s_cosmos": {
+   "status": "reference",
+   "note": "kept as a REFERENCE by the user (2026-10-05); Krea2 still in the style of the first trend video",
+   "style": "enhance",
+   "still": {
+    "seed": 58258947,
+    "loras": [
+     {
+      "id": "krea2_turbo_anime_enhance",
+      "weight": 0.8,
+      "target": "keyframe"
+     }
+    ],
+    "prompt": "anime style, pink cosmos flowers with raindrops on their petals in warm sunlight after the rain, a soft blurred garden behind, Makoto Shinkai style anime background painting, hand-painted, extremely detailed, rich and varied vivid colours (emerald and leaf greens, teal, cobalt blue, warm gold, soft pink and lavender), luminous volumetric light, cinematic composition, clean crisp painted shapes, no text, no watermark",
+    "width": 1024,
+    "height": 576,
+    "engine": "krea2",
+    "steps": null
+   },
+   "clip": {
+    "prompt": "the flowers sway gently in the breeze, raindrops glisten and fall from the petals, static camera",
+    "seed": 58258947,
+    "frames": 49,
+    "fps": 16,
+    "turbo_mode": true
+   },
+   "timings_s": {
+    "clip_wall": 53.2
+   }
+  },
+  "s_leaves": {
+   "status": "reference",
+   "note": "kept as a REFERENCE by the user (2026-10-05); Krea2 still in the style of the first trend video",
+   "style": "enhance",
+   "still": {
+    "seed": 1385047819,
+    "loras": [
+     {
+      "id": "krea2_turbo_anime_enhance",
+      "weight": 0.8,
+      "target": "keyframe"
+     }
+    ],
+    "prompt": "anime style, large green leaves with raindrops and rays of sunlight through the foliage, macro, soft depth of field, Makoto Shinkai style anime background painting, hand-painted, extremely detailed, rich and varied vivid colours (emerald and leaf greens, teal, cobalt blue, warm gold, soft pink and lavender), luminous volumetric light, cinematic composition, clean crisp painted shapes, no text, no watermark",
+    "width": 1024,
+    "height": 576,
+    "engine": "krea2",
+    "steps": null
+   },
+   "clip": {
+    "prompt": "raindrops roll down the leaves and drip, the leaves tremble slightly, light rays shimmer, static camera",
+    "seed": 1385047819,
+    "frames": 49,
+    "fps": 16,
+    "turbo_mode": true
+   },
+   "timings_s": {
+    "clip_wall": 52.7
+   }
+  },
+  "s_valley": {
+   "status": "reference",
+   "note": "kept as a REFERENCE by the user (2026-10-05); Krea2 still in the style of the first trend video",
+   "style": "enhance",
+   "still": {
+    "seed": 1744121295,
+    "loras": [
+     {
+      "id": "krea2_turbo_anime_enhance",
+      "weight": 0.8,
+      "target": "keyframe"
+     }
+    ],
+    "prompt": "anime style, a green river valley with a small town seen from a hill after the rain, sun rays through the clouds, wet roofs shining, Makoto Shinkai style anime background painting, hand-painted, extremely detailed, rich and varied vivid colours (emerald and leaf greens, teal, cobalt blue, warm gold, soft pink and lavender), luminous volumetric light, cinematic composition, clean crisp painted shapes, no text, no watermark",
+    "width": 1024,
+    "height": 576,
+    "engine": "krea2",
+    "steps": null
+   },
+   "clip": {
+    "prompt": "clouds drift slowly, light rays move across the valley, the trees sway slightly, static camera",
+    "seed": 1744121295,
+    "frames": 49,
+    "fps": 16,
+    "turbo_mode": true
+   },
+   "timings_s": {
+    "clip_wall": 53.1
+   }
+  },
+  "s_rainy_street_crowd": {
+   "status": "reference",
+   "note": "kept as a REFERENCE by the user (2026-10-05); people added by Qwen-Image-Edit-2511 with the constant crowd sentence (the people are good)",
+   "style": "enhance_gurren_18",
+   "still": {
+    "engine": "qwen_image_edit_2511",
+    "source": "C:\\Users\\celio\\Documents\\Codex\\2026-07-26\\p\\outputs\\wan-sequence-cloud-v3\\results\\trend_rain_anime\\phaseS\\s_rainy_street.png",
+    "seed": 1,
+    "steps": 4,
+    "prompt": "Add a crowd of the people who would naturally be in this place, many of them, each one doing what people usually do here. Keep everything else exactly the same: same composition, same style, same colours, same details.",
+    "model": {
+     "unet": "qwen_image_edit_2511_fp8mixed.safetensors",
+     "clip": "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+     "vae": "qwen_image_vae.safetensors",
+     "lora": "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors"
+    }
+   },
+   "clip": {
+    "prompt": "the people go about what they usually do here, rain falls softly, static camera",
+    "seed": 1372175472,
+    "frames": 49,
+    "fps": 16,
+    "turbo_mode": true
+   },
+   "timings_s": {
+    "clip_wall": 53.2
+   }
+  },
+  "s_station_crowd": {
+   "status": "reference",
+   "note": "kept as a REFERENCE by the user (2026-10-05); people added by Qwen-Image-Edit-2511 with the constant crowd sentence (the people are good)",
+   "style": "enhance_gurren_18",
+   "still": {
+    "engine": "qwen_image_edit_2511",
+    "source": "C:\\Users\\celio\\Documents\\Codex\\2026-07-26\\p\\outputs\\wan-sequence-cloud-v3\\results\\trend_rain_anime\\phaseS\\s_station.png",
+    "seed": 1,
+    "steps": 4,
+    "prompt": "Add a crowd of the people who would naturally be in this place, many of them, each one doing what people usually do here. Keep everything else exactly the same: same composition, same style, same colours, same details.",
+    "model": {
+     "unet": "qwen_image_edit_2511_fp8mixed.safetensors",
+     "clip": "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+     "vae": "qwen_image_vae.safetensors",
+     "lora": "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors"
+    }
+   },
+   "clip": {
+    "prompt": "the people go about what they usually do here, rain falls softly, static camera",
+    "seed": 1372175472,
+    "frames": 49,
+    "fps": 16,
+    "turbo_mode": true
+   },
+   "timings_s": {
+    "clip_wall": 42.6
+   }
+  },
+  "s_rain_chain": {
+   "status": "rejected_frozen",
+   "note": "rain chain K0 (m_crown_1) -> K1 (Qwen 'more drops') -> K2 (Qwen 'next moment'), first/last-frame video, 2 x 49 frames. User: 'l'image se fige' on this file. MEASURED: no literal freeze, but (1) a hard jump at the junction of the two segments (step 10.1 vs ~1.2 elsewhere), (2) very slow motion (mean 1.15 vs 3.4-4.9 for lively clips) and each segment settles toward its last keyframe. Smoothed copy with a 0.2 s cross-fade: phaseS/s_rain_chain_smooth.mp4 (max step 2.9). A second video is also concerned according to the user (not identified yet).",
+   "files": {
+    "original": "results/trend_rain_anime/phaseS/s_rain_chain.mp4",
+    "smoothed": "results/trend_rain_anime/phaseS/s_rain_chain_smooth.mp4"
+   },
+   "segments": [
+    "phaseS/s_rain_K0_K1.mp4",
+    "phaseS/s_rain_K1_K2.mp4"
+   ],
+   "keyframes": [
+    "phaseM/m_crown_1.png",
+    "phaseR/r_rain_more_crown.png",
+    "phaseS/s_rain_k2.png"
+   ],
+   "slowest_clips_measured": {
+    "s_valley": 0.45,
+    "s_rainy_street": 0.56,
+    "s_cosmos": 0.63
+   },
+   "lively_clips_for_comparison": {
+    "k_craters": 3.35,
+    "e_train": 4.9
+   },
+   "diagnosis_2026-10-05": "User on the smoothed copy: 'toujours bugge'. Frames show it is NOT the junction: in segment 2 (K1->K2) every crown stays in place for ~3 s, like static bubbles that never burst (first/last-frame video between two similar keyframes keeps objects still); in segment 1 the top crown oscillates in place and the other crowns pop in only at the very end. Excluded from the trend planner's library. Fix to try: more keyframes with SMALL time steps (iterative Qwen 'a fraction of a second later') and shorter first/last-frame segments, or the CPU burst of scripts/drop_transplant.py (crowns that shrink and leave pencil rings)."
+  }
+ },
+ "people": {
+  "note": "Context-agnostic way to put people in a scene (phase J, 2026-10-05): ONE constant sentence, no place word, no action detail, appended to the scene prompt; the model decides who and what from the place.",
+  "image_clause_A": "with the people who would naturally be here",
+  "image_clause_B": "populated the way this place really is, the people in it doing what people usually do here",
+  "deserted_clause": "deserted, nobody around",
+  "video_clause": "the people who naturally belong in this place come into view and go about what they usually do here, static camera",
+  "places_tested": [
+   "street",
+   "train carriage",
+   "cafe",
+   "bird on a branch (control)"
+  ],
+  "seeds": {
+   "street": 884601542,
+   "train": 1707015540,
+   "cafe": 914618010,
+   "bird": 1016619693
+  },
+  "results": "stills: both clauses populate street (passers-by at the crossing), train (seated passengers) and cafe (staff + customers), anime-styled, varied; the bird control got no person. Video clause from the deserted still: a person walks in on train and cafe, the street stays almost empty, the bird just flies off.",
+  "limit": "Krea2 has no edit/reference input in this app: a clause on the same seed gives a close but not identical scene (it is generation, not insertion into the exact base image). Exact insertion or character-sheet references need an editing model (not installed)."
+ },
+ "reference_rain_styles": {
+  "reference_puddle": {
+   "recipe": "c_big_enhance_gurren_2",
+   "what": "big craters with a highlight, pointed out by the user as the base impact look"
+  },
+  "small_craters": {
+   "recipe": "k_craters",
+   "what": "NEW (2026-10-05): the same drops much smaller, scaled by depth of field, kept as one of the reference rain styles"
+  },
+  "calm_a_form": {
+   "recipe": "g_calm_a",
+   "what": "splash crown (original) or volcano-shaped; the form the user wants to work with, made small at generation (phase M)"
+  }
+ },
+ "tricks": {
+  "start_equals_end": "phase N: first/last-frame video (mode i(keyframe)2v, 768x432, 49 frames, 20 steps, ~108 s) with the SAME still as start and end keeps the water calm and stops the splash from spreading into big rings (n_m_crown_1_loop, n_m_volcano_1_loop); the form pulses and collapses, falling droplets still not clearly visible; the crown form looks a bit odd (cup with flaps)",
+  "general_rain_overlay": "scripts/rain_drop_post.py --style general --impacts none adds falling glassy drops with trails over any clip (m_*_general.mp4)",
+  "drop_multiply": "phase P (2026-10-05): isolate ONE splash event of a clip (ink only: much darker or whitish-bright pixels vs the rebuilt calm water, inside a soft window so the rings stay small) and multiply it with scripts/drop_multiply.py (30 copies over 10 s, depth-scaled, spread in time); specs in scripts/assets/drop_multiply_m_*.json; CPU only (~40 s per 10 s clip). Tested on the crown (m_crown_1) and the volcano (m_volcano_1) forms the user pointed out.",
+  "drop_transplant": "phase Q (2026-10-05): scripts/drop_transplant.py puts an isolated impact (the crown of m_crown_1, ink only) on ANOTHER clip whose water is not clean and keeps moving (target = k_craters, the user's reference rain). The impact is reworked before it is added: pencil outline (white / black / black+white / white+light blue) with a wobbly width and a grain, or a BURST (the ink shrinks and fades, thin pencil rings spread) so it no longer reads as a static bubble that never bursts. Copies are placed on free water of the target (busy map measured on its frames), scaled by depth, spread in time. CPU only, ~18 s per 3 s clip. Specs: scripts/assets/drop_transplant_k_craters.json + drop_multiply_m_crown_1.json."
+ },
+ "rain_union": {
+  "note": "2026-10-05, user: 'enregistre bien les informations relatives a la video de base et au detourage du mouvement, declare-les par defaut mais parametrable; garde les deux possibilites distinctes ET leur union (derniere creation)'. `python scripts/drop_transplant.py union OUT.mp4` uses these defaults; every option given replaces its default.",
+  "base_video": {
+   "recipe": "k_craters",
+   "file": "results/trend_rain_anime/phaseK/k_craters.mp4",
+   "sha256": "ce1e95ad536237f83f0eaec1e71dcf0d4ec47cb592a198c5a8b4f3f72aca796c",
+   "size": [
+    576,
+    1024
+   ],
+   "fps": 30.0,
+   "frames": 89,
+   "user_file": "KPu6m1hQy-cEbnJUe_IZfQ.mp4 (identical frames)",
+   "role": "TARGET: its water keeps moving and is not clean, so the impacts are drawn over its frames",
+   "generation": {
+    "still": {
+     "engine": "krea2",
+     "prompt": "anime style, GurrenLagannStyle, high angle point of view looking down diagonally toward the lower right, camera tilted, the puddle fills the whole picture, a close-up of a puddle on wet pavement, only the puddle and its reflection of bright blue sky, white and pink clouds and the sun, bright sunlight breaking through the rain, sparkling reflections, many small round raindrop craters with a dark hollow centre and a bright highlight, glossy drops frozen in the air, the drops are small and get smaller and less detailed the farther they are from the camera, the close ones sharp, the far ones tiny and soft, strong depth of field, the water between them stays calm with only faint thin ripples, Makoto Shinkai style anime background painting, hand-painted, extremely detailed, rich and varied vivid colours (emerald and leaf greens, teal, cobalt blue, warm gold, soft pink and lavender), luminous volumetric light, cinematic composition, clean crisp painted shapes, no text, no watermark",
+     "width": 1024,
+     "height": 576,
+     "seed": 1372175472,
+     "loras": [
+      {
+       "id": "krea2_turbo_anime_enhance",
+       "weight": 0.7,
+       "target": "keyframe"
+      },
+      {
+       "id": "krea2_gurren_lagann_style",
+       "weight": 1.5,
+       "target": "keyframe"
+      }
+     ],
+     "seconds": 25.9
+    },
+    "clip": {
+     "prompt": "many small raindrops keep falling into the puddle, small craters pop up and fade with only faint thin ripples, the reflection of the sky and clouds shimmers softly, static camera, light rain",
+     "seed": 1372175472,
+     "frames": 49,
+     "fps": 16,
+     "turbo_mode": true,
+     "seconds": 73.9
+    },
+    "replay": "python scripts/trend_rain_anime.py replay k_craters --out DIR   (same seeds, prompts, LoRAs)"
+   },
+   "style": "enhance_gurren (Anime Enhance 0.7 + Gurren Lagann 1.5)"
+  },
+  "impact": {
+   "recipe": "m_crown_1",
+   "clip": "results/trend_rain_anime/phaseM/m_crown_1.mp4",
+   "still": "results/trend_rain_anime/phaseM/m_crown_1.png",
+   "sha256_clip": "c5568562bfd6bf0f56b98fe16fdae8152f83bd4aa8f5ca183df92ccde577d4e5",
+   "size": [
+    576,
+    1024
+   ],
+   "fps": 30.0,
+   "frames": 89,
+   "role": "SOURCE of the isolated crown impact (ink only, first 40 frames, soft window); the 10 s clip made from it alone is p_m_crown_1_multiply.mp4 (the user's UJCPLM file)",
+   "isolation_spec": "scripts/assets/drop_multiply_m_crown_1.json",
+   "isolation_params": {
+    "seconds": 10.0,
+    "copies": 30,
+    "event_frames": 40,
+    "fade_in": 3,
+    "fade_out_share": 0.3,
+    "min_gap": 0.9,
+    "seed": 1,
+    "fps": 30,
+    "window_feather": 0.35,
+    "keep_original": true,
+    "dark": 25.0,
+    "dark_soft": 30.0,
+    "bright": 50.0,
+    "bright_soft": 40.0,
+    "white_sat": 0.6
+   },
+   "generation": {
+    "still": {
+     "engine": "krea2",
+     "prompt": "anime style, GurrenLagannStyle, high angle point of view looking down diagonally toward the lower right, camera tilted, the puddle fills the whole picture, a close-up of a puddle on wet pavement, only the puddle and its reflection of bright blue sky, white and pink clouds and the sun, bright sunlight breaking through the rain, sparkling reflections, a few small glossy raindrops with bright highlights frozen in the air above the water, each impact is a small sharp splash crown with a dark crater and a raised rim, the splashes are small and get smaller and less detailed the farther they are from the camera, the close ones sharp, the far ones tiny and soft, strong depth of field, the water between them stays calm with only one thin faint ripple, the reflected sky and clouds stay perfectly calm and undistorted, Makoto Shinkai style anime background painting, hand-painted, extremely detailed, rich and varied vivid colours (emerald and leaf greens, teal, cobalt blue, warm gold, soft pink and lavender), luminous volumetric light, cinematic composition, clean crisp painted shapes, no text, no watermark",
+     "width": 1024,
+     "height": 576,
+     "seed": 1372175472,
+     "loras": [
+      {
+       "id": "krea2_turbo_anime_enhance",
+       "weight": 0.7,
+       "target": "keyframe"
+      },
+      {
+       "id": "krea2_gurren_lagann_style",
+       "weight": 1.5,
+       "target": "keyframe"
+      }
+     ],
+     "seconds": 25.9
+    },
+    "clip": {
+     "prompt": "small droplets fall from above into the calm water one after another, each impact makes a small splash with a dark crater and a raised rim that rises then collapses, leaving only one thin faint ring, the water around stays calm, the reflection of the sky and clouds stays still, static camera, light rain",
+     "seed": 1372175472,
+     "frames": 49,
+     "fps": 16,
+     "turbo_mode": true,
+     "seconds": 79.1
+    },
+    "replay": "python scripts/trend_rain_anime.py replay m_crown_1 --out DIR   (same seeds, prompts, LoRAs)"
+   }
+  },
+  "outline_and_burst": {
+   "what": "the reworked impact (detourage du mouvement): pencil outline traced on the silhouette of the impact frame by frame, wobbly width and grain, and/or a burst (the ink shrinks and fades while thin pencil rings spread) so it never stays a static bubble",
+   "styles": {
+    "none": {
+     "lines": [],
+     "burst": false,
+     "label": "brut (comme dans le clip multiplie)"
+    },
+    "white": {
+     "lines": [
+      [
+       "white",
+       0.0,
+       0.9
+      ]
+     ],
+     "burst": false,
+     "label": "crayon blanc"
+    },
+    "black": {
+     "lines": [
+      [
+       "black",
+       0.0,
+       0.85
+      ]
+     ],
+     "burst": false,
+     "label": "crayon noir"
+    },
+    "double": {
+     "lines": [
+      [
+       "black",
+       1.8,
+       0.8
+      ],
+      [
+       "white",
+       0.0,
+       0.9
+      ]
+     ],
+     "burst": false,
+     "label": "noir dehors + blanc"
+    },
+    "blue": {
+     "lines": [
+      [
+       "white",
+       0.0,
+       0.9
+      ],
+      [
+       "blue",
+       1.9,
+       0.8
+      ]
+     ],
+     "burst": false,
+     "label": "blanc + bleu clair parallele"
+    },
+    "burst": {
+     "lines": [
+      [
+       "white",
+       0.0,
+       0.9
+      ]
+     ],
+     "burst": true,
+     "label": "crayon blanc + eclatement"
+    },
+    "burst_blue": {
+     "lines": [
+      [
+       "white",
+       0.0,
+       0.9
+      ],
+      [
+       "blue",
+       1.9,
+       0.8
+      ]
+     ],
+     "burst": true,
+     "label": "blanc + bleu + eclatement"
+    }
+   },
+   "outlines": {
+    "none": [],
+    "white": [
+     [
+      "white",
+      0.0,
+      0.9
+     ]
+    ],
+    "black": [
+     [
+      "black",
+      0.0,
+      0.85
+     ]
+    ],
+    "double": [
+     [
+      "black",
+      1.8,
+      0.8
+     ],
+     [
+      "white",
+      0.0,
+      0.9
+     ]
+    ],
+    "blue": [
+     [
+      "white",
+      0.0,
+      0.9
+     ],
+     [
+      "blue",
+      1.9,
+      0.8
+     ]
+    ]
+   },
+   "colours": {
+    "white": [
+     255,
+     255,
+     255
+    ],
+    "black": [
+     12,
+     10,
+     34
+    ],
+    "blue": [
+     178,
+     222,
+     255
+    ]
+   },
+   "params": {
+    "copies": 12,
+    "seed": 1,
+    "fps": 30,
+    "line_width": 1.9,
+    "ring_max": 26.0,
+    "ring_delays": [
+     9,
+     14
+    ],
+    "ring_life": 24,
+    "collapse_start": 12,
+    "tail": 38,
+    "stagger_end": 26,
+    "tries": 500
+   },
+   "default_style": "burst_blue",
+   "rule": "--outline and --burst/--no-burst choose the two parts separately, in any combination"
+  },
+  "defaults": {
+   "target": "results/trend_rain_anime/phaseK/k_craters.mp4",
+   "source": "results/trend_rain_anime/phaseM/m_crown_1.mp4",
+   "source_still": "results/trend_rain_anime/phaseM/m_crown_1.png",
+   "source_spec": "scripts/assets/drop_multiply_m_crown_1.json",
+   "target_spec": "scripts/assets/drop_transplant_k_craters.json",
+   "style": "burst_blue",
+   "copies": 12,
+   "seed": 1,
+   "method": "auto",
+   "base_still": "results/trend_rain_anime/phaseK/k_craters.png",
+   "url": "http://127.0.0.1:18188"
+  },
+  "distinct_possibilities": {
+   "base_only": {
+    "what": "k_craters alone (the user's reference rain)",
+    "file": "results/trend_rain_anime/phaseK/k_craters.mp4",
+    "regenerate": "trend_rain_anime.py replay k_craters"
+   },
+   "impact_only": {
+    "what": "the crown impact alone, multiplied over its own rebuilt calm water (10 s, static background)",
+    "file": "results/trend_rain_anime/phaseP/p_m_crown_1_multiply.mp4",
+    "regenerate": "python scripts/drop_multiply.py <m_crown_1.mp4> <m_crown_1.png> OUT --spec scripts/assets/drop_multiply_m_crown_1.json"
+   },
+   "union": {
+    "what": "the crown impacts on the moving water of k_craters, outline + burst = the LAST CREATION and the default",
+    "file": "results/trend_rain_anime/phaseQ/q_k_craters_crown_burst_blue.mp4",
+    "record": "results/trend_rain_anime/phaseQ/q_k_craters_crown_burst_blue.transplant.json",
+    "regenerate": "python scripts/drop_transplant.py union OUT.mp4"
+   }
+  },
+  "tests_done": [
+   "q_k_craters_crown_white",
+   "q_k_craters_crown_burst",
+   "q_k_craters_crown_burst_blue"
+  ],
+  "qwen_union": {
+   "rule": "2026-10-05, user: 'met qwen edit par defaut et dis-lui de melanger les deux (l'union), par defaut si il est dans le bundle'. method=auto -> Qwen-Image-Edit-2511 when the profile 'qwen-edit' is declared in config/base_models.json (the bundle catalogue) AND the server's ComfyUI lists the model file; otherwise the CPU transplant. --method qwen|transplant forces one.",
+   "instruction": "Mix the two pictures: keep the first picture exactly as it is (its water, reflections, drops, colours and composition) and add to its water splashes of the kind shown in the second picture, in the same drawing style, smaller and softer the farther they are from the camera. Add nothing else.",
+   "pictures": {
+    "picture_1": "base scene kept (k_craters still)",
+    "picture_2": "kind of splash to add (m_crown_1 still, the crown form)"
+   },
+   "bundle_profile": "qwen-edit",
+   "model_files": {
+    "unet": "qwen_image_edit_2511_fp8mixed.safetensors",
+    "clip": "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+    "vae": "qwen_image_vae.safetensors",
+    "lora": "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors"
+   },
+   "server_start": "COMFY_USE_SAGE_ATTENTION=0 /root/start_app.sh <name> novram   (with Sage every output is black); ssh -N -L 18188:127.0.0.1:8188 ... for the tunnel",
+   "output": "a PNG keyframe of the union (to animate with the usual pipeline); the CPU transplant gives an MP4",
+   "measured": "~28-31 s per edit on the 4090 (4 steps, 1 MP, novram)",
+   "animated_tests": {
+    "t_union_s1": {
+     "still": "results/trend_rain_anime/phaseT/t_union_s1.png",
+     "clip": "results/trend_rain_anime/phaseT/t_union_s1.mp4",
+     "qwen_seed": 1,
+     "clip_seed": 1372175472,
+     "clip_prompt": "many small raindrops keep falling into the puddle, small craters pop up and fade with only faint thin ripples, the reflection of the sky and clouds shimmers softly, static camera, light rain",
+     "clip_seconds": 74.6
+    },
+    "t_union_s2": {
+     "still": "results/trend_rain_anime/phaseT/t_union_s2.png",
+     "clip": "results/trend_rain_anime/phaseT/t_union_s2.mp4",
+     "qwen_seed": 2,
+     "clip_seed": 1372175472,
+     "clip_prompt": "many small raindrops keep falling into the puddle, small craters pop up and fade with only faint thin ripples, the reflection of the sky and clouds shimmers softly, static camera, light rain",
+     "clip_seconds": 52.9
+    },
+    "t_union_s3": {
+     "still": "results/trend_rain_anime/phaseT/t_union_s3.png",
+     "clip": "results/trend_rain_anime/phaseT/t_union_s3.mp4",
+     "qwen_seed": 3,
+     "clip_seed": 1372175472,
+     "clip_prompt": "many small raindrops keep falling into the puddle, small craters pop up and fade with only faint thin ripples, the reflection of the sky and clouds shimmers softly, static camera, light rain",
+     "clip_seconds": 42.6
+    }
+   },
+   "observation": "Wan spreads the union's splashes into big rings again (the same behaviour as every i2v of this puddle); the Qwen still itself keeps k_craters' scene with crown splashes added. Animated seeds 1, 2, 3 all show it."
+  }
+ },
+ "tools": {
+  "comfy_edit": "scripts/comfy_edit.py (edit | crowd | light | union | available), Qwen-Image-Edit-2511 through ComfyUI's API",
+  "drop_transplant": "scripts/drop_transplant.py (render | planche | union)"
+ },
+ "trend_video": {
+  "tool": "scripts/trend_video.py (plan | status | run --phase stills|qwen|clips|local|assemble) + scripts/trend_video_driver.sh (strict, one model family at a time, never closes the server)",
+  "first_video": {
+   "plan": "results/trend_rain_anime/video_runs/trend_7/plan.json",
+   "file": "results/trend_rain_anime/video_runs/trend_7/trend_7.mp4",
+   "seed": 7,
+   "seconds": 20,
+   "cuts": 25,
+   "shots": 20,
+   "music": {
+    "file": "results/trend_rain_anime/music/reference_trend.mov",
+    "bpm": 114.08,
+    "beat": 0.5259467040673211,
+    "offset": 0.108
+   },
+   "context": {
+    "weather": "rain_to_sun",
+    "weather_words": "light rain falling while bright sun breaks through the clouds, everything wet and glistening, sparkling reflections",
+    "motion_weather": "light rain falls, sunlight glitters",
+    "wow_allowed": true,
+    "time_of_day": "afternoon",
+    "light_words": "bright afternoon light",
+    "setting": "mixed"
+   },
+   "estimate": {
+    "stills": 12,
+    "clips": 12,
+    "qwen_edits": 2,
+    "model_families": 3,
+    "gpu_seconds": 1260
+   },
+   "real_run": "~22 min on the 4090 (12 Krea2 stills, 2 Qwen light twins, 12 Wan clips, 3 family restarts), 0 failure, 0 stand-in",
+   "sources": "7 library clips, 12 Wan clips, 2 Qwen light twins, 7 CPU zoom-out cuts (2 views from above that move away), 6 rain overlays",
+   "motion_check": "no frozen cut; calmest = valley (library) 0.29"
+  },
+  "planner_rules": "no people, no bird (excluded_families param); cuts on the 114 bpm beat grid (opens 1.0/1.0/1.0/2.1 s then bursts); library_share 0.35; wow puddle guaranteed; light twins via Qwen; GPU budget 1500 s",
+  "removed_from_library": [
+   "rain_chain (frozen crowns, rejected)"
+  ]
+ }
+}

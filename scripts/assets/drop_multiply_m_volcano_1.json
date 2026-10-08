@@ -1,0 +1,14 @@
+{
+ "note": "positions read by eye on m_volcano_1 turned clockwise (576x1024). event = the main volcano; inpaint = every splash and the droplet of the still; allowed = water only",
+ "event": {"x": 110, "y": 285, "rx": 100, "ry": 150},
+ "inpaint": [
+  {"x": 110, "y": 285, "rx": 105, "ry": 160},
+  {"x": 395, "y": 150, "rx": 40, "ry": 50},
+  {"x": 355, "y": 555, "rx": 50, "ry": 70},
+  {"x": 440, "y": 695, "rx": 40, "ry": 40},
+  {"x": 510, "y": 765, "rx": 25, "ry": 25},
+  {"x": 290, "y": 285, "rx": 18, "ry": 18}
+ ],
+ "allowed": [[40, 60, 330, 900], [330, 470, 470, 800]],
+ "depth": {"near_weight": [0.6, 0.4], "far_scale": 0.3}
+}

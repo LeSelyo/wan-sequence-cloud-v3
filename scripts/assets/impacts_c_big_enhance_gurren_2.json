@@ -1,0 +1,12 @@
+{
+ "note": "impact centres read by eye on frame 1 of c_big_enhance_gurren_2 (576x1024); core = radius around the centre that is left exactly as generated (crater AND its first rings, they grow during the clip)",
+ "aspect": 0.85,
+ "impacts": [
+  {"x": 320, "y": 258, "core": 105},
+  {"x": 135, "y": 268, "core": 45},
+  {"x": 195, "y": 528, "core": 90},
+  {"x": 400, "y": 530, "core": 50},
+  {"x": 200, "y": 702, "core": 95},
+  {"x": 337, "y": 722, "core": 70}
+ ]
+}

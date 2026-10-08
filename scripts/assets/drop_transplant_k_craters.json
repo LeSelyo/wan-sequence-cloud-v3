@@ -1,0 +1,8 @@
+{
+ "note": "TARGET = k_craters (the user's reference rain clip, 576x1024, 30 fps): its water keeps moving and is not clean, so the impacts are drawn over its frames. allowed = water only (the rocks at the bottom and the pavement on the right are excluded); scale = size of the copy relative to the isolated impact (near = top-left, far = the sun side, right and bottom)",
+ "allowed": [[30, 30, 440, 860], [440, 30, 520, 560]],
+ "scale": {"near": 0.55, "far": 0.17},
+ "depth": {"near_weight": [0.6, 0.4]},
+ "busy": {"threshold": 28, "max_fraction": 0.09},
+ "planche": {"near_at": [200, 360], "far_at": [330, 620]}
+}
