@@ -122,9 +122,9 @@ def animate_jobs(plan: dict, cards: dict, run: Path) -> list[dict]:
     from the portraits of the two characters (each one waiting, silent), every other shot from its own still."""
     characters = {c["id"]: c for c in plan["characters"]}
     jobs = []
-    for shot in plan["shots"]:
+    for index, shot in enumerate(plan["shots"]):
         voice = run / "voices" / f"{shot['id']}.wav"
-        seconds = sr.shot_seconds(shot["kind"], sr.wav_seconds(voice))
+        seconds = sr.shot_seconds(shot["kind"], sr.wav_seconds(voice), last=index == len(plan["shots"]) - 1)
         look = f"{shot['visual']}, {LOOK}"
         if shot["kind"] == "talk":
             who = characters[shot["speaker"]]
@@ -142,11 +142,13 @@ def animate_jobs(plan: dict, cards: dict, run: Path) -> list[dict]:
     return jobs
 
 
-def step_animate(plan: dict, cards: dict, run: Path, comfy_url: str, lora: str, seed: int, only: set[str] | None = None, force: bool = False) -> dict:
+def step_animate(plan: dict, cards: dict, run: Path, comfy_url: str, lora: str, seed: int, only: set[str] | None = None, force: bool = False, skip: set[str] | None = None) -> dict:
     """One S2V clip per job (see animate_jobs), into <run>/clips/<id>.mp4; a clip that exists is kept (re-run with --force or --only to make it again: the old one is kept as _vN)."""
     timings = {}
     for job in animate_jobs(plan, cards, run):
         if only and job["id"] not in only and job["id"].split("_")[0] not in only:
+            continue
+        if skip and (job["id"] in skip or job["id"].split("_")[0] in skip):
             continue
         target = run / "clips" / f"{job['id']}.mp4"
         if target.exists() and not (force or only):
@@ -167,13 +169,14 @@ def main() -> None:
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--steps", default=",".join(STEPS))
     parser.add_argument("--seed", type=int, default=1)
-    parser.add_argument("--lora", choices=list(st.LORAS), default="i2v_low")
+    parser.add_argument("--lora", choices=list(st.LORAS), default="t2v_1217_low")
     parser.add_argument("--comfy-url", default=st.BASE_URL)
     parser.add_argument("--ssh-host", default=os.environ.get("BOX_SSH_HOST", "n1.de.clorecloud.net"))
     parser.add_argument("--ssh-port", type=int, default=int(os.environ.get("BOX_SSH_PORT", "1380")))
     parser.add_argument("--ssh-key", default=os.environ.get("BOX_SSH_KEY", "~/.ssh/id_ed25519_clore"))
     parser.add_argument("--no-sound", action="store_true", help="no sound background (only the voices)")
     parser.add_argument("--only", help="animate only these shot ids (comma-separated); the old clip is kept as _vN")
+    parser.add_argument("--skip", help="do not animate these shot ids (comma-separated): a still that must be made again first")
     parser.add_argument("--force", action="store_true", help="animate again even if the clip exists")
     args = parser.parse_args()
     plan = json.loads(args.plan.read_text(encoding="utf-8"))
@@ -192,7 +195,8 @@ def main() -> None:
         elif step == "voices":
             report[step] = step_voices(box, plan, run, args.seed)
         elif step == "animate":
-            report[step] = {**report.get(step, {}), **step_animate(plan, cards, run, args.comfy_url, args.lora, args.seed, set(args.only.split(",")) if args.only else None, args.force)}
+            report[step] = {**report.get(step, {}), **step_animate(plan, cards, run, args.comfy_url, args.lora, args.seed, set(args.only.split(",")) if args.only else None, args.force,
+                                                                set(args.skip.split(",")) if args.skip else None)}
         elif step == "render":
             report[step] = sr.render_story(plan, cards_dir, run, args.out, sound=not args.no_sound)
         else:

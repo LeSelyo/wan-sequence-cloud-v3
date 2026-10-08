@@ -25,7 +25,10 @@ SIZE = (576, 1024)
 
 
 def shot_prompt(shot: dict, plan: dict, style: dict) -> str:
+    """The picture prompt: what the shot shows + the art direction of the video. A shot with its own `time` (a dawn at the end of a night story) replaces the hour and the lighting of the style."""
     location = next((l for l in plan["locations"] if l["id"] == shot["location"]), {})
+    if shot.get("time"):
+        style = {**style, "lighting": "warm natural light", "forced_elements": {**style.get("forced_elements", {}), "time": shot["time"]}}
     return f"{shot['still']}, vertical composition, {ss.style_prompt(style, location.get('tags', []))}"
 
 

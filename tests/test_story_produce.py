@@ -41,5 +41,5 @@ def test_every_shot_gets_the_right_clip_job(tmp_path):
     assert set(jobs) == {"s001", "s002", "s003_c1", "s003_c2"}
     assert jobs["s001"]["voice"] is None and jobs["s001"]["source"] == tmp_path / "stills" / "s001.png" and "the camera pushes in" in jobs["s001"]["prompt"]  # a scene: its own still, silence
     assert jobs["s002"]["voice"] == tmp_path / "voices" / "s002.wav" and jobs["s002"]["source"].name == "p1.png" and "Brandt" in jobs["s002"]["prompt"]  # a talk: the portrait + the line
-    assert jobs["s002"]["seconds"] == 2.15 and jobs["s003_c2"]["voice"] is None and jobs["s003_c2"]["source"].name == "p2.png" and "mouth closed" in jobs["s003_c2"]["prompt"]
-    assert jobs["s003_c1"]["seconds"] == 3.2  # the choice lasts at least the countdown
+    assert jobs["s002"]["seconds"] == 2.25 and jobs["s003_c2"]["voice"] is None and jobs["s003_c2"]["source"].name == "p2.png" and "mouth closed" in jobs["s003_c2"]["prompt"]
+    assert jobs["s003_c1"]["seconds"] == 4.8  # the last shot also keeps the screen for the closing question (2.8 s)

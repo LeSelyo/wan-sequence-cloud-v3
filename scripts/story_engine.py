@@ -225,7 +225,8 @@ PLACE_KITS = {  # keywords of the context -> (kind, tags, [(id, description, var
     "shelter": ("shelter", ["shelter"], [("hall", "the main hall of an underground shelter, crowded", None), ("storage", "the food storage room of the same shelter", "hall"),
                                           ("quarters", "a cramped sleeping room of the same shelter", "hall"), ("tunnel", "a long service tunnel of the same shelter", "hall")]),
     "flood": ("flood", ["city", "sea", "window"], [("boat", "the open deck of a small rescue boat at night, rails and a spotlight", None), ("street", "a flooded city street seen from the water, half-submerged cars and dark windows", "boat"),
-                                                   ("cabin", "the small cabin of the same rescue boat, a bunk and a lamp", "boat"), ("roof", "a rooftop above the flood water of the same city", "boat")]),
+                                                   ("cabin", "the small cabin of the same rescue boat, a bunk and a lamp", "boat"), ("roof", "a rooftop above the flood water of the same city", "boat"),
+                                                   ("sea", "the open black sea at night under fog, far from any coast", "boat")]),
     "city": ("city", ["city", "window"], [("street", "a empty city street at dusk", None), ("office", "an office with a view of the same street", "street"),
                                            ("stairs", "a concrete stairwell of the same building", "street"), ("roof", "the roof of the same building", "street")]),
 }
