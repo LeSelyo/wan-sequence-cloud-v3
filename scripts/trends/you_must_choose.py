@@ -10,12 +10,17 @@ the BRIEF that the analyst agent extracts from the context. `PROMPT_VERSION` cha
 from __future__ import annotations
 
 NAME = "you_must_choose"
-PROMPT_VERSION = "2026-10-09.2"
-KINDS = ["narration", "talk", "pov", "choice", "twist", "rewind"]
+PROMPT_VERSION = "2026-10-09.4"  # .3: ONE offer shot (both hold out a hand), independent branches, suspense, more first-person action; .4: characters speak rarely (orders only), the narrator quotes the offers
+KINDS = ["narration", "talk", "pov", "choice", "twist", "rewind", "offer"]
 CAMERAS = ["wide", "medium", "close", "pov"]
 LOCATION_TAGS = ["space", "sea", "city", "shelter", "window", "forest", "desert", "ice", "underground"]  # the tags that make the style prompt force what a kind of place must always show
 HOURS = ["night", "dusk", "dawn", "day"]
 MAX_SPOKEN_WORDS = 14
+MAX_OFFER_WORDS = 9  # the two lines of the offer shot are said in about 4 s together, the second one starting over the end of the first
+OFFER_OVERLAP = 0.0  # seconds the second line of the offer may start before the first one ends (0 = one after the other: "or not"; the render does not mix overlapping lines yet)
+OFFER_VOICE = "narrator"  # who says the two proposals: "narrator" (quotes them, the reference video does this) or "characters" (their own voices over the clip, the mouths do not move)
+MAX_TALK_BEATS = 4  # characters SPEAK (a close-up whose mouth follows the voice) only when the scene calls for it: an order, a shout
+MIN_POV_SHARE = 0.3  # share of the beats of a branch that are first-person action shots
 SECONDS_PER_SHOT = 3.1
 SHARES = {"hook": 0.07, "setup": 0.09, "offers": 0.20, "branch_a": 0.27, "branch_b": 0.30}  # share of the shots of each act (two branches); one branch gets branch_a + branch_b
 CAMERA_MOVES = ("aerial flight forward", "whip pan", "low angle tilt up", "handheld run", "slow push-in", "crane up", "dolly forward", "orbit around the subject", "lateral glide", "fast zoom-in", "tilt down")
@@ -42,11 +47,12 @@ def budget(seconds: float, branches: int) -> dict[str, int]:
 ACT_PURPOSE = {
     "hook": "GRANDIOSE first picture (epic scale, awe) that puts the viewer in the world at once; the spoken lines contain the key words of the story; the third shot puts YOU in danger.",
     "setup": "help arrives; the two main characters come into view.",
-    "offers": "c1 and c2 each speak SHORT lines (kind 'talk'), accuse each other, and each leaves one CLUE (one narration shot shows a clue).",
-    "choice": "the narrator says it is time to choose (kind 'choice').",
-    "branch_a": "you follow c1; the clues come true; ends with a twist (kind 'twist').",
+    "offers": "ONE moment where BOTH characters stand side by side and hold out a hand to you: exactly TWO consecutive beats of kind 'offer' (first c1, then c2, the speaker field says whose proposal it is), each is the proposal "
+              "of that character in ONE very short line told by the narrator; they never accuse each other. The other beats of the act are narration or pov (no talk beats here) and show ONE CLUE each (an object, a detail in the picture).",
+    "choice": "the narrator says it is time to choose (kind 'choice'): the same moment, c1 and c2 still hold out their hands.",
+    "branch_a": "you follow c1 ALONE: c2 never appears and is never named again; real ACTION of your own hands and body (first-person 'pov' beats); the clues come true; ends with a twist (kind 'twist') and a last line that leaves a question open.",
     "rewind": "the story rewinds: the narrator asks what if you had chosen c2 (kind 'rewind').",
-    "branch_b": "you follow c2; FAST action shots (chase, collapse, escape) and at least two talk lines; ends with a twist (kind 'twist').",
+    "branch_b": "you follow c2 ALONE: c1 never appears and is never named again; FAST action shots (chase, collapse, escape) and real ACTION of your own hands and body (first-person 'pov' beats); ends with a twist (kind 'twist') and a last line that leaves a question open.",
 }
 
 # ---------------------------------------------------------------------------------------------- the constant prompts
@@ -79,6 +85,11 @@ WHAT EACH ACT MUST DO
 {{act_purposes}}
 
 RULES
+- THE OFFER: in the offers act exactly two beats of kind offer, consecutive, speaker c1 then c2 (both in the same picture, both holding out a hand; the narrator tells each proposal). No talk beat in that act, nobody accuses the other.
+- THE CHARACTERS SPEAK RARELY: kind talk (a close-up whose mouth follows the voice) ONLY when a character gives an ORDER or shouts to someone in the scene, at most {{max_talk}} in the whole video. Everything else is told by the narrator, who may quote what they say.
+- THE BRANCHES ARE INDEPENDENT: after the choice, branch A is only about you and c1, branch B only about you and c2. The other one is never in a picture and never named (except by the rewind narrator).
+- ACTION: at least a third of the beats of each branch are kind pov: YOUR hands or body DO something (turn, push, pull, climb, grab, lift, run, open, hold on to something that moves) - never just "holding an arm".
+- SUSPENSE: the last beat of each branch leaves ONE question open (a sound, a door, a name, a detail that was not explained); it never closes the story with a full explanation.
 - The clues: c1's hidden truth and c2's hidden truth must each be hinted at in the OFFERS act (one clue each) and CONFIRMED in their branch (branch A confirms c1's, branch B confirms c2's).
 - ENDINGS. Branch A: {{mood_a}}
   Branch B: {{mood_b}}
@@ -102,7 +113,7 @@ RULES
 - At most {{max_words}} words per line and about {{avg_words}} words on AVERAGE (the whole video must stay near {{total_words}} words): most lines are short, only a twist may be longer. Short punchy sentences, natural
   speech, no stage directions, no quotation marks. Second person for the narrator ("you").
 - THE ENDING OF THIS PART: {{ending_mood}}
-- kind talk = the character SAYS it to you in the scene (c1 and c2 do not sound alike: use their voice_style and their public promise). The other kinds are the narrator.
+- kind talk = the character gives an ORDER or shouts it in the scene (c1 and c2 do not sound alike: use their voice_style). {{offer_rule}} The other kinds are the narrator, who may quote what a character says.
 - Respect each beat's purpose, keep the story continuous with the previous lines, never repeat a line or an opening word three times in a row.
 - Facts that must appear somewhere: {{must_include}}.
 - "location" of each beat is one of {{location_ids}}; "in_shot" = the character ids visible in it.
@@ -129,6 +140,8 @@ RULES
   split screen. Characters: use their look and wardrobe from the brief. For kind talk and choice leave "still" empty (the portrait of the character is used) but ALWAYS write the "motion": how the character acts while speaking (gesture, glance, expression, what moves around).
 - "motion" = the camera move and what moves in the picture, 10 to 25 words, English. Use a DIFFERENT camera move from the neighbouring shots, from this list or similar: {{camera_moves}}. At least one third of
   the shots must be dynamic (fast flight, chase, whip pan, impact).
+- Kind pov = FIRST PERSON: the picture shows YOUR hands and forearms (or what you see ahead of you) in the middle of a physical action, and the "motion" says what MOVES: the hands crank, push, pull or climb and the object turns, opens or gives way, the camera moves with you. Describe ONLY what is in the picture and what happens to it. Never a person who just stands and trembles.
+- Every shot with a character in it names a physical verb (walks, runs, climbs, turns, opens, reaches, falls); the kind offer shows c1 and c2 side by side, both facing you and holding out an open hand toward the camera.
 - Keep every picture PHYSICALLY TRUE to this world: no rain, wind, sea or handheld breathing where this world has none (a lunar dome, a vacuum, a desert...); use its own light, dust, steam, sparks, snow.
 - "fx": zoom 0.03 to 0.08; shake 0 to 1 (above 0.7 only on impacts, chases, crashes); flash true only on a shock.
 - "camera" in {{cameras}}. "time": only when the hour of the picture differs from "{{hour}}" (e.g. the dawn of a good ending), English, e.g. "it is dawn: golden light".
@@ -189,9 +202,10 @@ JUDGE_SCHEMA = {"type": "object", "properties": {k: {"type": "integer"} for k in
 
 
 # ---------------------------------------------------------------------------------------------- the moods of the endings (what "bad" and "good" must mean in the words)
+SUSPENSE = " SUSPENSE: the very last line leaves ONE question open (a sound, a door, a name, a detail nobody explained); never wrap everything up, never say the end."
 ENDING_MOOD = {
-    "bad": "it ends BAD for you: the twist shows that the person you chose lied to you or used you, and you lose your freedom, your people or your life. Not a happy ending, no last-second rescue.",
-    "good": "it ends GOOD for you: the twist shows that the person you chose was really on your side, or that you were the hero all along; you are saved and the ending feels earned. NO death, NO betrayal, NO horror at the end.",
+    "bad": "it ends BAD for you: the twist shows that the person you chose lied to you or used you, and you lose your freedom, your people or your life. Not a happy ending, no last-second rescue." + SUSPENSE,
+    "good": "it ends GOOD for you: the twist shows that the person you chose was really on your side, or that you were the hero all along; you are saved and the ending feels earned. NO death, NO betrayal, NO horror at the end." + SUSPENSE,
 }
 OPEN_MOOD = "(the story is still open here: nobody is saved or lost yet)"
 
@@ -234,9 +248,10 @@ You are the VERIFIER of a short-video studio. Read the LAST LINES of one branch 
 - "good": you are saved, you win, or you turn out to be the hero, and the tone is hopeful;
 - "bad": you die, are captured, used, betrayed or lose something essential, and the tone is dark;
 - "mixed": neither clearly.
+Also say whether the LAST LINE leaves a question open (suspense = true: an unexplained sound, door, name or detail, the viewer wants to know what comes next) or closes everything (suspense = false).
 
 LAST LINES:
 {{lines}}
 
 Answer with the JSON only."""
-VERIFIER_SCHEMA = {"type": "object", "properties": {"polarity": {"type": "string", "enum": ["good", "bad", "mixed"]}, "reason": {"type": "string"}}, "required": ["polarity", "reason"]}
+VERIFIER_SCHEMA = {"type": "object", "properties": {"polarity": {"type": "string", "enum": ["good", "bad", "mixed"]}, "reason": {"type": "string"}, "suspense": {"type": "boolean"}}, "required": ["polarity", "reason", "suspense"]}

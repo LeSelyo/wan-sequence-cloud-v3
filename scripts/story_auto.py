@@ -39,6 +39,7 @@ import face_tools as ft  # noqa: E402
 import s2v_face_test as sft  # noqa: E402
 import s2v_talk as st  # noqa: E402
 import story_cards as sc  # noqa: E402
+import story_identity as sid  # noqa: E402
 import story_agents as ag  # noqa: E402
 import story_engine as se  # noqa: E402
 import story_library as lib  # noqa: E402
@@ -50,8 +51,8 @@ import story_writer as sw  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 AUTO = ROOT / "results" / "story_trend" / "auto"
-STEPS = ("story", "cards", "closeups", "stills", "voices", "animate", "qc", "post", "render", "caption")
-FAMILY = {"cards": "krea2", "closeups": "krea2", "stills": "krea2", "animate": "s2v", "qc": "s2v", "post": "s2v"}  # the app family each step needs ("voices" and "story" do not depend on it)
+STEPS = ("story", "cards", "closeups", "stills", "identity", "voices", "animate", "qc", "post", "render", "caption")
+FAMILY = {"cards": "krea2", "closeups": "krea2", "stills": "krea2", "identity": "qwen", "animate": "s2v", "qc": "s2v", "post": "s2v"}  # the app family each step needs ("voices" and "story" do not depend on it)
 CLOSEUP_SEEDS = (11, 22, 33, 44, 55)
 TUNNELS = {8000: 8000, 18188: 8188, 11434: 11434}  # local port -> box port
 PICTURE_RETRIES = 2  # a picture the judge finds wrong is made again this many times at most (another seed each time, the earlier ones are kept)
@@ -98,6 +99,8 @@ class Pipeline:
         need = [s["id"] for s in shots if s.get("still")]
         have = [i for i in need if (self.run / "stills" / f"{i}.png").exists()]
         result["stills"] = (len(have) == len(need), f"{len(have)}/{len(need)} stills")
+        todo_identity = sid.missing(plan, self.cards(), self.run) if cards_ok and len(have) == len(need) else None
+        result["identity"] = (todo_identity == [], "waiting for the stills" if todo_identity is None else f"{len(sid.jobs(plan, self.cards(), self.run)) - len(todo_identity)}/{len(sid.jobs(plan, self.cards(), self.run))} identity pictures")
         voices = [s["id"] for s in shots if (self.run / "voices" / f"{s['id']}.wav").exists()]
         aligned = (self.run / "voices" / "align.json").exists()
         result["voices"] = (len(voices) == len(shots) and aligned, f"{len(voices)}/{len(shots)} lines, words {'timed' if aligned else 'not timed'}")
@@ -141,7 +144,8 @@ class Pipeline:
             return
         started = time.time()
         label = f"{self.name}_{family}_{int(started) % 100000}"
-        self.box.run(f"/root/stop_app.sh; /root/start_app.sh {label} novram")
+        sage = "COMFY_USE_SAGE_ATTENTION=0 " if family == "qwen" else ""  # Qwen-Image-Edit gives black pictures with SageAttention
+        self.box.run(f"/root/stop_app.sh; {sage}/root/start_app.sh {label} novram")
         for _ in range(90):
             if self.healthy(family):
                 break
@@ -228,6 +232,11 @@ class Pipeline:
 
     def missing_stills(self) -> list[str]:
         return [s["id"] for s in self.plan()["shots"] if s.get("still") and not (self.run / "stills" / f"{s['id']}.png").exists()]
+
+    def step_identity(self, args) -> dict:
+        """The same person in every shot: Qwen-Image-Edit puts the close-up of the character (and his or her wardrobe) into the picture of the shot; both characters hold out a hand in the scene of the choice."""
+        timings = sid.run_jobs(self.plan(), self.cards(), self.run, st.BASE_URL, args.seed or 1)
+        return {"pictures": len(timings), "timings": timings}
 
     def step_voices(self, args) -> dict:
         report = {}

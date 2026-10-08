@@ -22,7 +22,10 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import i2v_action as i2v  # noqa: E402
+import method_registry as mr  # noqa: E402
 import s2v_talk as st  # noqa: E402
+import story_identity as sid  # noqa: E402
 import story_engine as se  # noqa: E402
 import story_render as sr  # noqa: E402
 import story_voice_job as vj  # noqa: E402
@@ -125,33 +128,58 @@ def portrait_of(cards: dict, character_id: str) -> str:
     return (entry.get("closeup") or entry["portrait"])["file"]
 
 
-def animate_jobs(plan: dict, cards: dict, run: Path) -> list[dict]:
-    """Every clip to make: id, source picture, audio (the voice line for a talking shot, silence otherwise), seconds, motion prompt. A talking shot starts from the portrait of its speaker, a choice
-    from the portraits of the two characters (each one waiting, silent), every other shot from its own still."""
+def last_frame(clip: Path, dst: Path) -> Path:
+    """The last picture of a clip (the start of the next one: two clips of one scene follow each other without a jump)."""
+    import music_timing as mt
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run([mt.ffmpeg_binary(), "-y", "-v", "error", "-sseof", "-0.2", "-i", str(clip), "-update", "1", "-frames:v", "1", str(dst)], check=True)
+    return dst
+
+
+def animate_jobs(plan: dict, cards: dict, run: Path, registry: "mr.Registry | None" = None) -> list[dict]:
+    """Every clip to make. The METHOD of each shot comes from the registry (scripts/method_registry.py: what the lab and the user proved works for that kind of shot):
+    S2V only when a character SPEAKS or shouts (the portrait + the voice line); everything else is I2V (people who walk, hands that act, the two who hold out a hand at the choice, a waiting face)
+    or, for places without people, the S2V that is proven for them. Fields: id, engine (s2v | i2v), source picture, voice, seconds, prompt, profile and style for I2V, chain_from (the clip whose last picture starts this one)."""
+    registry = registry or mr.Registry()
     characters = {c["id"]: c for c in plan["characters"]}
     jobs = []
+    previous = None
     for index, shot in enumerate(plan["shots"]):
         voice = run / "voices" / f"{shot['id']}.wav"
         seconds = sr.shot_seconds(shot["kind"], sr.wav_seconds(voice), last=index == len(plan["shots"]) - 1)
         look = f"{shot['visual']}, {look_of(plan)}"
+        route = mr.route(shot, plan, registry)
+        people = [characters[i] for i in shot.get("in_shot", []) if i in characters]
         if shot["kind"] == "talk":
             who = characters[shot["speaker"]]
             portrait = ROOT / portrait_of(cards, shot["speaker"])
-            jobs.append({"id": shot["id"], "source": portrait, "voice": voice, "seconds": seconds,
+            jobs.append({"id": shot["id"], "engine": "s2v", "source": portrait, "voice": voice, "seconds": seconds,
                          "prompt": f"{who['name']}, a {who['age']}-year-old {'woman' if who['gender'] == 'f' else 'man'} {who['role']}, {look}"})
-        elif shot["kind"] == "choice":
+        elif shot["kind"] == "choice" and (run / "stills_id" / f"{sid.TWO_SHOT_ID}.png").exists():
+            jobs.append({"id": shot["id"], "engine": "i2v", "source": sid.source_of(run, shot), "voice": None, "seconds": seconds, "profile": route["settings"]["profile"], "style": route["settings"]["style"],
+                         "prompt": i2v.build_prompt(route["settings"]["style"], characters=[characters[i] for i in sr.choice_ids(plan, shot)]), "need": route["need"], "method": route["method"]})
+        elif shot["kind"] == "choice":  # no two-shot yet (the identity pass has not run): each character waits in his or her own clip
+            waiting = registry.choose("person_idle_closeup")
             for who_id in sr.choice_ids(plan, shot):
                 who = characters[who_id]
-                portrait = ROOT / portrait_of(cards, who_id)
-                jobs.append({"id": f"{shot['id']}_{who_id}", "source": portrait, "voice": None, "seconds": seconds,
-                             "prompt": f"{who['name']}, a {who['age']}-year-old {'woman' if who['gender'] == 'f' else 'man'} {who['role']}, {shot['visual']}, mouth closed, {look_of(plan)}"})
+                jobs.append({"id": f"{shot['id']}_{who_id}", "engine": "i2v", "source": ROOT / portrait_of(cards, who_id), "voice": None, "seconds": seconds, "profile": waiting["settings"]["profile"],
+                             "style": waiting["settings"]["style"], "prompt": i2v.build_prompt(waiting["settings"]["style"], characters=[who]), "need": "person_idle_closeup", "method": waiting["method"]})
+        elif route["engine"] == "i2v":
+            style = route["settings"]["style"]
+            job = {"id": shot["id"], "engine": "i2v", "source": sid.source_of(run, shot), "voice": None, "seconds": seconds, "profile": route["settings"]["profile"], "style": style, "need": route["need"],
+                   "method": route["method"]}
+            if shot["kind"] == "offer" and previous and previous["kind"] == "offer":  # the second proposal goes on from the last picture of the first one
+                job.update(style="offer_next", chain_from=previous["id"])
+            job["prompt"] = i2v.build_prompt(job["style"], shot.get("motion") or shot.get("visual", ""), people if shot["kind"] != "offer" else [characters[i] for i in ("c1", "c2") if i in characters])
+            jobs.append(job)
         else:
-            jobs.append({"id": shot["id"], "source": run / "stills" / f"{shot['id']}.png", "voice": None, "seconds": seconds, "prompt": look})
+            jobs.append({"id": shot["id"], "engine": "s2v", "source": sid.source_of(run, shot), "voice": None, "seconds": seconds, "prompt": look, "need": route["need"], "method": route["method"]})
+        previous = shot
     return jobs
 
 
 def step_animate(plan: dict, cards: dict, run: Path, comfy_url: str, lora: str, seed: int, only: set[str] | None = None, force: bool = False, skip: set[str] | None = None) -> dict:
-    """One S2V clip per job (see animate_jobs), into <run>/clips/<id>.mp4; a clip that exists is kept (re-run with --force or --only to make it again: the old one is kept as _vN)."""
+    """One clip per job (see animate_jobs), into <run>/clips/<id>.mp4, by the engine of the job; a clip that exists is kept (re-run with --force or --only to make it again: the old one is kept as _vN)."""
     timings = {}
     for job in animate_jobs(plan, cards, run):
         if only and job["id"] not in only and job["id"].split("_")[0] not in only:
@@ -163,10 +191,18 @@ def step_animate(plan: dict, cards: dict, run: Path, comfy_url: str, lora: str, 
             continue
         if target.exists():
             target.replace(target.with_name(f"{target.stem}_v{len(list(target.parent.glob(target.stem + '_v*.mp4'))) + 1}.mp4"))
-        audio = padded_wav(job["voice"], job["seconds"], run / "audio16k" / f"{job['id']}.wav")
-        entry = st.run_talk(job["source"], audio, target, prompt=job["prompt"], seed=seed, lora=lora, seconds=job["seconds"], base_url=comfy_url, registry=REGISTRY, label=f"{run.name}_{job['id']}")
-        timings[job["id"]] = {"seconds": entry["seconds"], "clip_seconds": round(job["seconds"], 2), "lora": lora, "steps": entry["steps"]}
-        print(f"{job['id']}: S2V {entry['seconds']} s ({job['seconds']:.1f} s clip)", flush=True)
+        if job["engine"] == "i2v":
+            start = job["source"]
+            if job.get("chain_from") and (run / "clips" / f"{job['chain_from']}.mp4").exists():
+                start = last_frame(run / "clips" / f"{job['chain_from']}.mp4", run / "stills_id" / f"{job['id']}_start.png")
+            entry = i2v.run_i2v(start, target, prompt=job["prompt"], seed=seed, profile=job["profile"], seconds=min(job["seconds"], i2v.MAX_SECONDS), base_url=comfy_url, registry=REGISTRY,
+                                label=f"{run.name}_{job['id']}")
+            timings[job["id"]] = {"engine": "i2v", "method": job.get("method"), "seconds": entry["seconds"], "clip_seconds": round(min(job["seconds"], i2v.MAX_SECONDS), 2), "profile": job["profile"], "steps": entry["steps"]}
+        else:
+            audio = padded_wav(job["voice"], job["seconds"], run / "audio16k" / f"{job['id']}.wav")
+            entry = st.run_talk(job["source"], audio, target, prompt=job["prompt"], seed=seed, lora=lora, seconds=job["seconds"], base_url=comfy_url, registry=REGISTRY, label=f"{run.name}_{job['id']}")
+            timings[job["id"]] = {"engine": "s2v", "method": job.get("method", "s2v_voice"), "seconds": entry["seconds"], "clip_seconds": round(job["seconds"], 2), "lora": lora, "steps": entry["steps"]}
+        print(f"{job['id']}: {job['engine'].upper()} {timings[job['id']]['seconds']} s ({job['seconds']:.1f} s clip)", flush=True)
     return timings
 
 

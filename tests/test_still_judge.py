@@ -9,7 +9,7 @@ PLAN = {"brief": {"world": {"setting": "Oort Station, orbiting a darkened Earth"
         "shots": [{"id": "s039", "location": "corridor", "still": "Debris falls around the narrator", "kind": "narration"},
                   {"id": "s050", "location": "corridor", "still": "A sunrise over the Earth", "time": "it is dawn: golden sunrise light", "kind": "narration"},
                   {"id": "s001", "location": "corridor", "still": "", "kind": "talk"}]}
-GOOD = {"place_seen": "a metal corridor with viewports on space", "sunlight_or_blue_sky": False, "matches_world": 5, "action_visible": True, "collage_or_split_panels": False, "garbled_text": False, "problems": []}
+GOOD = {"place_seen": "a metal corridor with viewports on space", "sunlight_or_blue_sky": False, "matches_world": 5, "action_visible": True, "collage_or_split_panels": False, "impossible_geometry": False, "garbled_text": False, "problems": []}
 
 
 def test_a_sunlit_stone_arcade_in_a_night_station_is_wrong_and_a_sign_with_odd_letters_is_only_a_note():
@@ -20,6 +20,7 @@ def test_a_sunlit_stone_arcade_in_a_night_station_is_wrong_and_a_sign_with_odd_l
     assert major == [] and minor == ["a sign has invented letters"]
     assert sj.verdict(dict(GOOD, action_visible=False, collage_or_split_panels=True), True)[0] == ["the action of the shot is not visible", "a collage of panels"]
     assert sj.verdict(dict(GOOD, sunlight_or_blue_sky=True), no_daylight=False)[0] == []  # a dawn is allowed to be sunny
+    assert sj.verdict(dict(GOOD, impossible_geometry=True), True)[0] == ["something in the picture is physically impossible or glitched"]  # auto_ab_1 s003: a second wall of windows above the Earth
 
 
 def test_daylight_is_forbidden_in_a_night_world_except_in_a_shot_that_tells_its_own_dawn():

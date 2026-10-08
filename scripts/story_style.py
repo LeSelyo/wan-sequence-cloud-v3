@@ -43,7 +43,7 @@ FORCED_BY_KIND = {
 }
 CONTEXT_RULES = [  # the FIRST rule with a matching whole word wins, so the specific ones (space, shelter, sea/flood) come before the general one (city). (keywords, lighting, lens, grade, texture, motif, tags)
     (("space", "moon", "spaceship", "planet", "alien", "orbit", "orbiting", "orbital", "spacecraft", "starship", "vacuum", "airlock", "satellite"), "low-key warm practical lights", "35mm cinematic", "warm bronze monochrome", "photoreal 3D render, fine film grain",
-     "a winged emblem engraved on every object and wall", ["space", "window"]),
+     "one small winged emblem on the uniforms and on a few doors", ["space", "window"]),
     (("bunker", "shelter", "underground", "siege", "war", "survivor"), "firelight and embers", "documentary 28mm", "desaturated bleach bypass", "gritty documentary realism",
      "a repeated stencilled number on every crate and door", ["shelter"]),
     (("sea", "ship", "island", "storm", "ocean", "flood", "flooded", "boat", "river", "dam"), "overcast flat daylight", "24mm wide handheld", "cold steel blue", "photoreal practical set, subtle grain",

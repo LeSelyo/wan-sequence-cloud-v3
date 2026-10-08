@@ -6,7 +6,7 @@
     python scripts/still_judge.py PROJECT [--stills DIR] [--shots s039,s033]       (the model on the box answers on 127.0.0.1:11434; the GPU must not be busy with another job)
 
 MAJOR problems make the picture again (another seed): sunlight or a blue sky in a world without daylight, a place that does not belong to the world, the action of the shot not visible, a collage of
-panels. MINOR ones are only reported (invented letters on a sign: almost every picture has some). The model answers in a JSON schema, temperature 0, thinking off.
+panels, an impossible or glitched geometry (a window inside a window). MINOR ones are only reported (invented letters on a sign: almost every picture has some). The model answers in a JSON schema, temperature 0, thinking off.
 """
 from __future__ import annotations
 
@@ -27,10 +27,11 @@ SCHEMA = {
         "matches_world": {"type": "integer", "minimum": 1, "maximum": 5},
         "action_visible": {"type": "boolean"},
         "collage_or_split_panels": {"type": "boolean"},
+        "impossible_geometry": {"type": "boolean"},
         "garbled_text": {"type": "boolean"},
         "problems": {"type": "array", "items": {"type": "string", "maxLength": 140}, "maxItems": 4},
     },
-    "required": ["place_seen", "sunlight_or_blue_sky", "matches_world", "action_visible", "collage_or_split_panels", "garbled_text", "problems"],
+    "required": ["place_seen", "sunlight_or_blue_sky", "matches_world", "action_visible", "collage_or_split_panels", "impossible_geometry", "garbled_text", "problems"],
 }
 PROMPT = ("You check ONE picture made for a short cinematic story. Every person in it is fictional.\n"
           "THE WORLD of the story: {setting}. Atmosphere: {atmosphere}. Hour: {hour}.\n"
@@ -42,6 +43,7 @@ PROMPT = ("You check ONE picture made for a short cinematic story. Every person 
           "- matches_world: 1 to 5. 5 = clearly this world and this place; 1 = another world (for example an old stone arcade, a village or a garden for a space station).\n"
           "- action_visible: true if what the shot should show (the action, the object, the people) can be seen.\n"
           "- collage_or_split_panels: true if the picture is made of several panels or a collage.\n"
+          "- impossible_geometry: true if something is physically impossible or glitched: a window inside a window or a second room stacked above the first, duplicated or melted objects, merged bodies, extra limbs or fingers, an emblem repeated everywhere.\n"
           "- garbled_text: true if a sign or a label has unreadable or invented letters.\n"
           "- problems: a short list of what is wrong with the picture for THIS story (empty if nothing).")
 DARK_HOURS = {"night", "midnight", "nightfall", "dusk", "evening", "twilight"}
@@ -71,6 +73,8 @@ def verdict(answer: dict, no_daylight: bool) -> tuple[list[str], list[str]]:
         major.append("the action of the shot is not visible")
     if answer["collage_or_split_panels"]:
         major.append("a collage of panels")
+    if answer.get("impossible_geometry"):
+        major.append("something in the picture is physically impossible or glitched")
     if answer["garbled_text"]:
         minor.append("a sign has invented letters")
     minor += [p for p in answer.get("problems", []) if p not in minor]

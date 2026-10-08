@@ -8,6 +8,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 import story_engine as se  # noqa: E402
 import story_writer as sw  # noqa: E402
+import reference_story as reference_plan  # noqa: E402
 
 EXAMPLE = Path(__file__).resolve().parent.parent / "results" / "story_trend" / "plans" / "the_last_city_150_en.json"
 CONTEXT = "A flooded city at night. Two strangers on a rescue boat each offer to save you: a ship captain and a doctor."
@@ -16,10 +17,10 @@ pytestmark = pytest.mark.skipif(not EXAMPLE.exists(), reason="needs the hand-wri
 
 def reference_story() -> dict:
     """The hand-written 2m30 plan, converted to what the model must answer (branch and ending fields added): a known-good story to test the validator on."""
-    plan = json.loads(EXAMPLE.read_text(encoding="utf-8"))
+    plan = reference_plan.load()
     shots, branch, twists = [], "main", 0
     for shot in plan["shots"]:
-        item = {k: shot.get(k) for k in ("kind", "speaker", "text", "location", "in_shot", "still", "motion", "camera", "fx", "tag", "time", "choice") if shot.get(k) not in (None, "")}
+        item = {k: shot.get(k) for k in ("kind", "speaker", "text", "location", "in_shot", "still", "motion", "camera", "fx", "tag", "time", "choice", "offer_of") if shot.get(k) not in (None, "")}
         item["still"] = shot.get("still") or ""
         if shot["kind"] == "rewind":
             branch = "B"

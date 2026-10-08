@@ -23,7 +23,8 @@ import story_engine as se  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 EXAMPLE_PLAN = ROOT / "results" / "story_trend" / "plans" / "the_last_city_150_en.json"  # the shots of the first hand-written 2m30 story show the model what a good plan looks like
-KINDS = ["narration", "talk", "pov", "choice", "twist", "rewind"]
+KINDS = ["narration", "talk", "pov", "choice", "twist", "rewind", "offer"]
+MAX_TALK_BEATS = 4  # the characters speak (a mouth that follows the voice) only when the scene calls for it
 CAMERAS = ["wide", "medium", "close", "pov"]
 MAX_SPOKEN_WORDS = 14
 SECONDS_PER_SHOT = 3.1  # the average length of a shot (voice + a short tail): sets how many shots a video of N seconds needs
@@ -60,7 +61,7 @@ def example_shots(limit: int = 17) -> list[dict]:
         return []
     shots = json.loads(EXAMPLE_PLAN.read_text(encoding="utf-8"))["shots"]
     picks = [0, 1, 2, 3, 4, 6, 7, 9, 13, 14, 15, 16, 28, 29, 30, 31, 32, 33, 44, 45]
-    keys = ("kind", "branch", "speaker", "text", "location", "in_shot", "still", "motion", "camera", "fx", "tag", "time", "ending", "choice")
+    keys = ("kind", "branch", "speaker", "text", "location", "in_shot", "still", "motion", "camera", "fx", "tag", "time", "ending", "choice", "offer_of")
     out = []
     for index in picks[:limit]:
         if index < len(shots):
@@ -132,12 +133,16 @@ def validate_story(story: dict, params: dict, endings: dict, location_ids: list[
             problems.append(f"{where}: the spoken text must have 1-{MAX_SPOKEN_WORDS} words (has {words})")
         if kind == "talk" and shot.get("speaker") not in ("c1", "c2"):
             problems.append(f"{where}: a talk shot is spoken by c1 or c2")
-        if kind != "talk" and shot.get("speaker") != "narrator":
+        if kind == "offer" and shot.get("offer_of", shot.get("speaker")) not in ("c1", "c2"):
+            problems.append(f"{where}: an offer shot is the proposal of c1 or c2")
+        if kind not in ("talk", "offer") and shot.get("speaker") != "narrator":
             problems.append(f"{where}: {kind} is spoken by the narrator")
         if shot.get("location") not in location_ids:
             problems.append(f"{where}: location must be one of {location_ids}")
         if any(who not in characters for who in shot.get("in_shot", [])):
             problems.append(f"{where}: in_shot has an unknown character")
+        if kind == "offer" and not {"c1", "c2"} <= set(shot.get("in_shot", [])):
+            problems.append(f"{where}: both characters are in the offer shot")
         if kind not in ("talk", "choice") and se.count_words(shot.get("still", "")) < 8:
             problems.append(f"{where}: a still description of at least 8 words is needed")
         if se.count_words(shot.get("motion", "")) < 4:
@@ -158,9 +163,18 @@ def validate_story(story: dict, params: dict, endings: dict, location_ids: list[
             problems.append("the first shot is a narration or pov hook")
         if two and not any(s.get("kind") == "rewind" for s in shots):
             problems.append("a rewind shot between the branches")
-    talk = [s.get("speaker") for s in shots if s.get("kind") == "talk"]
-    if talk.count("c1") < 2 or talk.count("c2") < 2:
-        problems.append("each main character speaks at least two lines")
+    talks = [s for s in shots if s.get("kind") == "talk"]
+    if len(talks) > MAX_TALK_BEATS:
+        problems.append(f"{len(talks)} talk shots: the characters speak only when they give an order or shout, at most {MAX_TALK_BEATS}")
+    offers = [i for i, s in enumerate(shots) if s.get("kind") == "offer"]
+    if offers and (len(offers) != 2 or offers[1] != offers[0] + 1 or [shots[i].get("offer_of", shots[i].get("speaker")) for i in offers] != ["c1", "c2"]):
+        problems.append("exactly two consecutive offer shots, c1 then c2: the ONLY moment where both are in the picture and speak")
+    by_id = {c.get("id"): c.get("name", "") for c in story.get("characters", [])}
+    for i, shot in enumerate(shots):
+        other = "c2" if shot.get("branch") == "A" else "c1" if shot.get("branch") == "B" and shot.get("kind") != "rewind" else None
+        if other and by_id.get(other):
+            if other in shot.get("in_shot", []) or re.search(rf"\b{re.escape(by_id[other].lower())}\b", shot.get("text", "").lower()):
+                problems.append(f"shot {i + 1}: after the choice, branch {shot['branch']} is independent: {by_id[other]} is neither shown nor named")
     total = estimate_seconds(shots, params["language"])
     if not (0.75 * params["target_seconds"] <= total <= 1.3 * params["target_seconds"]):
         problems.append(f"the spoken text lasts about {total:.0f} s, the target is {params['target_seconds']} s")

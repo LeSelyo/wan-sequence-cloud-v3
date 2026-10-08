@@ -29,17 +29,71 @@ def test_padded_wav_has_exactly_the_requested_length_and_keeps_the_voice_at_the_
         assert handle.getnframes() == 16000 and set(handle.readframes(16000)) == {0}
 
 
+PEOPLE = [{"id": "c1", "name": "Brandt", "age": 32, "gender": "m", "role": "ship captain", "wardrobe": "a heavy thermal suit"},
+          {"id": "c2", "name": "Ilse", "age": 59, "gender": "f", "role": "doctor", "wardrobe": "a white coat"}]
+CARDS = {"characters": {"c1": {"portrait": {"file": "p1.png"}}, "c2": {"portrait": {"file": "p2.png"}}}}
+
+
+def registry_in(tmp_path):
+    import method_registry as mr
+    return mr.Registry(tmp_path / "registry.json")
+
+
 def test_every_shot_gets_the_right_clip_job(tmp_path):
-    plan = {"characters": [{"id": "c1", "name": "Brandt", "age": 32, "gender": "m", "role": "ship captain"}, {"id": "c2", "name": "Ilse", "age": 59, "gender": "f", "role": "doctor"}],
+    plan = {"characters": PEOPLE,
             "shots": [{"id": "s001", "kind": "narration", "speaker": "narrator", "in_shot": [], "visual": "the camera pushes in"},
                       {"id": "s002", "kind": "talk", "speaker": "c1", "in_shot": ["c1"], "visual": "speaks urgently"},
                       {"id": "s003", "kind": "choice", "speaker": "narrator", "in_shot": ["c1", "c2"], "visual": "waits tensely"}]}
-    cards = {"characters": {"c1": {"portrait": {"file": "p1.png"}}, "c2": {"portrait": {"file": "p2.png"}}}}
     for shot in plan["shots"]:
         write_wav(tmp_path / "voices" / f"{shot['id']}.wav", 2.0)
-    jobs = {j["id"]: j for j in sp.animate_jobs(plan, cards, tmp_path)}
+    jobs = {j["id"]: j for j in sp.animate_jobs(plan, CARDS, tmp_path, registry_in(tmp_path))}
     assert set(jobs) == {"s001", "s002", "s003_c1", "s003_c2"}
-    assert jobs["s001"]["voice"] is None and jobs["s001"]["source"] == tmp_path / "stills" / "s001.png" and "the camera pushes in" in jobs["s001"]["prompt"]  # a scene: its own still, silence
-    assert jobs["s002"]["voice"] == tmp_path / "voices" / "s002.wav" and jobs["s002"]["source"].name == "p1.png" and "Brandt" in jobs["s002"]["prompt"]  # a talk: the portrait + the line
-    assert jobs["s002"]["seconds"] == 2.25 and jobs["s003_c2"]["voice"] is None and jobs["s003_c2"]["source"].name == "p2.png" and "mouth closed" in jobs["s003_c2"]["prompt"]
+    assert jobs["s001"]["voice"] is None and jobs["s001"]["engine"] == "s2v" and jobs["s001"]["source"] == tmp_path / "stills" / "s001.png" and "the camera pushes in" in jobs["s001"]["prompt"]  # a place: S2V is proven
+    assert jobs["s002"]["engine"] == "s2v" and jobs["s002"]["voice"] == tmp_path / "voices" / "s002.wav" and jobs["s002"]["source"].name == "p1.png" and "Brandt" in jobs["s002"]["prompt"]  # S2V only to speak
+    assert jobs["s002"]["seconds"] == 2.25 and jobs["s003_c2"]["voice"] is None and jobs["s003_c2"]["source"].name == "p2.png"
+    assert jobs["s003_c2"]["engine"] == "i2v" and "blinks naturally" in jobs["s003_c2"]["prompt"]  # no two-shot yet: each one waits in an I2V clip (it blinks)
     assert jobs["s003_c1"]["seconds"] == 4.8  # the last shot also keeps the screen for the closing question (2.8 s)
+
+
+def test_people_move_with_i2v_the_choice_is_the_two_shot_and_the_second_offer_goes_on_from_the_first(tmp_path):
+    plan = {"characters": PEOPLE,
+            "shots": [{"id": "s001", "kind": "offer", "speaker": "narrator", "offer_of": "c1", "in_shot": ["c1", "c2"], "visual": "both hold out a hand", "motion": "both hold out a hand"},
+                      {"id": "s002", "kind": "offer", "speaker": "narrator", "offer_of": "c2", "in_shot": ["c1", "c2"], "visual": "both hold out a hand", "motion": "both hold out a hand"},
+                      {"id": "s003", "kind": "narration", "speaker": "narrator", "in_shot": ["c2"], "visual": "she runs", "motion": "she sprints down the corridor, the camera follows her"},
+                      {"id": "s004", "kind": "pov", "speaker": "narrator", "in_shot": [], "visual": "x", "motion": "your hands crank the valve wheel, steam bursts out"},
+                      {"id": "s005", "kind": "choice", "speaker": "narrator", "in_shot": ["c1", "c2"], "visual": "waits", "choice": {"a": "Brandt", "b": "Ilse"}}]}
+    for shot in plan["shots"]:
+        write_wav(tmp_path / "voices" / f"{shot['id']}.wav", 2.0)
+    (tmp_path / "stills_id").mkdir()
+    (tmp_path / "stills_id" / "two_shot.png").write_bytes(b"x")
+    (tmp_path / "stills_id" / "s003.png").write_bytes(b"x")
+    jobs = {j["id"]: j for j in sp.animate_jobs(plan, CARDS, tmp_path, registry_in(tmp_path))}
+    assert set(jobs) == {"s001", "s002", "s003", "s004", "s005"}  # the choice is ONE clip now
+    assert all(j["engine"] == "i2v" for j in jobs.values())
+    assert jobs["s001"]["source"].name == "two_shot.png" and "The man and the woman slowly stretch their open hands" in jobs["s001"]["prompt"] and "chain_from" not in jobs["s001"]
+    assert jobs["s002"]["chain_from"] == "s001" and "keep holding out their open hands" in jobs["s002"]["prompt"]
+    assert jobs["s003"]["source"].name == "s003.png" and jobs["s003"]["style"] == "follow" and "the camera follows the movement" in jobs["s003"]["prompt"] and "sprints down the corridor" in jobs["s003"]["prompt"]
+    assert jobs["s004"]["style"] == "pov" and jobs["s004"]["prompt"] == "your hands crank the valve wheel, steam bursts out"
+    assert jobs["s005"]["source"].name == "two_shot.png" and jobs["s005"]["method"] == "i2v_offer_hands"  # the choice moment: always plan A
+
+
+def test_each_job_is_made_by_its_engine_and_a_clip_that_exists_is_kept(tmp_path, monkeypatch):
+    plan = {"characters": PEOPLE,
+            "shots": [{"id": "s001", "kind": "talk", "speaker": "c1", "in_shot": ["c1"], "visual": "he shouts an order"},
+                      {"id": "s002", "kind": "narration", "speaker": "narrator", "in_shot": ["c2"], "visual": "x", "motion": "she runs down the corridor"}]}
+    for shot in plan["shots"]:
+        write_wav(tmp_path / "voices" / f"{shot['id']}.wav", 2.0)
+    (tmp_path / "stills").mkdir()
+    (tmp_path / "stills" / "s002.png").write_bytes(b"x")
+    made = []
+
+    def write(target):
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"x")
+        return {"seconds": 1.0, "steps": 4}
+    monkeypatch.setattr(sp.st, "run_talk", lambda source, audio, target, **kw: made.append(("s2v", target.stem)) or write(target))
+    monkeypatch.setattr(sp.i2v, "run_i2v", lambda start, target, **kw: made.append(("i2v", target.stem, kw["profile"], kw["seconds"])) or write(target))
+    monkeypatch.setattr(sp, "animate_jobs", lambda plan, cards, run, registry=None, _real=sp.animate_jobs: _real(plan, cards, run, registry_in(tmp_path)))
+    done = sp.step_animate(plan, CARDS, tmp_path, "http://x", "t2v_1217_low", 1)
+    assert made == [("s2v", "s001"), ("i2v", "s002", "lightx2v4", 5.0)] and done["s002"]["engine"] == "i2v" and done["s001"]["engine"] == "s2v"
+    assert sp.step_animate(plan, CARDS, tmp_path, "http://x", "t2v_1217_low", 1) == {}  # nothing is made twice

@@ -72,7 +72,7 @@ def main() -> None:
         location = next((l for l in plan["locations"] if l["id"] == shot["location"]), {})
         columns.append({"label": f"{shot_id} {shot['location']}", "before": before, "after": dst, "before_note": f"light: {cards['style']['lighting']}", "after_note": f"light: {after_style['lighting']}"})
         lines += [f"## {shot_id} ({shot['location']}: {location.get('description', '')})", f"- seed {book[shot_id]['seed']}", f"- BEFORE: {book[shot_id]['prompt']}", f"- AFTER: {prompt}", ""]
-    sheet = lt.before_after_sheet(columns, out / "world_before_after.png", "WORLD - same shot, same seed: before | after")
+    sheet = lt.before_after_sheet(columns, out / f"world_before_after_{len(columns)}shots.png", "WORLD - same shot, same seed: before | after")
     (out / "COMMENTS_world.md").write_text("\n".join(lines), encoding="utf-8")
     print(f"sheet: {sheet}")
 

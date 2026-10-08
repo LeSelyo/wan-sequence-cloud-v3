@@ -59,7 +59,7 @@ def plan_metrics(plan: dict, context: str, target_seconds: float, language: str 
     problems = sw.validate_story({"characters": plan["characters"], "shots": shots, "hook_title": (plan.get("title_overlay") or {}).get("text", ""), "end_card": plan.get("end_card", ""), "caption": plan.get("caption", "")},
                                  plan["params"], plan.get("endings", {}), [loc["id"] for loc in plan["locations"]])
     return {"shots": len(shots), "spoken_words": len(words), "speech_seconds": sw.estimate_seconds(shots, language), "target_seconds": target_seconds,
-            "problems_left": len(problems), "problems": problems[:4], "talk_lines": dict(talk), "twists": [(t.get("ending"), t.get("tag")) for t in twists],
+            "problems_left": len(problems), "problems": problems[:4], "talk_lines": dict(talk), "offer_shots": sum(1 for s in shots if s["kind"] == "offer"), "pov_share": round(sum(1 for s in shots if s["kind"] == "pov") / max(1, len(shots)), 2), "twists": [(t.get("ending"), t.get("tag")) for t in twists],
             "hook_keywords": f"{len(hook_hits)}/{len(keywords)}", "context_words_kept": f"{len(kept)}/{len(context_words)}", "distinct_first_words": round(len(set(firsts)) / max(1, len(firsts)), 2),
             "repeated_word_pairs": round(repeated, 3), "mean_line_words": round(len(words) / max(1, len(spoken)), 1), "still_words_mean": round(sum(se.count_words(t) for t in stills) / max(1, len(stills)), 1),
             "forbidden_in_pictures": forbidden, "distinct_camera_moves": f"{len(set(moves))}/{len(moves)}", "dynamic_shots": sum(1 for s in shots if (s.get("fx") or {}).get("shake", 0) >= 0.5),

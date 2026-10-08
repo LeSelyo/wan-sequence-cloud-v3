@@ -199,10 +199,28 @@ def validate_outline(outline: dict, counts: dict[str, int], endings: dict, trend
         where = f"beat {i + 1}"
         if beat.get("branch") != expected_branch(beat.get("act", "")) and not (beat.get("act") == "rewind" and beat.get("branch") == "B"):
             problems.append(f"{where}: branch of act {beat.get('act')} must be {expected_branch(beat.get('act', ''))}")
-        if (beat.get("kind") == "talk") != (beat.get("speaker") in ("c1", "c2")):
-            problems.append(f"{where}: only a talk beat is spoken by c1 or c2")
+        if (beat.get("kind") in ("talk", "offer")) != (beat.get("speaker") in ("c1", "c2")):
+            problems.append(f"{where}: only a talk or offer beat is spoken by c1 or c2")
+        if beat.get("kind") == "offer" and beat.get("act") != "offers":
+            problems.append(f"{where}: the offer beats belong to the offers act")
         if se.count_words(beat.get("purpose", "")) < 4:
             problems.append(f"{where}: the purpose needs at least 4 words")
+    if "offers" in counts:
+        offers = [i for i, b in enumerate(beats) if b.get("act") == "offers"]
+        pair = [i for i in offers if beats[i].get("kind") == "offer"]
+        if len(pair) != 2 or pair[1] != pair[0] + 1 or [beats[i].get("speaker") for i in pair] != ["c1", "c2"]:
+            problems.append("the offers act needs exactly two consecutive beats of kind offer, speaker c1 then c2 (both hold out a hand in ONE shot)")
+        if any(beats[i].get("kind") == "talk" for i in offers):
+            problems.append("no talk beat in the offers act: c1 and c2 speak only in the two offer beats")
+    for act, own_speakers in (("branch_a", ("narrator", "c1")), ("branch_b", ("narrator", "c2"))):
+        if act not in counts:
+            continue
+        own = [b for b in beats if b.get("act") == act]
+        if any(b.get("speaker") not in own_speakers for b in own):
+            problems.append(f"{act}: the other character does not speak or appear any more, only {own_speakers[1]} and the narrator")
+        share = sum(1 for b in own if b.get("kind") == "pov") / max(1, len(own))
+        if own and share < getattr(trend, "MIN_POV_SHARE", 0) - 0.08:
+            problems.append(f"{act}: only {share:.0%} of its beats are first-person action (kind pov), at least {getattr(trend, 'MIN_POV_SHARE', 0):.0%} are needed")
     for act, kind in (("choice", "choice"), ("rewind", "rewind")):
         if act in counts and not any(b.get("act") == act and b.get("kind") == kind for b in beats):
             problems.append(f"the {act} act needs a beat of kind {kind}")
@@ -229,12 +247,12 @@ def template_outline(brief: dict, counts: dict[str, int], endings: dict, params:
     """The planner's fallback: every act gets generic beats made from the brief."""
     c1, c2 = brief["characters"][0], brief["characters"][1]
     beats = []
-    kinds = {"hook": ["narration", "narration", "pov"], "setup": ["narration"], "offers": ["talk", "talk", "talk", "talk", "narration"], "choice": ["choice"], "rewind": ["rewind"],
-             "branch_a": ["pov", "narration"], "branch_b": ["pov", "narration"]}
+    kinds = {"hook": ["narration", "narration", "pov"], "setup": ["narration"], "offers": ["narration", "pov"], "choice": ["choice"], "rewind": ["rewind"],
+             "branch_a": ["pov", "narration", "pov"], "branch_b": ["pov", "narration", "pov"]}
     for act, n in counts.items():
         for i in range(n):
-            kind = "twist" if (act in ("branch_a", "branch_b") and i == n - 1) else kinds[act][i % len(kinds[act])]
-            speaker = (c1["id"] if i % 2 == 0 else c2["id"]) if kind == "talk" else "narrator"
+            kind = "twist" if (act in ("branch_a", "branch_b") and i == n - 1) else "offer" if (act == "offers" and i < 2) else kinds[act][(i - 2 if act == "offers" else i) % len(kinds[act])]
+            speaker = (c1["id"] if i % 2 == 0 else c2["id"]) if kind in ("talk", "offer") else "narrator"
             beats.append({"act": act, "branch": "B" if act == "rewind" else expected_branch(act), "kind": kind, "speaker": speaker,
                           "purpose": f"{act.replace('_', ' ')}: step {i + 1} of the story of {c1['name']} and {c2['name']} in {brief['world']['setting']}"})
     keywords = brief["keywords"]
@@ -254,7 +272,7 @@ def outline_score(outline: dict, brief: dict) -> float:
 
 def run_planner(brief: dict, counts: dict, endings: dict, params: dict, trend, llm, candidates: int = 1) -> tuple[dict, dict]:
     prompt = fill(trend.PLANNER_PROMPT, {"structure": structure_text(counts), "act_purposes": "\n".join(f"- {act}: {trend.ACT_PURPOSE[act]}" for act in counts),
-                                        "mood_a": trend.ENDING_MOOD[endings["A"]], "mood_b": trend.ENDING_MOOD[endings["B"]] if "B" in endings else "(there is no branch B in this video)", "language": {"en": "English", "fr": "French"}[params["language"]], "brief": compact_brief(brief)})
+                                        "max_talk": getattr(trend, "MAX_TALK_BEATS", 4), "mood_a": trend.ENDING_MOOD[endings["A"]], "mood_b": trend.ENDING_MOOD[endings["B"]] if "B" in endings else "(there is no branch B in this video)", "language": {"en": "English", "fr": "French"}[params["language"]], "brief": compact_brief(brief)})
     best, report = None, {"candidates": []}
     for k in range(candidates if llm else 0):
         outline, problems, attempts = call_agent(llm, prompt, trend.OUTLINE_SCHEMA, lambda o: validate_outline(o, counts, endings, trend), seed=params["seed"] + 100 * k)
@@ -276,7 +294,26 @@ def chunks_of(beats: list[dict]) -> list[list[int]]:
     return [g for g in groups if g]
 
 
-def validate_lines(answer: dict, beats: list[dict], location_ids: list[str], max_words: int, avg_words: float | None = None) -> list[str]:
+def offer_rule(trend) -> str:
+    """What the writer is told about the two offer beats, from the voice chosen for them."""
+    if getattr(trend, "OFFER_VOICE", "narrator") == "narrator":
+        return (f"kind offer = the NARRATOR tells the proposal of the character named in the beat (c1 or c2) in the third person, at most {getattr(trend, 'MAX_OFFER_WORDS', 9)} words, "
+                "e.g. 'Brandt offers a dry harbor.'")
+    return f"kind offer = the character SAYS his or her proposal in the first person, at most {getattr(trend, 'MAX_OFFER_WORDS', 9)} words."
+
+
+def validate_independence(lines: list[dict], beats: list[dict], brief: dict) -> list[str]:
+    """After the choice the two possibilities are no longer linked: in branch A c2 is never named (and never in the picture), in branch B c1 is never named. The rewind line may name the other one."""
+    names = {c["id"]: c["name"] for c in brief["characters"]}
+    problems = []
+    for i, (line, beat) in enumerate(zip(lines, beats)):
+        other = "c2" if beat.get("act") == "branch_a" else "c1" if beat.get("act") == "branch_b" else None
+        if other and re.search(rf"\b{re.escape(names[other].lower())}\b", line.get("text", "").lower()):
+            problems.append(f"line {i + 1}: this branch is only about you and {names['c1' if other == 'c2' else 'c2']}: {names[other]} must not be named")
+    return problems
+
+
+def validate_lines(answer: dict, beats: list[dict], location_ids: list[str], max_words: int, avg_words: float | None = None, offer_words: int | None = None) -> list[str]:
     lines = answer.get("lines", [])
     problems = []
     if len(lines) != len(beats):
@@ -288,8 +325,9 @@ def validate_lines(answer: dict, beats: list[dict], location_ids: list[str], max
     seen = set()
     for i, (line, beat) in enumerate(zip(lines, beats)):
         words = se.count_words(line.get("text", ""))
-        if not 1 <= words <= max_words:
-            problems.append(f"line {i + 1}: {words} words, the limit is {max_words}")
+        limit = offer_words if (offer_words and beat.get("kind") == "offer") else max_words
+        if not 1 <= words <= limit:
+            problems.append(f"line {i + 1}: {words} words, the limit is {limit}")
         if line.get("location") not in location_ids:
             problems.append(f"line {i + 1}: location must be one of {location_ids}")
         if line.get("text", "").strip().lower() in seen:
@@ -305,9 +343,12 @@ def verify_polarity(llm, trend, lines: list[dict], expected: str, seed: int = 0)
         verdict = llm(fill(trend.VERIFIER_PROMPT, {"lines": tail}), trend.VERIFIER_SCHEMA, seed=seed)
     except Exception:
         return []  # a verifier that cannot answer never blocks the story
-    if verdict["polarity"] == expected:
-        return []
-    return [f"this branch must end {expected.upper()} for you but its last lines read {verdict['polarity'].upper()} ({verdict['reason'][:140]}): rewrite the last lines so that they end {expected.upper()}"]
+    problems = []
+    if verdict["polarity"] != expected:
+        problems.append(f"this branch must end {expected.upper()} for you but its last lines read {verdict['polarity'].upper()} ({verdict['reason'][:140]}): rewrite the last lines so that they end {expected.upper()}")
+    if not verdict.get("suspense", True):
+        problems.append("the last line closes everything: end on ONE open question (an unexplained sound, door, name or detail) so that the viewer wants to know what comes next")
+    return problems
 
 
 def run_writer(brief: dict, outline: dict, params: dict, trend, llm, library_examples: str, endings: dict | None = None) -> tuple[list[dict], dict]:
@@ -325,11 +366,12 @@ def run_writer(brief: dict, outline: dict, params: dict, trend, llm, library_exa
         previous = " / ".join(l["text"] for l in lines[:chunk[0]][-5:] if l) or "(this is the start)"
         prompt = fill(trend.WRITER_PROMPT, {"language": {"en": "English", "fr": "French"}[params["language"]], "max_words": trend.MAX_SPOKEN_WORDS, "must_include": "; ".join(brief["must_include"]) or "(none)",
                                            "location_ids": location_ids, "brief": compact_brief(brief), "previous_lines": previous, "count": len(picked), "examples": library_examples or "(none yet)",
-                                           "avg_words": f"{average:.0f}", "total_words": int(params["target_seconds"] * se.WORDS_PER_SECOND[params["language"]] * 0.85), "ending_mood": mood,
+                                           "offer_rule": offer_rule(trend), "avg_words": f"{average:.0f}", "total_words": int(params["target_seconds"] * se.WORDS_PER_SECOND[params["language"]] * 0.85), "ending_mood": mood,
                                            "beats": "\n".join(f"{n + 1}. [{b['kind']}, speaker {b['speaker']}] {b['purpose']}" for n, b in enumerate(picked))})
         answer, problems, attempts = (None, ["no model"], 0) if llm is None else call_agent(
             llm, prompt, trend.LINES_SCHEMA,
-            lambda a: validate_lines(a, picked, location_ids, trend.MAX_SPOKEN_WORDS, average) + (verify_polarity(llm, trend, a.get("lines", []), expected, seed=params["seed"]) if expected and not validate_lines(a, picked, location_ids, trend.MAX_SPOKEN_WORDS) else []),
+            lambda a: validate_lines(a, picked, location_ids, trend.MAX_SPOKEN_WORDS, average, getattr(trend, "MAX_OFFER_WORDS", None)) + validate_independence(a.get("lines", []), picked, brief)
+            + (verify_polarity(llm, trend, a.get("lines", []), expected, seed=params["seed"]) if expected and not validate_lines(a, picked, location_ids, trend.MAX_SPOKEN_WORDS) else []),
             seed=params["seed"] + 7 * chunk[0])
         if answer is None:
             answer = {"lines": [{"text": " ".join(b["purpose"].split()[:trend.MAX_SPOKEN_WORDS - 2]), "location": location_ids[0], "in_shot": []} for b in picked]}
@@ -451,6 +493,16 @@ def assemble_story(brief: dict, outline: dict, lines: list[dict], directions: li
         if beat["kind"] == "choice":
             shot["choice"] = {"a": c1["name"], "b": c2["name"]}
             shot["in_shot"] = ["c1", "c2"]  # a choice is always between the two of them, whatever the model listed
+        if beat["kind"] == "offer":
+            shot["in_shot"] = ["c1", "c2"]  # the ONLY moment where both are in the picture, both holding out a hand
+            shot["offer_of"] = beat["speaker"]  # whose proposal it is
+            if getattr(trend, "OFFER_VOICE", "narrator") == "narrator":
+                shot["speaker"] = "narrator"  # the narrator quotes it: no mouth has to follow a voice
+            if shots and shots[-1]["kind"] == "offer" and getattr(trend, "OFFER_OVERLAP", 0.0) > 0:
+                shot["overlap"] = trend.OFFER_OVERLAP  # seconds the second line starts before the first one ends
+        if beat["act"] in ("branch_a", "branch_b"):
+            gone = "c2" if beat["act"] == "branch_a" else "c1"  # after the choice the other character is never in a picture
+            shot["in_shot"] = [i for i in shot["in_shot"] if i != gone]
         if beat["act"] in ("branch_a", "branch_b") and beat["act"] not in seen_branch:
             seen_branch.add(beat["act"])
             shot["tag"] = f"CASE {'A' if beat['act'] == 'branch_a' else 'B'}: {(c1 if beat['act'] == 'branch_a' else c2)['name'].upper()}"

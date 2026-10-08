@@ -70,8 +70,8 @@ def test_the_run_skips_what_is_done_switches_the_app_family_and_records_every_st
 
 
 def test_every_step_that_needs_the_gpu_family_is_mapped_and_the_order_is_the_documented_one():
-    assert sa.STEPS == ("story", "cards", "closeups", "stills", "voices", "animate", "qc", "post", "render", "caption")
-    assert sa.FAMILY == {"cards": "krea2", "closeups": "krea2", "stills": "krea2", "animate": "s2v", "qc": "s2v", "post": "s2v"}
+    assert sa.STEPS == ("story", "cards", "closeups", "stills", "identity", "voices", "animate", "qc", "post", "render", "caption")
+    assert sa.FAMILY == {"cards": "krea2", "closeups": "krea2", "stills": "krea2", "identity": "qwen", "animate": "s2v", "qc": "s2v", "post": "s2v"}
 
 
 def test_a_wrong_picture_is_made_again_with_another_seed_after_the_model_is_unloaded(tmp_path, monkeypatch):
@@ -84,8 +84,8 @@ def test_a_wrong_picture_is_made_again_with_another_seed_after_the_model_is_unlo
     (pipeline.run / "stills").mkdir(parents=True)
     (pipeline.run / "stills" / "s001.png").write_bytes(b"x")
     events = []
-    answers = iter([{"place_seen": "a sunlit arcade", "sunlight_or_blue_sky": True, "matches_world": 1, "action_visible": True, "collage_or_split_panels": False, "garbled_text": False, "problems": []},
-                    {"place_seen": "a metal deck", "sunlight_or_blue_sky": False, "matches_world": 5, "action_visible": True, "collage_or_split_panels": False, "garbled_text": False, "problems": []}])
+    answers = iter([{"place_seen": "a sunlit arcade", "sunlight_or_blue_sky": True, "matches_world": 1, "action_visible": True, "collage_or_split_panels": False, "impossible_geometry": False, "garbled_text": False, "problems": []},
+                    {"place_seen": "a metal deck", "sunlight_or_blue_sky": False, "matches_world": 5, "action_visible": True, "collage_or_split_panels": False, "impossible_geometry": False, "garbled_text": False, "problems": []}])
 
     def fake_ask(prompt, schema, image, seed):
         events.append("judge")

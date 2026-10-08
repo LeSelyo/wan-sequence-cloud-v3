@@ -24,6 +24,7 @@ REGISTRY_FILE = ROOT / "results" / "story_trend" / "methods" / "registry.json"
 NEEDS = {
     "talking_closeup": "a character speaks to the camera, close-up, with his voice line",
     "person_idle_closeup": "a character waits or listens, close-up, no voice (the two waiting faces of the choice card)",
+    "person_in_scene": "a character in a wide or medium shot who does a small thing (reacts, gestures, stands, looks) without travelling",
     "person_locomotion": "a character walks, runs, climbs or moves through a place (wide or medium shot)",
     "two_person_offer": "both main characters in one shot holding out a hand to the viewer",
     "pov_action": "first-person shot where the viewer's own hands or body do something",
@@ -42,6 +43,14 @@ METHODS = {
     "i2v_lightx6": {"engine": "i2v", "profile": "lightx2v6", "note": "the same with 6 steps"},
     "i2v_lightx4_hi": {"engine": "i2v", "profile": "lightx2v4_hi", "note": "the same with the LoRAs at 0.8: more motion and detail"},
     "text_still": {"engine": "krea2", "note": "a picture made from the text description only"},
+    "i2v_plain": {"engine": "i2v", "profile": "lightx2v4", "style": "plain", "note": "I2V, the plain prompt: the motion of the director only (the user: average, lacks details)"},
+    "i2v_action": {"engine": "i2v", "profile": "lightx2v4", "style": "action", "note": "I2V + real steps, arms swinging, clothes and hair moving, weight (the user's choice for people who move)"},
+    "i2v_follow": {"engine": "i2v", "profile": "lightx2v4", "style": "follow", "note": "I2V + the camera follows the movement at the same speed (the user's choice, with the action prompt)"},
+    "i2v_pov": {"engine": "i2v", "profile": "lightx2v4", "style": "pov", "note": "I2V, 4 steps, the motion of the director says what the hands do (the user: plan B of the valve test)"},
+    "i2v_pov6": {"engine": "i2v", "profile": "lightx2v6", "style": "pov", "note": "the same with 6 steps (the user: plan C of the valve test, as good)"},
+    "i2v_offer_hands": {"engine": "i2v", "profile": "lightx2v4", "style": "offer_hands", "note": "the two hold out their open hands slowly toward you, look at you, blink (plan A of the offer test: THE way for the choice moment)"},
+    "i2v_offer_step": {"engine": "i2v", "profile": "lightx2v4", "style": "offer_step", "note": "the two step forward together holding out their hands, slow push-in (plan B of the offer test: kept as the alternative)"},
+    "i2v_idle": {"engine": "i2v", "profile": "lightx2v4", "style": "idle", "note": "a person waits, looks at the camera, blinks, breathes (no audio: the face is free to blink)"},
     "qwen_identity": {"engine": "qwen_edit", "note": "Qwen-Image-Edit-2511 puts the person of the close-up (reference) into the scene: the face stays the same"},
 }
 RANK = {"works": 3, "partial": 2, "untested": 1, "fails": 0}
@@ -53,10 +62,10 @@ SEED = [
     ("person_idle_closeup", "s2v_silence", "partial", "stable face but the eyes never blink (user feedback)"),
     ("person_idle_closeup", "i2v_lightx4", "untested", "no audio: the face is free to blink; to measure"),
     ("person_locomotion", "s2v_silence", "fails", "people keep the starting pose, 'they never walk' (user feedback on auto_ab_1)"),
-    ("person_locomotion", "i2v_lightx4", "works", "smoke test: a man walks toward the camera, strides and weight shifts visible (67 s per 3 s clip)"),
+    ("person_locomotion", "i2v_lightx4", "partial", "smoke test: a man walks toward the camera, strides and weight shifts visible (67 s per 3 s clip); superseded by the prompt styles i2v_action / i2v_follow (the user's choice)"),
     ("person_locomotion", "i2v_lightx4_hi", "untested", "to compare in the motion experiment"),
     ("two_person_offer", "i2v_lightx4", "untested", "to test in the offer experiment (two-shot made with Qwen identity pass)"),
-    ("two_person_offer", "s2v_voice", "untested", "to test: do both mouths move?"),
+    ("two_person_offer", "s2v_voice", "fails", "user, lab 2026-10-08: plan C (S2V with the first line) is less immersive: drop it for this scene"),
     ("pov_action", "s2v_silence", "fails", "the arm trembles in place, nothing happens (user feedback: 'tres pauvre')"),
     ("pov_action", "i2v_lightx4", "untested", "to test in the POV experiment"),
     ("scene_camera_move", "s2v_silence", "works", "camera push and moving water / rain / light on places without people, several runs"),
@@ -66,8 +75,20 @@ SEED = [
     ("crowd", "i2v_lightx4", "untested", "to compare"),
     ("wide_with_character", "text_still", "fails", "a wide still described by text gives a stranger, not the character of the close-up (user feedback + auto_ab_1)"),
     ("wide_with_character", "qwen_identity", "untested", "to test in the identity experiment"),
+    # the user's choices after the lab of 2026-10-08 (videos looked at by the user)
+    ("person_locomotion", "i2v_action", "works", "user: Elara runs, plan C (action prompt) or D (camera follows); Kael walks: B, C, D good"),
+    ("person_locomotion", "i2v_follow", "works", "user: Elara runs, plan D (camera follows); Kael walks: good"),
+    ("person_locomotion", "i2v_plain", "partial", "user: plain prompt is average, lacks details"),
+    ("person_in_scene", "i2v_action", "works", "user: the majority of shots with people should be I2V (very good quality), S2V only to speak"),
+    ("person_in_scene", "s2v_silence", "fails", "user: S2V people stay in the starting pose and the eyes do not blink"),
+    ("pov_action", "i2v_pov", "works", "user: valve test, plan B (4 steps) or C (6 steps): the wheel turns, steam bursts"),
+    ("pov_action", "i2v_pov6", "works", "user: valve test, plan B or C"),
+    ("two_person_offer", "i2v_offer_hands", "works", "user: plan A, faces clean, no character-sheet problem; THE way for the choice moment, mandatory in every video"),
+    ("two_person_offer", "i2v_offer_step", "works", "user: plan B also fine (faces clean); kept as the alternative"),
+    ("person_idle_closeup", "i2v_idle", "works", "user: blink test, I2V (plan D) blinks and its quality is good"),
 ]
 
+FOLLOW_WORDS = {"follow", "follows", "following", "tracking", "tracks", "chase", "chases"}
 LOCOMOTION = {"walk", "walks", "walking", "run", "runs", "running", "sprint", "sprints", "sprinting", "climb", "climbs", "climbing", "jump", "jumps", "crawl", "crawls", "swim", "swims", "dive", "dives",
               "chase", "chases", "flee", "flees", "rush", "rushes", "step", "steps", "stride", "strides", "race", "races", "racing", "dash", "dashes", "pulls", "drags", "follows", "dodge", "dodges"}
 EPIC = {"aerial", "colossal", "gigantic", "vast", "megacity", "skyline", "horizon", "epic", "towering", "enormous", "storm", "planet", "hull"}
@@ -85,7 +106,7 @@ def classify_shot(shot: dict, plan: dict | None = None) -> str:
     if kind == "talk":
         return "talking_closeup"
     if kind == "choice":
-        return "person_idle_closeup"
+        return "two_person_offer"  # the choice is the moment where both hold out a hand (the user: always, plan A)
     if kind == "offer":
         return "two_person_offer"
     text = words_of(" ".join([shot.get("motion", ""), shot.get("still", ""), shot.get("visual", "")]))
@@ -93,7 +114,7 @@ def classify_shot(shot: dict, plan: dict | None = None) -> str:
     if kind == "pov" or "first-person" in (shot.get("still") or "").lower():
         return "pov_action" if text & (HANDS | LOCOMOTION) else "scene_camera_move"
     if people:
-        return "person_locomotion" if text & LOCOMOTION else "person_idle_closeup"
+        return "person_locomotion" if text & LOCOMOTION else "person_in_scene"
     if text & CROWD and not text & EPIC:
         return "crowd"
     if text & EPIC:
@@ -108,6 +129,15 @@ def verdict_from_metrics(need: str, metrics: dict) -> str | None:
     if need in ("talking_closeup", "person_idle_closeup") and "blinks" in metrics:
         return "works" if metrics["blinks"] >= 1 else "fails"
     return None
+
+
+def route(shot: dict, plan: dict | None = None, registry: "Registry | None" = None) -> dict:
+    """What to do with a shot: its NEED, the method the registry picks for it and its settings (engine, profile, prompt style). A walking shot gets the 'follow' style when its motion says the camera follows."""
+    registry = registry or Registry()
+    need = classify_shot(shot, plan)
+    prefer = "i2v_follow" if need == "person_locomotion" and words_of(shot.get("motion", "")) & FOLLOW_WORDS else None
+    picked = registry.choose(need, prefer)
+    return {**picked, "engine": picked["settings"]["engine"]}
 
 
 class Registry:

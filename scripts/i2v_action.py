@@ -29,6 +29,38 @@ FPS = 16
 NEGATIVE = "static, frozen, motionless pose, still image, blurry, deformed face, distorted body, extra limbs, subtitles, text, watermark, worst quality, low quality, jpeg artifacts"
 
 
+# the prompt STYLES the lab compared (the user chose: action or follow for people who move, pov for hands, offer_hands for the choice moment, idle for a waiting face; plain is "average")
+STYLES = {
+    "plain": "{motion}.",
+    "action": "{motion}, real steps and body movement, arms swinging, clothes and hair moving, natural weight and balance, the whole body in motion.",
+    "follow": "{motion}, real steps and body movement, arms swinging, clothes and hair moving; the camera follows the movement smoothly at the same speed, steady, cinematic.",
+    "pov": "{motion}",  # the motion written by the director already says what the hands do and what moves
+    "offer_hands": "{pair} slowly stretch their open hands toward the camera, their fingers reaching, they look at the viewer, blink, small head movements",
+    "offer_step": "{pair} step forward together toward the camera and hold out their open hands, urgent faces, the camera pushes slowly in",
+    "offer_next": "{pair} keep holding out their open hands toward the camera, steady urgent faces, blink, small head movements, the camera pushes in a little more",
+    "idle": "{subject} looks at the camera, waiting, blinks naturally, breathes, small head and eyebrow movements, eyes moving slightly, cinematic, realistic skin",
+}
+MAX_SECONDS = 5.0  # 81 frames at 16 fps: the length of one I2V clip
+
+
+def person_word(character: dict) -> str:
+    return "woman" if character.get("gender") == "f" else "man"
+
+
+def pair_word(first: dict, second: dict) -> str:
+    """'The man and the woman', 'The two men', 'The two women' (the first character stands on the left)."""
+    a, b = person_word(first), person_word(second)
+    return f"The {a} and the {b}" if a != b else "The two men" if a == "man" else "The two women"
+
+
+def build_prompt(style: str, motion: str = "", characters: list[dict] | None = None) -> str:
+    """The text of an I2V clip: the style template filled with the motion of the director and who is in the picture."""
+    characters = characters or []
+    subject = f"The {person_word(characters[0])}" if characters else "The person"
+    pair = pair_word(characters[0], characters[1]) if len(characters) >= 2 else subject
+    return STYLES[style].format(motion=(motion or "").strip().rstrip("."), subject=subject, pair=pair)
+
+
 def frames_for(seconds: float) -> int:
     return max(5, int(round(seconds * FPS / 4)) * 4 + 1)
 

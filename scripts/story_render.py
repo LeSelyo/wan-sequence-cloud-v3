@@ -37,7 +37,7 @@ FPS = 30
 ORANGE = (255, 122, 0)
 FONT_BOLD = ROOT / "assets" / "fonts" / "Anton-Regular.ttf"  # open licence (SIL OFL), the same file on the PC and on the box: the montage looks the same wherever it runs
 FONT_FALLBACK = Path(r"C:\Windows\Fonts\impact.ttf")
-TAIL = {"talk": 0.25, "choice": 0.0, "narration": 0.4, "pov": 0.4, "twist": 2.4, "rewind": 0.5}  # silence after the line, per kind of shot (the twist keeps the screen: the impact rings, the card shows)
+TAIL = {"talk": 0.25, "choice": 0.0, "narration": 0.4, "pov": 0.4, "offer": 0.4, "twist": 2.4, "rewind": 0.5}  # silence after the line, per kind of shot (the twist keeps the screen: the impact rings, the card shows)
 CHOICE_MIN_SECONDS = 3.2
 RING_SECONDS_BEFORE_END = 0.35
 RING_START_SECONDS = 0.5  # the voice says "now you must choose" first, then the ring empties
@@ -388,6 +388,12 @@ def burn_subtitles(video: Path, listing: Path | None, out: Path, grade: str | No
                     "-bufsize", "20M", "-c:a", "copy", "-shortest", str(out)], check=True)
 
 
+def choice_single_frames(clip: Path, names: list[str], seconds: float):
+    """The choice over ONE clip of both characters holding out a hand (the two-shot, c1 on the left, c2 on the right), under the choice card."""
+    for index, frame in enumerate(clip_frames(clip, seconds, {})):
+        yield choice_frame(index / FPS, seconds, [], names, background=frame)
+
+
 def choice_clip_frames(clips: list[Path], names: list[str], seconds: float):
     """Two characters waiting, side by side (the centre of each clip), under the choice card."""
     wanted = int(round(seconds * FPS))
@@ -461,7 +467,9 @@ def render_story(plan: dict, cards_dir: Path, run: Path, out: Path, sound: bool 
             ids = choice_ids(plan, shot)
             names = [characters[i]["name"] for i in ids]
             waiting = [find_clip(run, f"{sid}_{i}") for i in ids]
-            if all(waiting):
+            if find_clip(run, sid):  # the two-shot: both hold out a hand, the A / B cards and the ring over it
+                _encode_frames(choice_single_frames(find_clip(run, sid), names, seconds), raw, seconds, voice)
+            elif all(waiting):
                 _encode_frames(choice_clip_frames(waiting, names, seconds), raw, seconds, voice)
             else:  # no waiting clips: the portraits stand still under the card, and say so
                 fallback = True
