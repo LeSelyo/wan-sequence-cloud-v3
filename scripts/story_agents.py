@@ -446,6 +446,7 @@ def assemble_story(brief: dict, outline: dict, lines: list[dict], directions: li
             shot["time"] = direction["time"].strip()
         if beat["kind"] == "choice":
             shot["choice"] = {"a": c1["name"], "b": c2["name"]}
+            shot["in_shot"] = ["c1", "c2"]  # a choice is always between the two of them, whatever the model listed
         if beat["act"] in ("branch_a", "branch_b") and beat["act"] not in seen_branch:
             seen_branch.add(beat["act"])
             shot["tag"] = f"CASE {'A' if beat['act'] == 'branch_a' else 'B'}: {(c1 if beat['act'] == 'branch_a' else c2)['name'].upper()}"

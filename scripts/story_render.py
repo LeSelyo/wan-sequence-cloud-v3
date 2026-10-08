@@ -397,6 +397,12 @@ def shot_starts(timings: dict) -> dict:
     return starts
 
 
+def choice_ids(plan: dict, shot: dict) -> list[str]:
+    """The two characters of the choice card: those the shot lists, else the two main characters of the story (a model may leave the list empty: a choice is always between the two of them)."""
+    ids = [i for i in shot.get("in_shot", []) if i in {c["id"] for c in plan["characters"]}][:2]
+    return ids if len(ids) == 2 else [c["id"] for c in plan["characters"][:2]]
+
+
 def find_clip(run: Path, sid: str) -> Path | None:
     """The best clip of a shot: after the face-detail pass if there is one, else the raw clip."""
     for folder in ("post", "clips"):
@@ -439,7 +445,7 @@ def render_story(plan: dict, cards_dir: Path, run: Path, out: Path, sound: bool 
         fallback = False
         fx = shot.get("fx") or {}
         if kind == "choice":
-            ids = shot["in_shot"][:2]
+            ids = choice_ids(plan, shot)
             names = [characters[i]["name"] for i in ids]
             waiting = [find_clip(run, f"{sid}_{i}") for i in ids]
             if all(waiting):

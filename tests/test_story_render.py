@@ -98,3 +98,9 @@ def test_sound_cues_follow_the_story_choice_twists_rewind_good_ending_and_impact
     timings = {sid: {"seconds": 4.0} for sid in ("s001", "s002", "s003", "s004", "s005", "s006")}
     cues = sr.sound_cues(plan, timings)
     assert cues["choice"] == [4.5, 7.65] and cues["twists"] == [12.0, 20.0] and cues["rewind"] == 16.0 and cues["uplift"] == 20.0 and cues["rain_stop"] == 20.0 and cues["thunder"] == [8.0]
+
+
+def test_a_choice_shot_whose_character_list_is_empty_still_shows_the_two_main_characters():
+    plan = {"characters": [{"id": "c1"}, {"id": "c2"}]}
+    assert sr.choice_ids(plan, {"in_shot": []}) == ["c1", "c2"] and sr.choice_ids(plan, {"in_shot": ["c2", "c1"]}) == ["c2", "c1"]
+    assert sr.choice_ids(plan, {"in_shot": ["c1"]}) == ["c1", "c2"] and sr.choice_ids(plan, {"in_shot": ["zz"]}) == ["c1", "c2"]

@@ -140,7 +140,7 @@ def animate_jobs(plan: dict, cards: dict, run: Path) -> list[dict]:
             jobs.append({"id": shot["id"], "source": portrait, "voice": voice, "seconds": seconds,
                          "prompt": f"{who['name']}, a {who['age']}-year-old {'woman' if who['gender'] == 'f' else 'man'} {who['role']}, {look}"})
         elif shot["kind"] == "choice":
-            for who_id in shot["in_shot"][:2]:
+            for who_id in sr.choice_ids(plan, shot):
                 who = characters[who_id]
                 portrait = ROOT / portrait_of(cards, who_id)
                 jobs.append({"id": f"{shot['id']}_{who_id}", "source": portrait, "voice": None, "seconds": seconds,
