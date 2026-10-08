@@ -131,11 +131,11 @@ def verdict_from_metrics(need: str, metrics: dict) -> str | None:
     return None
 
 
-def route(shot: dict, plan: dict | None = None, registry: "Registry | None" = None) -> dict:
+def route(shot: dict, plan: dict | None = None, registry: "Registry | None" = None, prefer: str | None = None) -> dict:
     """What to do with a shot: its NEED, the method the registry picks for it and its settings (engine, profile, prompt style). A walking shot gets the 'follow' style when its motion says the camera follows."""
     registry = registry or Registry()
     need = classify_shot(shot, plan)
-    prefer = "i2v_follow" if need == "person_locomotion" and words_of(shot.get("motion", "")) & FOLLOW_WORDS else None
+    prefer = prefer or ("i2v_follow" if need == "person_locomotion" and words_of(shot.get("motion", "")) & FOLLOW_WORDS else None)
     picked = registry.choose(need, prefer)
     return {**picked, "engine": picked["settings"]["engine"]}
 

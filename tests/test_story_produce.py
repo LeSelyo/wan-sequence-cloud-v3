@@ -97,3 +97,14 @@ def test_each_job_is_made_by_its_engine_and_a_clip_that_exists_is_kept(tmp_path,
     done = sp.step_animate(plan, CARDS, tmp_path, "http://x", "t2v_1217_low", 1)
     assert made == [("s2v", "s001"), ("i2v", "s002", "lightx2v4", 5.0)] and done["s002"]["engine"] == "i2v" and done["s001"]["engine"] == "s2v"
     assert sp.step_animate(plan, CARDS, tmp_path, "http://x", "t2v_1217_low", 1) == {}  # nothing is made twice
+
+
+def test_the_other_way_of_making_the_choice_moment_is_kept_and_selectable(tmp_path, monkeypatch):
+    plan = {"characters": PEOPLE, "shots": [{"id": "s001", "kind": "choice", "speaker": "narrator", "in_shot": ["c1", "c2"], "visual": "waits", "choice": {"a": "Brandt", "b": "Ilse"}}]}
+    write_wav(tmp_path / "voices" / "s001.wav", 2.0)
+    (tmp_path / "stills_id").mkdir()
+    (tmp_path / "stills_id" / "two_shot.png").write_bytes(b"x")
+    assert sp.animate_jobs(plan, CARDS, tmp_path, registry_in(tmp_path))[0]["method"] == "i2v_offer_hands"
+    monkeypatch.setattr(sp, "OFFER_METHOD", "i2v_offer_step")
+    step = sp.animate_jobs(plan, CARDS, tmp_path, registry_in(tmp_path))[0]
+    assert step["method"] == "i2v_offer_step" and "step forward together" in step["prompt"]

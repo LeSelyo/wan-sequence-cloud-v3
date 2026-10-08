@@ -301,6 +301,7 @@ class Pipeline:
 
     # ------------------------------------------------------------ the run
     def go(self, args) -> None:
+        sp.OFFER_METHOD = None if getattr(args, "offer_method", "i2v_offer_hands") == "i2v_offer_hands" else args.offer_method
         wanted = [s for s in (args.steps.split(",") if args.steps else STEPS) if s]
         self.ensure_tunnels()
         for step in wanted:
@@ -338,6 +339,7 @@ def main() -> None:
     run.add_argument("--story-method", choices=["chain", "single"], default="chain")
     run.add_argument("--candidates", type=int, default=1, help="write the whole story this many times and keep the best (the judge scores them)")
     run.add_argument("--outline-candidates", type=int, default=2, help="outlines tried by the planner, the best one is kept")
+    run.add_argument("--offer-method", choices=["i2v_offer_hands", "i2v_offer_step"], default="i2v_offer_hands", help="the choice moment: the two hold out their hands slowly (plan A, default) or step forward (plan B)")
     run.add_argument("--no-picture-check", action="store_true", help="do not let the vision model look at the stills (saves a few minutes)")
     run.add_argument("--judge", action="store_true", help="the model scores the finished story 1-10 on seven criteria")
     run.add_argument("--render-on", choices=["box", "pc"], default="box", help="where the montage (Pillow + ffmpeg) runs: the box by default, the PC stays free")

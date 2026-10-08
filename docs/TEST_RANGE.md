@@ -7,17 +7,28 @@ the pipeline picks the method by itself from the nature of the shot.
 
 Status today: **[done]** measured, **[running]** in the lab now, **[to do]** not yet.
 
+## What the user CHOSE after the first lab (2026-10-08) and what the pipeline now does with it
+| need of a shot | method (registry) | the user's words |
+|---|---|---|
+| a person walks / runs | **I2V** `i2v_action` (or `i2v_follow` when the camera follows); `i2v_plain` is "average, lacks details" | Elara runs: C or D; Kael walks: B, C, D good |
+| first-person hands | **I2V** `i2v_pov` (4 steps) or `i2v_pov6` (6 steps) | valve: B or C |
+| the choice moment: both characters hold out a hand | **I2V** `i2v_offer_hands` (plan A, MANDATORY in every video); `i2v_offer_step` (plan B) kept as the alternative (`--offer-method i2v_offer_step`) | faces clean in A and B; the S2V plan C is less immersive: dropped for this scene |
+| a person waits / blinks | **I2V** `i2v_idle` | Elara blinks on C and D only, Kael on all but C: confirmed my landmark counter |
+| a character SPEAKS or shouts | **S2V** `s2v_voice` | "S2V only when the character speaks or shouts"; the reference video's author makes them speak very little, the narrator quotes their sentences: a character speaks only to give an ORDER (at most 4 talk shots) |
+| a place without people | S2V + silence (proven) | - |
+The pipeline reads these from `scripts/method_registry.py` (`route(shot)`); a new proof or choice is written with `python scripts/method_registry.py verdict NEED METHOD STATUS "note"`.
+
 ## 1. People who MOVE (the "they never walk" problem)
 | tool | range | measured by code | you look at | cost |
 |---|---|---|---|---|
-| Wan I2V two experts (lightx2v LoRAs) vs S2V + silence [running] | engine S2V / I2V; I2V steps 4 / 6; LoRA strength 1.0 / 0.8; prompt style plain / action (steps, arms, weight) / camera follows; seconds 3 / 5; size 480x832 / 576x1024; 3 seeds | `motion_amount` (a frozen pose < 0.3), face stability along the clip | do the feet and arms move, does the camera follow, does the face stay the same | ~70 s per clip |
+| Wan I2V two experts (lightx2v LoRAs) vs S2V + silence [done, chosen] | engine S2V / I2V; I2V steps 4 / 6; LoRA strength 1.0 / 0.8; prompt style plain / action (steps, arms, weight) / camera follows; seconds 3 / 5; size 480x832 / 576x1024; 3 seeds | `motion_amount` (a frozen pose < 0.3), face stability along the clip | do the feet and arms move, does the camera follow, does the face stay the same | ~70 s per clip |
 | I2V without LoRA (20 steps) [to do] | steps 12 / 20, cfg 3.5 / 5 | same | is the motion richer enough to be worth 5x the time | ~6 min per clip |
 | FLF2V (first + last frame) [to do] | last frame = the same person 4 m further | same | controlled walking path | ~90 s |
 
 ## 2. The SAME face in every shot (character stability)
 | tool | range | measured | you look at | cost |
 |---|---|---|---|---|
-| Qwen-Image-Edit-2511 identity pass [running] | prompt short / strict; steps 4 / 8; Lightning LoRA on / off; megapixels 1.0 / 1.5; references: close-up only / close-up + sheet / two close-ups (two-shot); scene = place only / place with a generic person; 3 seeds | face detection found, face size, (to add: face-embedding distance to the close-up) | same face, hair, clothes as the reference | ~15 s per picture |
+| Qwen-Image-Edit-2511 identity pass [done, now a pipeline step; the wardrobe is in the prompt] | prompt short / strict; steps 4 / 8; Lightning LoRA on / off; megapixels 1.0 / 1.5; references: close-up only / close-up + sheet / two close-ups (two-shot); scene = place only / place with a generic person; 3 seeds | face detection found, face size, (to add: face-embedding distance to the close-up) | same face, hair, clothes as the reference | ~15 s per picture |
 | Face embedding check [to do] | ArcFace-type embedding, threshold 0.35 / 0.45 | distance close-up vs shot, automatic retry with another seed above the threshold | - | CPU |
 | Close-up as the start image of every talking / listening shot [done] | - | - | - | - |
 
@@ -33,8 +44,8 @@ Status today: **[done]** measured, **[running]** in the lab now, **[to do]** not
 ## 4. The offer shot (both characters hold out a hand) and first-person ACTION
 | tool | range | measured | you look at | cost |
 |---|---|---|---|---|
-| Two-shot with Qwen (two references) + I2V [running] | prompts: hands slowly toward you / they step forward; S2V with the first line | motion amount, both faces found | both hands come toward the camera, both faces stable | ~2 min |
-| First-person hands (POV action) [running] | S2V vs I2V 4 / 6 steps; actions: turn a valve, push someone through a hatch, climb, pull a lever | motion amount | the hands really do the action, nothing trembles in place | ~70 s |
+| Two-shot with Qwen (two references) + I2V [done, chosen: plan A] | prompts: hands slowly toward you / they step forward; S2V with the first line | motion amount, both faces found | both hands come toward the camera, both faces stable | ~2 min |
+| First-person hands (POV action) [done, chosen: B or C] | S2V vs I2V 4 / 6 steps; actions: turn a valve, push someone through a hatch, climb, pull a lever | motion amount | the hands really do the action, nothing trembles in place | ~70 s |
 | Action beats written by the story agent [to do] | share of POV shots per branch 30 / 50 / 60 %; verbs list | share measured in the plan | variety of actions | text |
 
 ## 5. Camera, effects, rhythm

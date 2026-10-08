@@ -34,6 +34,7 @@ ROOT = Path(__file__).resolve().parent.parent
 REGISTRY = ROOT / "results" / "story_trend" / "generations.json"
 VOICES_JSON = se.VOICES_FILE
 STEPS = ("transcribe", "voices", "animate", "render")
+OFFER_METHOD = None  # "i2v_offer_step" makes the choice moment the other way (the two step forward); None = plan A, the default the user chose
 LOOK = "cinematic, realistic, moody, natural motion"  # the default; a plan with a brief gets the atmosphere and the hour of ITS world (see look_of)
 
 
@@ -148,7 +149,7 @@ def animate_jobs(plan: dict, cards: dict, run: Path, registry: "mr.Registry | No
         voice = run / "voices" / f"{shot['id']}.wav"
         seconds = sr.shot_seconds(shot["kind"], sr.wav_seconds(voice), last=index == len(plan["shots"]) - 1)
         look = f"{shot['visual']}, {look_of(plan)}"
-        route = mr.route(shot, plan, registry)
+        route = mr.route(shot, plan, registry, OFFER_METHOD if shot["kind"] in ("offer", "choice") else None)
         people = [characters[i] for i in shot.get("in_shot", []) if i in characters]
         if shot["kind"] == "talk":
             who = characters[shot["speaker"]]
