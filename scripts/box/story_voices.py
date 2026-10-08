@@ -2,6 +2,7 @@
 
     /root/ttsenv/bin/python story_voices.py transcribe SAMPLE.mp3 [--model small] [--language en]  -> prints the exact transcript (the ref_text of a clone)
     /root/ttsenv/bin/python story_voices.py speak JOB.json                                         -> one wav per line + manifest.json (durations)
+    /root/ttsenv/bin/python story_voices.py align OUT_DIR [--language en]                          -> align.json: the start/end of every WORD of every wav (Whisper word timestamps), for the subtitles
 
 JOB.json = {"out_dir": "...", "language": "English", "lines": [{"id": "s001", "text": "...", "voice": {"kind": "clone", "ref_audio": "...", "ref_text": "..."}
                                                                                               | {"kind": "design", "instruct": "a man in his 30s, ..."}, "seed": 1}]}
@@ -28,6 +29,18 @@ def transcribe(sample: str, model: str = "small", language: str | None = None) -
     import whisper
     result = whisper.load_model(model).transcribe(sample, language=language, fp16=True)
     return result["text"].strip()
+
+
+def align(out_dir: str, model: str = "small", language: str | None = None) -> dict:
+    """{wav name: [{"word", "start", "end"}]}: when each word is really spoken."""
+    import whisper
+    loaded = whisper.load_model(model)
+    result = {}
+    for path in sorted(Path(out_dir).glob("*.wav")):
+        transcript = loaded.transcribe(str(path), language=language, word_timestamps=True, fp16=True)
+        result[path.stem] = [{"word": w["word"].strip(), "start": round(float(w["start"]), 3), "end": round(float(w["end"]), 3)} for seg in transcript["segments"] for w in seg.get("words", [])]
+    (Path(out_dir) / "align.json").write_text(json.dumps(result, indent=1, ensure_ascii=False), encoding="utf-8")
+    return result
 
 
 def speak(job: dict) -> dict:
@@ -77,6 +90,10 @@ def main() -> None:
         model = rest[rest.index("--model") + 1] if "--model" in rest else "small"
         language = rest[rest.index("--language") + 1] if "--language" in rest else None
         print(transcribe(sys.argv[2], model, language))
+    elif len(sys.argv) >= 3 and sys.argv[1] == "align":
+        rest = sys.argv[3:]
+        done = align(sys.argv[2], language=rest[rest.index("--language") + 1] if "--language" in rest else None)
+        print(f"aligned {len(done)} lines")
     elif len(sys.argv) == 3 and sys.argv[1] == "speak":
         speak(json.loads(Path(sys.argv[2]).read_text(encoding="utf-8")))
     else:

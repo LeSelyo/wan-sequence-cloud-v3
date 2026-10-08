@@ -4,7 +4,8 @@
 
   transcribe  the exact transcript (ref_text) of every recorded voice that has none, by Whisper on the box -> results/story_trend/voices/voices.json
   voices      one wav per shot (cloned recorded voice or a voice designed from text) on the box (Qwen3-TTS), copied back to <run>/voices/
-  talk        one S2V clip per talking shot (scripts/s2v_talk.py through the ComfyUI tunnel), the clip as long as the voice line
+  animate     one S2V clip per shot (scripts/s2v_talk.py through the ComfyUI tunnel): the speaker's portrait + the voice line for a talk shot, each character's portrait waiting for the choice, the
+              shot's own still (scripts/story_stills.py) + silence for every other shot; the clip is as long as the shot
   render      the finished 9:16 video (scripts/story_render.py), on this PC (light: Pillow + ffmpeg)
 
 The box is reached over ssh (BOX_SSH_HOST / BOX_SSH_PORT / BOX_SSH_KEY or the flags); the app must run for the Wan family with the ComfyUI tunnel on --comfy-url for `talk`.
@@ -29,7 +30,8 @@ import story_voice_job as vj  # noqa: E402
 ROOT = Path(__file__).resolve().parent.parent
 REGISTRY = ROOT / "results" / "story_trend" / "generations.json"
 VOICES_JSON = se.VOICES_FILE
-STEPS = ("transcribe", "voices", "talk", "render")
+STEPS = ("transcribe", "voices", "animate", "render")
+LOOK = "cinematic, realistic, dark moody night, rain, film grain, natural motion"
 
 
 class Box:
@@ -74,29 +76,81 @@ def step_voices(box: Box, plan: dict, run: Path, seed: int) -> dict:
     local_job = run / "voice_job.json"
     local_job.write_text(json.dumps(job, indent=1, ensure_ascii=False), encoding="utf-8")
     box.put(local_job, f"/root/{run.name}_voice_job.json")
+    box.put(ROOT / "scripts" / "box" / "story_voices.py", "/root/story_voices.py")  # always the current version of the box script (an old copy once lacked `align`)
     box.run(f"/root/ttsenv/bin/python /root/story_voices.py speak /root/{run.name}_voice_job.json 2>&1 | grep -v Warning | tail -n 20")
     box.get(f"{remote_out}/manifest.json", run / "voices" / "manifest.json")
     for line in job["lines"]:
         box.get(f"{remote_out}/{line['id']}.wav", run / "voices" / f"{line['id']}.wav")
-    return {"seconds": round(time.time() - started, 1), "lines": {l["id"]: l["voice"]["kind"] for l in job["lines"]}}
+    spoken = time.time() - started
+    box.run(f"/root/ttsenv/bin/python /root/story_voices.py align {remote_out} --language {plan['params']['language']} 2>&1 | grep -v Warning | tail -n 3")  # the real time of every word, for the subtitles
+    box.get(f"{remote_out}/align.json", run / "voices" / "align.json")
+    return {"seconds": round(time.time() - started, 1), "speak_seconds": round(spoken, 1), "align_seconds": round(time.time() - started - spoken, 1), "lines": {l["id"]: l["voice"]["kind"] for l in job["lines"]}}
 
 
-def step_talk(plan: dict, cards: dict, cards_dir: Path, run: Path, comfy_url: str, lora: str, seed: int) -> dict:
-    timings = {}
+def padded_wav(source: Path | None, seconds: float, out: Path) -> Path:
+    """16 kHz mono wav of EXACTLY `seconds`: the voice line followed by silence (or only silence): what S2V is given for a shot."""
+    import wave
+
+    import numpy as np
+    samples = np.zeros(int(round(seconds * 16000)), dtype=np.int16)
+    if source is not None:
+        with wave.open(str(source), "rb") as handle:
+            data = np.frombuffer(handle.readframes(handle.getnframes()), dtype=np.int16).astype(np.float64)
+            if handle.getnchannels() == 2:
+                data = data[::2]
+            rate = handle.getframerate()
+        if rate != 16000:
+            data = np.interp(np.linspace(0, len(data) - 1, int(len(data) * 16000 / rate)), np.arange(len(data)), data)
+        samples[:min(len(samples), len(data))] = data[:len(samples)].astype(np.int16)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with wave.open(str(out), "wb") as handle:
+        handle.setnchannels(1)
+        handle.setsampwidth(2)
+        handle.setframerate(16000)
+        handle.writeframes(samples.tobytes())
+    return out
+
+
+def animate_jobs(plan: dict, cards: dict, run: Path) -> list[dict]:
+    """Every clip to make: id, source picture, audio (the voice line for a talking shot, silence otherwise), seconds, motion prompt. A talking shot starts from the portrait of its speaker, a choice
+    from the portraits of the two characters (each one waiting, silent), every other shot from its own still."""
     characters = {c["id"]: c for c in plan["characters"]}
+    jobs = []
     for shot in plan["shots"]:
-        if shot["kind"] != "talk":
-            continue
-        character = characters[shot["speaker"]]
         voice = run / "voices" / f"{shot['id']}.wav"
-        seconds = sr.wav_seconds(voice)  # the render holds the last frame for the short tail
-        portrait = ROOT / cards["characters"][shot["speaker"]]["portrait"]["file"]
-        prompt = (f"{character['name']}, a {character['age']}-year-old {'woman' if character['gender'] == 'f' else 'man'} {character['role']}, speaks to the camera, {shot['visual']}, "
-                  "small natural head and hand movements, natural expression, cinematic, handheld")
-        entry = st.run_talk(portrait, voice, run / "talk" / f"{shot['id']}.mp4", prompt=prompt, seed=seed, lora=lora, seconds=seconds, base_url=comfy_url, registry=REGISTRY,
-                            label=f"{run.name}_{shot['id']}")
-        timings[shot["id"]] = {"seconds": entry["seconds"], "clip_seconds": round(seconds, 2), "lora": lora, "steps": entry["steps"]}
-        print(f"{shot['id']}: S2V {entry['seconds']} s", flush=True)
+        seconds = sr.shot_seconds(shot["kind"], sr.wav_seconds(voice))
+        look = f"{shot['visual']}, {LOOK}"
+        if shot["kind"] == "talk":
+            who = characters[shot["speaker"]]
+            portrait = ROOT / cards["characters"][shot["speaker"]]["portrait"]["file"]
+            jobs.append({"id": shot["id"], "source": portrait, "voice": voice, "seconds": seconds,
+                         "prompt": f"{who['name']}, a {who['age']}-year-old {'woman' if who['gender'] == 'f' else 'man'} {who['role']}, {look}"})
+        elif shot["kind"] == "choice":
+            for who_id in shot["in_shot"][:2]:
+                who = characters[who_id]
+                portrait = ROOT / cards["characters"][who_id]["portrait"]["file"]
+                jobs.append({"id": f"{shot['id']}_{who_id}", "source": portrait, "voice": None, "seconds": seconds,
+                             "prompt": f"{who['name']}, a {who['age']}-year-old {'woman' if who['gender'] == 'f' else 'man'} {who['role']}, {shot['visual']}, mouth closed, {LOOK}"})
+        else:
+            jobs.append({"id": shot["id"], "source": run / "stills" / f"{shot['id']}.png", "voice": None, "seconds": seconds, "prompt": look})
+    return jobs
+
+
+def step_animate(plan: dict, cards: dict, run: Path, comfy_url: str, lora: str, seed: int, only: set[str] | None = None, force: bool = False) -> dict:
+    """One S2V clip per job (see animate_jobs), into <run>/clips/<id>.mp4; a clip that exists is kept (re-run with --force or --only to make it again: the old one is kept as _vN)."""
+    timings = {}
+    for job in animate_jobs(plan, cards, run):
+        if only and job["id"] not in only and job["id"].split("_")[0] not in only:
+            continue
+        target = run / "clips" / f"{job['id']}.mp4"
+        if target.exists() and not (force or only):
+            continue
+        if target.exists():
+            target.replace(target.with_name(f"{target.stem}_v{len(list(target.parent.glob(target.stem + '_v*.mp4'))) + 1}.mp4"))
+        audio = padded_wav(job["voice"], job["seconds"], run / "audio16k" / f"{job['id']}.wav")
+        entry = st.run_talk(job["source"], audio, target, prompt=job["prompt"], seed=seed, lora=lora, seconds=job["seconds"], base_url=comfy_url, registry=REGISTRY, label=f"{run.name}_{job['id']}")
+        timings[job["id"]] = {"seconds": entry["seconds"], "clip_seconds": round(job["seconds"], 2), "lora": lora, "steps": entry["steps"]}
+        print(f"{job['id']}: S2V {entry['seconds']} s ({job['seconds']:.1f} s clip)", flush=True)
     return timings
 
 
@@ -112,7 +166,9 @@ def main() -> None:
     parser.add_argument("--ssh-host", default=os.environ.get("BOX_SSH_HOST", "n1.de.clorecloud.net"))
     parser.add_argument("--ssh-port", type=int, default=int(os.environ.get("BOX_SSH_PORT", "1380")))
     parser.add_argument("--ssh-key", default=os.environ.get("BOX_SSH_KEY", "~/.ssh/id_ed25519_clore"))
-    parser.add_argument("--no-bed", action="store_true")
+    parser.add_argument("--no-sound", action="store_true", help="no sound background (only the voices)")
+    parser.add_argument("--only", help="animate only these shot ids (comma-separated); the old clip is kept as _vN")
+    parser.add_argument("--force", action="store_true", help="animate again even if the clip exists")
     args = parser.parse_args()
     plan = json.loads(args.plan.read_text(encoding="utf-8"))
     cards_dir = args.cards.resolve()
@@ -129,10 +185,10 @@ def main() -> None:
             report[step] = step_transcribe(box, plan["params"]["language"])
         elif step == "voices":
             report[step] = step_voices(box, plan, run, args.seed)
-        elif step == "talk":
-            report[step] = step_talk(plan, cards, cards_dir, run, args.comfy_url, args.lora, args.seed)
+        elif step == "animate":
+            report[step] = {**report.get(step, {}), **step_animate(plan, cards, run, args.comfy_url, args.lora, args.seed, set(args.only.split(",")) if args.only else None, args.force)}
         elif step == "render":
-            report[step] = sr.render_story(plan, cards_dir, run / "voices", run / "talk", args.out, bed=not args.no_bed)
+            report[step] = sr.render_story(plan, cards_dir, run, args.out, sound=not args.no_sound)
         else:
             raise SystemExit(f"unknown step {step!r}; steps: {', '.join(STEPS)}")
         report.setdefault("step_seconds", {})[step] = round(time.time() - started, 1)

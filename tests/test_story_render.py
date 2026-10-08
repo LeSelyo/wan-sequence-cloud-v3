@@ -20,7 +20,7 @@ def test_a_word_that_ends_a_sentence_lasts_longer_than_the_same_word_inside_it()
 
 
 def test_shot_length_is_voice_plus_tail_and_a_choice_never_shorter_than_the_countdown():
-    assert sr.shot_seconds("talk", 2.0) == 2.15 and sr.shot_seconds("twist", 3.0) == 3.7
+    assert sr.shot_seconds("talk", 2.0) == 2.15 and sr.shot_seconds("twist", 3.0) == 5.4
     assert sr.shot_seconds("choice", 1.2) == sr.CHOICE_MIN_SECONDS and sr.shot_seconds("choice", 5.0) == 5.0
 
 
@@ -37,3 +37,17 @@ def test_word_and_choice_frames_have_the_video_size_and_the_ring_empties():
     assert first.size == last.size == sr.SIZE
     orange = lambda im: sum(1 for px in im.crop((0, 0, 576, 220)).getdata() if px[0] > 220 and 80 < px[1] < 160 and px[2] < 40)
     assert orange(first) > 3 * orange(last)
+
+
+def test_subtitle_words_follow_the_real_times_when_the_counts_match_and_are_spread_when_they_do_not():
+    aligned = [{"word": "You", "start": 0.2, "end": 0.4}, {"word": "choose", "start": 0.6, "end": 1.1}, {"word": "Brandt", "start": 1.3, "end": 1.9}]
+    windows = sr.aligned_windows("You choose Brandt.", aligned, 2.0)
+    assert [w[0] for w in windows] == ["You", "choose", "Brandt"] and windows[1][1] == 0.57 and windows[0][2] == windows[1][1]  # a word stays until the next one starts
+    spread = sr.aligned_windows("You choose Brandt now.", aligned, 2.0)  # the recogniser heard 3 words, the script has 4
+    assert [w[0] for w in spread] == ["You", "choose", "Brandt", "now"] and spread[0][1] == 0.17 and all(a[2] <= b[1] + 1e-6 for a, b in zip(spread, spread[1:]))
+    assert sr.aligned_windows("Hi there.", None, 1.0) == sr.word_windows("Hi there.", 1.0)
+
+
+def test_a_two_line_end_card_fits_the_frame():
+    card = sr.word_image("Would you have chosen" + chr(10) + "Ilse?", y_fraction=0.5)
+    assert card.size == sr.SIZE and card.getbbox() is not None and card.getbbox()[0] > 0 and card.getbbox()[2] < sr.SIZE[0]
