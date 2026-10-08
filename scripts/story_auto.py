@@ -124,7 +124,12 @@ class Pipeline:
                             f"root@{host}"], check=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60)
 
     def api_token(self) -> str:
-        return self.box.run("cat /root/.api_token").strip()  # kept in memory only
+        """The token of the app on the box, kept in memory only: the picture client reads it from a module variable (it reads the environment once, at import), so it is set there."""
+        import trend_rain_anime as tr
+        token = self.box.run("cat /root/.api_token").strip()
+        tr.API_TOKEN = token
+        os.environ["WAN_API_TOKEN"] = token
+        return token
 
     def switch(self, family: str) -> None:
         """Stop the app and start it for another family (krea2 | s2v). One family at a time: the boxes have one GPU and the models do not share it."""

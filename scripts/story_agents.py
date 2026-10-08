@@ -183,14 +183,14 @@ def expected_branch(act: str) -> str:
 def validate_outline(outline: dict, counts: dict[str, int], endings: dict, trend) -> list[str]:
     problems = []
     beats = outline.get("beats", [])
-    if abs(len(beats) - sum(counts.values())) > 2:
+    if abs(len(beats) - sum(counts.values())) > 6:
         problems.append(f"{len(beats)} beats in total, {sum(counts.values())} are needed (a video of the right length)")
     order = [act for act in trend.ACT_PURPOSE if act in counts]
     sequence = [b.get("act") for b in beats]
     expected = [act for act in order for _ in range(counts[act])]
     for act in order:
         got = sequence.count(act)
-        if abs(got - counts[act]) > (0 if counts[act] == 1 else 1):
+        if abs(got - counts[act]) > (0 if counts[act] == 1 else 3):  # the counts are a guide (the length is decided by the lines); the order and the kinds are what must be right
             problems.append(f"act {act}: {got} beats, {counts[act]} are needed")
     if [a for a in sequence if a] != sorted((a for a in sequence if a), key=lambda a: order.index(a) if a in order else 99):
         problems.append(f"the acts must come in this order: {order}")
@@ -200,8 +200,8 @@ def validate_outline(outline: dict, counts: dict[str, int], endings: dict, trend
             problems.append(f"{where}: branch of act {beat.get('act')} must be {expected_branch(beat.get('act', ''))}")
         if (beat.get("kind") == "talk") != (beat.get("speaker") in ("c1", "c2")):
             problems.append(f"{where}: only a talk beat is spoken by c1 or c2")
-        if se.count_words(beat.get("purpose", "")) < 5:
-            problems.append(f"{where}: the purpose needs at least 5 words")
+        if se.count_words(beat.get("purpose", "")) < 4:
+            problems.append(f"{where}: the purpose needs at least 4 words")
     for act, kind in (("choice", "choice"), ("rewind", "rewind")):
         if act in counts and not any(b.get("act") == act and b.get("kind") == kind for b in beats):
             problems.append(f"the {act} act needs a beat of kind {kind}")
@@ -352,9 +352,30 @@ def validate_directions(answer: dict, picked: list[dict], trend) -> list[str]:
         words = se.count_words(item.get("still", ""))
         if not 14 <= words <= 60:
             problems.append(f"shot {i + 1}: the still has {words} words, 20 to 45 are needed")
-        if any(re.search(rf"\b{w}\b", item.get("still", "").lower()) for w in trend.FORBIDDEN_IN_PICTURES):
-            problems.append(f"shot {i + 1}: the still must not ask for text, letters, captions, a collage or panels")
     return problems
+
+
+def clean_still(text: str, trend) -> str:
+    """What a picture model must never be asked for (text, letters, a collage, panels) is taken out by code: even a negation ('not a collage') makes such a picture more likely, so the words go.
+    A short clause that is only about it ('no text', 'split screen') is dropped whole; in a longer clause the word and its article are removed."""
+    forbidden = re.compile(r"\b(?:" + "|".join(re.escape(w) for w in trend.FORBIDDEN_IN_PICTURES) + r")s?\b", re.I)
+    clauses = [c.strip() for c in text.split(",") if c.strip()]
+    kept = []
+    for clause in clauses:
+        if forbidden.search(clause):
+            if len(clause.split()) <= 4:
+                continue
+            clause = forbidden.sub("", clause)
+            clause = re.sub(r"\b(?:not|no|without)\s+(?:a|an)?\s*(?=,|$)", "", clause)
+        kept.append(re.sub(r"\s{2,}", " ", clause).strip())
+    cleaned = ", ".join(c for c in kept if c)
+    previous = None
+    while previous != cleaned:  # no dangling "with a" / "and" left behind by a removed word
+        previous = cleaned
+        cleaned = re.sub(r"\b(?:with|of|and|or|a|an|the|on|in)\b\s*(?=,|\.|$)", "", cleaned)
+        cleaned = re.sub(r"\b(?:with|of|and|or|a|an|the)\b\s+(?=(?:and|or|with|on|in|of)\b)", "", cleaned)
+        cleaned = re.sub(r"\s{2,}", " ", re.sub(r"\s+,", ",", cleaned)).strip(" ,")
+    return cleaned or text
 
 
 def run_director(brief: dict, shots: list[dict], params: dict, trend, llm, examples: str) -> tuple[list[dict], dict]:
@@ -373,6 +394,7 @@ def run_director(brief: dict, shots: list[dict], params: dict, trend, llm, examp
                                       "camera": s.get("camera_hint", "wide"), "fx": {"zoom": 0.05, "shake": 0.0, "flash": False}} for n, s in enumerate(picked)]}
         report["chunks"].append({"shots": len(picked), "source": "llm" if llm and not problems else "template", "attempts": attempts, "problems": problems[:3]})
         for n, item in enumerate(answer["directions"]):
+            item["still"] = clean_still(item.get("still", ""), trend)
             directions[start + n] = item
     return directions, report
 

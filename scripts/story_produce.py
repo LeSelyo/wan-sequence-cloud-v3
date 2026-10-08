@@ -31,7 +31,15 @@ ROOT = Path(__file__).resolve().parent.parent
 REGISTRY = ROOT / "results" / "story_trend" / "generations.json"
 VOICES_JSON = se.VOICES_FILE
 STEPS = ("transcribe", "voices", "animate", "render")
-LOOK = "cinematic, realistic, dark moody night, rain, film grain, natural motion"
+LOOK = "cinematic, realistic, moody, natural motion"  # the default; a plan with a brief gets the atmosphere and the hour of ITS world (see look_of)
+
+
+def look_of(plan: dict) -> str:
+    """The words added to every animation prompt: the atmosphere of the world of THIS story (a lunar dome has no rain)."""
+    world = (plan.get("brief") or {}).get("world")
+    if not world:
+        return LOOK
+    return f"cinematic, realistic, {world['atmosphere']}, {world['hour']}, natural motion"
 
 
 class Box:
@@ -125,7 +133,7 @@ def animate_jobs(plan: dict, cards: dict, run: Path) -> list[dict]:
     for index, shot in enumerate(plan["shots"]):
         voice = run / "voices" / f"{shot['id']}.wav"
         seconds = sr.shot_seconds(shot["kind"], sr.wav_seconds(voice), last=index == len(plan["shots"]) - 1)
-        look = f"{shot['visual']}, {LOOK}"
+        look = f"{shot['visual']}, {look_of(plan)}"
         if shot["kind"] == "talk":
             who = characters[shot["speaker"]]
             portrait = ROOT / portrait_of(cards, shot["speaker"])
@@ -136,7 +144,7 @@ def animate_jobs(plan: dict, cards: dict, run: Path) -> list[dict]:
                 who = characters[who_id]
                 portrait = ROOT / portrait_of(cards, who_id)
                 jobs.append({"id": f"{shot['id']}_{who_id}", "source": portrait, "voice": None, "seconds": seconds,
-                             "prompt": f"{who['name']}, a {who['age']}-year-old {'woman' if who['gender'] == 'f' else 'man'} {who['role']}, {shot['visual']}, mouth closed, {LOOK}"})
+                             "prompt": f"{who['name']}, a {who['age']}-year-old {'woman' if who['gender'] == 'f' else 'man'} {who['role']}, {shot['visual']}, mouth closed, {look_of(plan)}"})
         else:
             jobs.append({"id": shot["id"], "source": run / "stills" / f"{shot['id']}.png", "voice": None, "seconds": seconds, "prompt": look})
     return jobs

@@ -206,3 +206,31 @@ def test_the_writer_is_asked_for_short_lines_on_average_and_told_when_a_chunk_is
     assert len(problems) >= 1 and "too long on average" in problems[0]
     ok = {"lines": [{"text": f"short line {n}", "location": "boat", "in_shot": []} for n in range(3)]}
     assert sa.validate_lines(ok, beats, ["boat"], 14, avg_words=7) == []
+
+
+def test_a_picture_description_never_keeps_text_collage_or_panels_even_as_a_negation():
+    for dirty in ("a boat at night, not a collage, rain falling", "a city, no text, split screen, with letters on the wall", "wide view of the sea with a caption and a logo, dramatic"):
+        cleaned = sa.clean_still(dirty, TREND)
+        assert not any(word in cleaned.lower() for word in TREND.FORBIDDEN_IN_PICTURES) and cleaned and not cleaned.endswith(("with", "and", "a"))
+    assert sa.clean_still("a plain clear sentence about a boat", TREND) == "a plain clear sentence about a boat"
+    assert sa.clean_still("a boat at night, not a collage, rain falling", TREND) == "a boat at night, rain falling"
+
+
+def test_the_look_of_the_animation_comes_from_the_world_of_the_story_not_from_a_fixed_rain():
+    import story_produce as sp
+    plan = {"brief": {"world": {"atmosphere": "dry vacuum, violet glow", "hour": "night"}}}
+    assert "rain" not in sp.look_of(plan) and "violet glow" in sp.look_of(plan) and "rain" not in sp.look_of({})
+
+
+def test_the_planner_is_not_rejected_for_a_few_beats_too_many_but_is_for_a_wrong_order():
+    counts = TREND.budget(150, 2)
+    acts = [a for a in counts for _ in range(counts[a] + (2 if a == "offers" else 0))]
+    kinds = {"choice": "choice", "rewind": "rewind"}
+    beats = [{"act": a, "branch": "B" if a in ("rewind", "branch_b") else "A" if a == "branch_a" else "main", "kind": kinds.get(a, "narration"), "speaker": "narrator", "purpose": "something happens here now"} for a in acts]
+    for twist_act in ("branch_a", "branch_b"):
+        [b for b in beats if b["act"] == twist_act][-1]["kind"] = "twist"
+    beats[0]["kind"] = "narration"
+    outline = {"hook_title": "POV: A\nB", "beats": beats, "ending_label_a": "X", "ending_label_b": "Y", "closing_question": "A\nB", "caption": "#a #b #c #d #e"}
+    assert sa.validate_outline(outline, counts, {"A": "bad", "B": "good"}, TREND) == []
+    outline["beats"] = beats[10:] + beats[:10]
+    assert any("order" in p for p in sa.validate_outline(outline, counts, {"A": "bad", "B": "good"}, TREND))
