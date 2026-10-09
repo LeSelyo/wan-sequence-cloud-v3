@@ -405,6 +405,11 @@ class Pipeline:
             self.report_path.write_text(json.dumps(self.report, indent=1, ensure_ascii=False), encoding="utf-8")
             print(f"[{step}] done in {self.report['steps'][step]['seconds']} s", flush=True)
         print(json.dumps({s: d for s, (ok, d) in self.status().items()}, indent=1))
+        try:  # what the pipeline can measure by itself, written at the end of every run (scripts/story_qa.py)
+            import story_qa
+            print(f"quality report: {story_qa.write(self.root)}", flush=True)
+        except Exception as error:  # a report that cannot be made never costs the video
+            print(f"quality report not made: {error}", flush=True)
 
 
 def main() -> None:
