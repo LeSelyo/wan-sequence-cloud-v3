@@ -89,8 +89,9 @@ def build_prompt(context: str, params: dict, endings: dict, location_ids: list[s
     else:
         structure += (f"5. BRANCH A (branch 'A', you follow c1): about {int(n * 0.5)} shots, ends {endings['A'].upper()}; the last shot is kind 'twist' with ending '{endings['A']}'.\n"
                       "6. end_card = a closing question, end_card_small = 'FOLLOW FOR PART 2'.\n")
+    sentences = len(re.findall(r"[.!?]+(?:\s|$)", context.strip())) or 1  # outside the f-string: a backslash in an f-string expression is a SyntaxError before Python 3.12 (the image runs 3.10)
     return (f"You write a vertical TikTok video, 'you must choose' trend: a second-person interactive story ('you') with a choice and a twist ending, as a JSON list of SHOTS.\n"
-            f"CONTEXT ({len(re.findall(r'[.!?]+(?:\s|$)', context.strip())) or 1} sentences): {context}\n\nLANGUAGE of the spoken text, hook_title, end cards and tags: {language}. The 'still', 'motion' and 'time' fields are ALWAYS English.\n"
+            f"CONTEXT ({sentences} sentences): {context}\n\nLANGUAGE of the spoken text, hook_title, end cards and tags: {language}. The 'still', 'motion' and 'time' fields are ALWAYS English.\n"
             f"TARGET: about {params['target_seconds']} seconds = about {n} shots, about {words} spoken words in total. Tone: {params['tone']}. Everything fictional: invent new names; if the context names a real public figure, "
             f"replace them by an invented archetype and list the replacement in 'substitutions'.\n\nSTRUCTURE (in this order):\n{structure}\n"
             f"RULES: every shot has a spoken 'text' of at most {MAX_SPOKEN_WORDS} words (short punchy sentences). kind 'talk' = a main character says it IN the scene (speaker c1 or c2); every other kind is the narrator "
