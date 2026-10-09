@@ -37,12 +37,15 @@ SCHEMA = {
 }
 PROMPT = ("You check ONE picture made for a short cinematic story. Every person in it is fictional.\n"
           "THE WORLD of the story: {setting}. Atmosphere: {atmosphere}. Hour: {hour}.\n"
+          "THE LOOK of this world: made of {made_of}. An unusual world looks different from ordinary places: what is made of bone, wax, shell or any strange material may look like rock or a cave. "
+          "Judge the materials, the colours and the light, not whether the picture looks like an ordinary place.\n"
           "THE PLACE of this shot: {place}\n"
           "THE SHOT should show: {still}\n\n"
           "Look at the picture and answer strictly and honestly:\n"
           "- place_seen: in at most 12 words, what place the picture really shows.\n"
           "- sunlight_or_blue_sky: true if the light looks like the sun or daylight (sunbeams, bright warm patches on the floor, a blue daytime sky). A window that shows space, stars or a dark night sky is false.\n"
-          "- matches_world: 1 to 5. 5 = clearly this world and this place; 1 = another world (for example an old stone arcade, a village or a garden for a space station). "
+          "- matches_world: 1 to 5. 5 = clearly this world and this place; 4 = the materials, colours and light fit the look of this world even if the place looks unusual; 1 or 2 = something that clearly belongs to another world "
+          "(for example an old stone arcade, a village or a garden for a space station; a bunker, crates or numbered doors for a living creature). "
           "If the place is NOT visible (a close-up of hands or of an object), judge whether the objects, materials and light fit this world, and give 3 when they are neutral.\n"
           "- action_visible: true if what the shot should show (the action, the object, the people) can be seen.\n"
           "- collage_or_split_panels: true if the picture is made of several panels or a collage.\n"
@@ -52,14 +55,17 @@ PROMPT = ("You check ONE picture made for a short cinematic story. Every person 
           "- garbled_text: true if a sign or a label has unreadable or invented letters.\n"
           "- problems: a short list of what is wrong with the picture for THIS story (empty if nothing).")
 SAME_PERSON_NONE = "always true here (there is no reference portrait)."
-SAME_PERSON_REFS = ("the pictures BEFORE the last one are the reference PORTRAITS of the character(s) who must appear in the last picture: {people}. True if the person (or, for two people, the first one on the left) "
-                    "clearly has the same face, hair and age as the portrait and wears what is described; false for a stranger, the wrong clothes, a deformed or glitched head (blobs, foam, a second face).")
+SAME_PERSON_REFS = ("the pictures BEFORE the last one are the reference PORTRAITS of the character(s) who must appear in the last picture: {people}. True if the person "
+                    "clearly has the same face, hair and age as the portrait and wears what is described. With two people the first portrait is the person on the LEFT and the second portrait the person on the RIGHT: "
+                    "BOTH must match their own portrait (a face or a costume given to the wrong person is false). False for a stranger, the wrong clothes, a deformed or glitched head (blobs, foam, a second face).")
 DARK_HOURS = {"night", "midnight", "nightfall", "dusk", "evening", "twilight"}
 
 
 def world_of(plan: dict) -> dict:
     world = (plan.get("brief") or {}).get("world") or {}
-    return {"setting": world.get("setting") or plan.get("context", "")[:200], "atmosphere": world.get("atmosphere", "dark and tense"), "hour": world.get("hour", "night")}
+    style = plan.get("style") or {}
+    made_of = ", ".join([*style.get("materials", []), *(["palette " + ", ".join(style["palette"])] if style.get("palette") else [])]) or "(not specified)"
+    return {"setting": world.get("setting") or plan.get("context", "")[:200], "atmosphere": world.get("atmosphere", "dark and tense"), "hour": world.get("hour", "night"), "made_of": made_of}
 
 
 def daylight_forbidden(plan: dict, shot: dict) -> bool:

@@ -48,3 +48,15 @@ def test_an_animation_starts_from_the_identity_picture_when_there_is_one(tmp_pat
     (tmp_path / "stills_id" / "s005.png").write_bytes(b"x")
     assert sid.source_of(tmp_path, shot) == tmp_path / "stills_id" / "s005.png"
     assert sid.missing(PLAN, CARDS, tmp_path) == []
+
+
+def test_the_two_shot_prompt_names_each_person_with_age_face_and_wardrobe_so_two_men_are_not_mixed():
+    import story_identity as sid_
+    tomas = {"id": "c1", "name": "Tomas", "gender": "m", "age": 45, "look": "Weathered face, milky white eyes, hands stained with beeswax.", "wardrobe": "Heavy, layered robes made of thick beeswax."}
+    ravi = {"id": "c2", "name": "Ravi", "gender": "m", "age": 28, "look": "Sharp features, scarred knuckles, curly black hair.", "wardrobe": "Light flexible gear scaled in iridescent chitin."}
+    prompt = sid_.prompt_two(tomas, ravi)
+    assert "man from Picture 2 on the left and the man from Picture 3 on the right" in prompt
+    assert "On the left is Tomas (45 years old, weathered face, milky white eyes, hands stained with beeswax, wearing heavy, layered robes made of thick beeswax)" in prompt
+    assert "on the right is Ravi (28 years old, sharp features" in prompt and "Never swap them" in prompt
+    import still_judge as sj_
+    assert "BOTH must match their own portrait" in sj_.SAME_PERSON_REFS and "{people}" in sj_.SAME_PERSON_REFS

@@ -65,3 +65,18 @@ def test_only_the_shots_with_a_picture_are_judged(tmp_path):
     calls = []
     results = sj.judge_stills(PLAN, tmp_path, lambda prompt, schema, image, seed: calls.append(image.name) or dict(GOOD))
     assert sorted(results) == ["s039", "s050"] and calls == ["s039.png", "s050.png"]  # the talking shot has no still
+
+
+def test_the_judge_is_told_what_the_world_is_made_of_so_a_bone_and_wax_world_is_not_taken_for_a_rock_cave():
+    import still_judge as sj_
+    plan = {"brief": {"world": {"setting": "the ribcage of a sleeping leviathan", "atmosphere": "honey and ozone", "hour": "day"}}, "context": "x",
+            "style": {"materials": ["calcified bone", "weeping beeswax"], "palette": ["ivory", "amber gold"]}, "locations": [{"id": "ribcage", "description": "the chest"}]}
+    seen = {}
+
+    def ask(prompt, schema, image, seed):
+        seen["prompt"] = prompt
+        return {"place_seen": "a cave", "sunlight_or_blue_sky": False, "matches_world": 4, "action_visible": True, "collage_or_split_panels": False, "impossible_geometry": False, "same_person": True,
+                "person_visible": False, "garbled_text": False, "problems": []}
+    result = sj_.judge_still(ask, Path("x.png"), {"location": "ribcage", "still": "bones", "kind": "narration"}, plan)
+    assert "made of calcified bone, weeping beeswax, palette ivory, amber gold" in seen["prompt"] and "Judge the materials, the colours and the light" in seen["prompt"] and result["ok"]
+    assert sj_.world_of({"context": "x"})["made_of"] == "(not specified)"  # an old plan without a style still works

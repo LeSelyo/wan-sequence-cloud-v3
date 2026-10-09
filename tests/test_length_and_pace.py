@@ -358,3 +358,7 @@ def test_a_lighting_the_model_keeps_getting_wrong_is_replaced_by_the_one_of_the_
     style, report = sa.run_look(leviathan_brief(), {"seed": 1}, TREND, length_llm(wrong))
     assert style is not None and report["source"] == "llm" and report["attempts"] == 3
     assert style["lighting"] in ("golden hour backlight", "overcast flat daylight") and style["materials"] == ["bone", "wax", "chitin"] and not sa.validate_look(style, leviathan_brief())
+
+
+def test_the_director_is_told_never_to_write_an_idiom_a_picture_model_draws_literally():
+    assert "NEVER an idiom or a metaphor in a picture" in TREND.DIRECTOR_PROMPT and "fork in the road" in TREND.DIRECTOR_PROMPT

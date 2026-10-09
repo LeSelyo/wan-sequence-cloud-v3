@@ -10,8 +10,8 @@ the BRIEF that the analyst agent extracts from the context. `PROMPT_VERSION` cha
 from __future__ import annotations
 
 NAME = "you_must_choose"
-PROMPT_VERSION = "2026-10-09.7"  # .7: the LOOK agent (the art direction comes from the invented world), the director never writes a format or a ratio in a picture description; .6: the LENGTH agent, the outline planned by parts
-PROMPT_VERSION_PREVIOUS = "2026-10-09.6"  # .6: the LENGTH agent decides how long a video is when none is fixed (2 to 10 minutes), the outline of a long video is planned by parts, its lines are written in smaller chunks (.5: the characters are introduced by name BEFORE the offer, the offer is immediately followed by the choice)
+PROMPT_VERSION = "2026-10-10.1"  # 10.1: the director never writes an idiom or a metaphor in a picture; 09.7: the LOOK agent (the art direction comes from the invented world), no format or ratio in a picture description; 09.6: the LENGTH agent, the outline planned by parts
+PROMPT_VERSION_PREVIOUS = "2026-10-09.7"  # 09.7: the LOOK agent, no ratio in a picture description (09.6: the LENGTH agent decides the length when none is fixed, the outline of a long video is planned by parts)
 KINDS = ["narration", "talk", "pov", "choice", "twist", "rewind", "offer"]
 CAMERAS = ["wide", "medium", "close", "pov"]
 LOCATION_TAGS = ["space", "sea", "city", "shelter", "window", "forest", "desert", "ice", "underground"]  # the tags that make the style prompt force what a kind of place must always show
@@ -190,6 +190,7 @@ For each shot below (its spoken line is given), write the PICTURE and the CAMERA
 RULES
 - "still" = ONE concrete filmable photograph (what is in the frame, the angle, the light), 20 to 45 words, in English, a single continuous scene. NEVER ask for text, letters, captions, logos, a collage, panels or a
   split screen. Characters: use their look and wardrobe from the brief. For kind talk and choice leave "still" empty (the portrait of the character is used) but ALWAYS write the "motion": how the character acts while speaking (gesture, glance, expression, what moves around).
+- NEVER an idiom or a metaphor in a picture: a picture model draws the words literally (a "fork in the road" was drawn as a fork, the cutlery). Write what a camera SEES (a path that splits in two).
 - "motion" = the camera move and what moves in the picture, 10 to 25 words, English. Use a DIFFERENT camera move from the neighbouring shots, from this list or similar: {{camera_moves}}. At least one third of
   the shots must be dynamic (fast flight, chase, whip pan, impact).
 - WHO IS WHO: whenever a main character is in a picture write his or her NAME in the still AND in the motion, with what he or she wears; never "he", "she", "the figure", "the subject" alone. The viewer is never "the narrator": write "you" (first-person view), "your hands" or "the camera".

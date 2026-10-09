@@ -19,7 +19,8 @@ TWO_SHOT_ID = "two_shot"  # the picture of the offers and of the choice: both ch
 SINGLE = ("Put the {who} from Picture 2 into the scene of Picture 1 in place of the person who is there, with the same pose and the same action. "
           "{pronoun} is wearing {wardrobe}. Keep the place, the light, the camera angle and exactly the same framing and size of the person as in Picture 1 (a close-up stays a close-up).")
 TWO = ("Put the {first} from Picture 2 on the left and the {second} from Picture 3 on the right, side by side in the place of Picture 1, close together, both facing the camera, "
-       "each one holding out one open hand toward the camera. Keep their faces, hair and clothes exactly as in Pictures 2 and 3. Same place, same light.")
+       "each one holding out one open hand toward the camera. Keep their faces, hair and clothes exactly as in Pictures 2 and 3. Same place, same light. "
+       "On the left is {first_name} ({first_detail}); on the right is {second_name} ({second_detail}). Never swap them and never mix their faces or their clothes.")
 WITH_PEOPLE = ("narration", "pov", "twist", "rewind")
 
 
@@ -37,8 +38,15 @@ def prompt_single(character: dict) -> str:
     return SINGLE.format(who=person_word(character), pronoun="She" if character.get("gender") == "f" else "He", wardrobe=wardrobe[:1].lower() + wardrobe[1:])
 
 
+def detail_of(character: dict) -> str:
+    """What tells the two people apart for the edit model (two men looked alike and got each other's face and costume): age, face, wardrobe."""
+    words = lambda text, n: " ".join((text or "").rstrip(". ").split()[:n]).lower()  # noqa: E731
+    return f"{character.get('age', '?')} years old, {words(character.get('look'), 10)}, wearing {words(character.get('wardrobe'), 10)}"
+
+
 def prompt_two(first: dict, second: dict) -> str:
-    return TWO.format(first=person_word(first), second=person_word(second))
+    return TWO.format(first=person_word(first), second=person_word(second), first_name=first.get("name", "the first"), second_name=second.get("name", "the second"),
+                      first_detail=detail_of(first), second_detail=detail_of(second))
 
 
 def faces_seen(run: Path) -> dict[str, bool]:
