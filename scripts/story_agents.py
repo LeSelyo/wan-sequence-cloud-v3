@@ -104,7 +104,10 @@ def draw_seed_elements(params: dict, trend) -> dict:
     role_a, role_b = rnd.choice(trend.IDEA_ROLES)
     if rnd.random() < 0.5:
         role_a, role_b = role_b, role_a
-    return {"setting": setting, "premise": premise, "hour": hour, "role_a": role_a, "role_b": role_b, "tone": rnd.choice(trend.IDEA_TONES)}
+    bones = {"setting": setting, "premise": premise, "hour": hour, "role_a": role_a, "role_b": role_b, "tone": rnd.choice(trend.IDEA_TONES), "mode": "pool"}
+    if getattr(trend, "IDEA_INVENT", False):  # the model INVENTS the place from two ingredients drawn by the seed; the pool world stays as the fallback without a model
+        bones.update(mode="invent", ingredients=rnd.sample(trend.IDEA_INGREDIENTS, 2), hour=rnd.choice(trend.HOURS), fallback_world=(setting, premise))
+    return bones
 
 
 def validate_idea(answer: dict, bones: dict) -> list[str]:
@@ -123,14 +126,19 @@ def validate_idea(answer: dict, bones: dict) -> list[str]:
 def run_idea(params: dict, trend, llm) -> tuple[str, dict]:
     """FROM NOTHING: the context of the video is invented. Returns (context, report). Without a model the bones become a plain three-sentence context."""
     bones = draw_seed_elements(params, trend)
-    plain = f"{bones['setting'].capitalize()}, {bones['hour']}. {bones['premise'].capitalize()}. Two strangers each offer to save you: a {bones['role_a']} and a {bones['role_b']}."
+    world = bones.get("fallback_world") or (bones["setting"], bones["premise"])
+    plain = f"{world[0].capitalize()}, {bones['hour']}. {world[1].capitalize()}. Two strangers each offer to save you: a {bones['role_a']} and a {bones['role_b']}."
     if llm is None:
         return plain, {"source": "template", "bones": bones}
-    prompt = fill(trend.IDEA_PROMPT, {"setting": bones["setting"], "premise": bones["premise"], "hour": bones["hour"], "role_a": bones["role_a"], "role_b": bones["role_b"], "tone": bones["tone"]})
+    if bones["mode"] == "invent":
+        prompt = fill(trend.IDEA_INVENT_PROMPT, {"ingredients": " + ".join(bones["ingredients"]), "hour": bones["hour"], "role_a": bones["role_a"], "role_b": bones["role_b"], "tone": bones["tone"],
+                                                 "avoid": "; ".join(w[0] for w in trend.IDEA_WORLDS)})
+    else:
+        prompt = fill(trend.IDEA_PROMPT, {"setting": bones["setting"], "premise": bones["premise"], "hour": bones["hour"], "role_a": bones["role_a"], "role_b": bones["role_b"], "tone": bones["tone"]})
     answer, problems, attempts = call_agent(llm, prompt, trend.IDEA_SCHEMA, lambda a: validate_idea(a, bones), seed=params["seed"])
     if answer is None:
         return plain, {"source": "template", "bones": bones, "attempts": attempts, "problems": problems[:3]}
-    return answer["context"].strip(), {"source": "llm", "bones": bones, "attempts": attempts, "title": answer["title"]}
+    return answer["context"].strip(), {"source": "llm", "bones": bones, "attempts": attempts, "title": answer["title"], "invented": {"setting": answer.get("setting"), "premise": answer.get("premise")} if bones["mode"] == "invent" else None}
 
 
 # ---------------------------------------------------------------------------------------------- stage 1: the analyst

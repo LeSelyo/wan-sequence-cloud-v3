@@ -402,3 +402,17 @@ def test_the_two_offer_shots_get_the_same_two_shot_picture_made_by_code():
     still = sa.offer_still(brief, "corridor")
     assert "on the left a man (Military fatigues, dog tags)" in still and "on the right a woman (White coat, stethoscope)" in still and "both hold out one open hand toward the camera" in still
     assert "narrow red-lit corridor" in still and len(still.split()) <= 48
+
+
+def test_the_idea_agent_invents_the_place_from_two_drawn_ingredients_and_never_repeats_a_known_world():
+    bones = sa.draw_seed_elements({"seed": 7}, TREND)
+    assert bones["mode"] == "invent" and len(set(bones["ingredients"])) == 2 and bones["hour"] in TREND.HOURS and bones["fallback_world"][0] in [w[0] for w in TREND.IDEA_WORLDS]
+    assert len(TREND.IDEA_WORLDS) >= 30 and len(TREND.IDEA_ROLES) >= 28 and len(TREND.IDEA_TONES) >= 12
+    seen = {}
+
+    def llm(prompt, schema, seed=0):
+        seen["prompt"] = prompt
+        return {"title": "Salt Bells", "context": "The salt flats ring at dusk. You are a courier stuck on a cable car. A " + bones["role_a"] + " and a " + bones["role_b"] + " each offer to save you.", "setting": "a salt cable car", "premise": "the cable is singing"}
+    context, report = sa.run_idea({"seed": 7}, TREND, llm)
+    assert " + ".join(bones["ingredients"]) in seen["prompt"] and "never one of these (already made)" in seen["prompt"] and "a flooded megacity" in seen["prompt"]
+    assert report["invented"] == {"setting": "a salt cable car", "premise": "the cable is singing"} and "[[STAGE:idea]]" in seen["prompt"]

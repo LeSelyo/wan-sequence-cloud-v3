@@ -237,6 +237,38 @@ IDEA_WORLDS = [  # (the place, what is happening to it, the hour)
 IDEA_ROLES = [("ship captain", "doctor"), ("engineer", "priest"), ("soldier", "nurse"), ("smuggler", "scientist"), ("pilot", "teacher"), ("firefighter", "journalist"),
               ("mechanic", "mayor"), ("hunter", "botanist"), ("police officer", "street musician"), ("monk", "geologist"), ("radio operator", "chef"), ("guide", "surgeon")]
 IDEA_TONES = ["tense", "bleak", "paranoid", "desperate", "cold", "eerie"]
+IDEA_WORLDS += [
+    ("a cable-car station on a glacier", "a crack is splitting the ice under the pylons and the cabins are stuck above the void", "dawn"),
+    ("a floating market city on stilts", "the water is draining away and the whole city leans toward the abyss", "dusk"),
+    ("a deep-sea mining rig", "the pressure doors are failing one after the other and the lights go out level by level", "night"),
+    ("a hospital in a besieged city", "the generators are dying and the front line reaches the lower floors", "night"),
+    ("a mountain observatory", "a solar storm has fried every machine and an avalanche is coming", "day"),
+    ("an abandoned amusement park at the edge of a swamp", "a toxic tide is rising and the rides are starting to move by themselves", "dusk"),
+    ("a salt desert caravan", "the horizon has disappeared in a white storm and the water is nearly gone", "day"),
+    ("a high-speed train in a tunnel under a sea", "the tunnel is flooding behind the last carriage", "night"),
+    ("a floating greenhouse city in the clouds", "the balloons that hold it up are leaking one by one", "dawn"),
+    ("a cathedral turned refuge", "the walls are cracking from an earthquake that does not stop", "night"),
+    ("a polar research base", "the aurora has cut every radio and something is walking on the ice around the camp", "night"),
+    ("a stranded cruise ship in a dead port", "the lower decks are filling with a red tide and the lifeboats are gone", "dusk"),
+    ("a mining town under an ash cloud", "the volcano above it woke up and the only road is closing", "day"),
+    ("an orbital elevator", "the cable has snapped above the middle platform and the cabin is falling slowly", "dawn"),
+    ("a submarine under the ice cap", "the reactor is overheating and the ice above is closing", "night"),
+    ("a night market in a flooded old town", "the dams have broken upstream and the first wave is five minutes away", "night"),
+    ("a wind farm in a hurricane", "the towers are folding one by one toward the control hut", "dusk"),
+    ("a library-fortress in a burning city", "the fire is eating the stacks and the exits are walled by collapsed shelves", "night"),
+    ("a mountain pass monastery", "a blizzard has erased the path and the bell keeps ringing though nobody rings it", "dusk"),
+    ("a desert pipeline station", "a sandstorm the size of a country is erasing the track and the pumps are about to explode", "day"),
+]
+IDEA_ROLES += [("lighthouse keeper", "surgeon"), ("bounty hunter", "librarian"), ("diver", "judge"), ("train conductor", "astronomer"), ("beekeeper", "general"), ("cartographer", "locksmith"),
+               ("midwife", "bodyguard"), ("clockmaker", "paramedic"), ("fisherman", "archivist"), ("stunt pilot", "veterinarian"), ("pastor", "demolition expert"), ("courier", "hacker"),
+               ("park ranger", "arms dealer"), ("magician", "forensic doctor"), ("chef", "mountain guide"), ("translator", "sapper"), ("farmer", "pharmacist"), ("sailor", "violinist")]
+IDEA_TONES += ["claustrophobic", "melancholic", "feverish", "ominous", "ruthless", "dreamlike", "grim", "restless"]
+# the ingredients the model is given to INVENT a place of its own (two are drawn by the seed, the place must be new and must not be one of the worlds above)
+IDEA_INGREDIENTS = ["salt", "glass", "ice", "rust", "moss", "neon", "sand", "ash", "steam", "fog", "copper", "bones", "silk", "oil", "lava", "coral", "concrete", "mirrors", "rope", "bells",
+                    "cables", "wax", "tar", "snow", "tide", "thorns", "lanterns", "dust", "marble", "wire", "rails", "sails", "chimneys", "bridges", "tunnels", "silos", "balloons", "antennas",
+                    "greenhouses", "stairs", "elevators", "cranes", "locks", "orchards", "cliffs", "caves", "canals", "domes", "wells", "ladders", "pylons", "reefs", "ruins", "storms",
+                    "pipes", "ferries", "windmills", "scaffolding", "dams", "railways"]
+IDEA_INVENT = True  # False = the place is drawn from IDEA_WORLDS as before
 IDEA_PROMPT = """[[STAGE:idea]]
 You are the IDEA writer of a short-video studio, trend "you must choose" (a second-person story: two characters each offer to save you, you choose, each choice has an ending with a twist). Nobody gave you a
 subject: a random seed gives the bones, you invent the rest.
@@ -247,7 +279,19 @@ Write the CONTEXT of ONE video: three or four sentences in English that say WHER
 (name their two roles). Be concrete and vivid, add one surprising detail of your own, no real people or brands, do not tell how it ends. Also give a short title (2 to 4 words).
 
 Answer with the JSON only."""
-IDEA_SCHEMA = {"type": "object", "properties": {"title": {"type": "string"}, "context": {"type": "string"}}, "required": ["title", "context"]}
+IDEA_INVENT_PROMPT = """[[STAGE:idea]]
+You are the IDEA writer of a short-video studio, trend "you must choose" (a second-person story: two characters each offer to save you, you choose, each choice has an ending with a twist). Nobody gave you a
+subject: you INVENT the place and the catastrophe, from the seed below.
+
+SEED (follow it): ingredients to build the place around = {{ingredients}} | hour = {{hour}} | the two characters who offer to save you = a {{role_a}} and a {{role_b}} | tone = {{tone}}
+The place must be NEW: never one of these (already made): {{avoid}}.
+
+Invent a filmable, physically concrete place (one where a person can run, climb, push, hold on) and what is happening to it right now. Then write the CONTEXT of ONE video: three or four sentences in English
+that say WHERE and WHEN we are, WHAT is happening, who YOU are and what you need, and that two strangers each offer to save you (name their two roles). Be vivid, add one surprising detail of your own, no real
+people or brands, do not tell how it ends. Also give the place in a few words ("setting"), what is happening to it ("premise") and a short title (2 to 4 words).
+
+Answer with the JSON only."""
+IDEA_SCHEMA = {"type": "object", "properties": {"title": {"type": "string"}, "context": {"type": "string"}, "setting": {"type": "string"}, "premise": {"type": "string"}}, "required": ["title", "context"]}
 
 VERIFIER_PROMPT = """[[STAGE:verifier]]
 You are the VERIFIER of a short-video studio. Read the LAST LINES of one branch of a "you must choose" story and say how the story ENDS FOR THE VIEWER ("you"):
