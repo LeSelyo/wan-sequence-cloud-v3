@@ -64,6 +64,7 @@ MATERIALS_BY_KIND = {  # a station is metal and glass, not carved wood and dusty
     "shelter": ["rough concrete", "scratched steel", "worn leather", "dusty fabric"],
     "sea": ["wet asphalt", "scratched steel", "worn leather", "rough concrete"],
 }
+FANTASY_WORDS = ("magic", "magical", "fairy", "elf", "elves", "dragon", "wizard", "witch", "spell", "enchanted", "kingdom", "castle", "goblin", "sorcerer", "spirit", "ghost", "haunted")
 DEFAULT_RULE = ("cold moonlit", "35mm cinematic", "rich earth tones", "polished high-budget cinema still", "one recurring symbol repeated on props", ["window"])
 PALETTES = [["bronze", "brass", "charcoal", "ember orange"], ["steel blue", "ash grey", "sodium yellow", "black"], ["deep teal", "amber", "rust", "off-white"],
             ["olive", "mud brown", "tungsten orange", "soot"], ["midnight blue", "silver", "crimson accent", "concrete grey"]]
@@ -116,6 +117,8 @@ def style_from_context(context: str, rng: random.Random, name: str | None = None
     votes = {rule[6][0]: sum(1 for t in tags if t == rule[6][0]) for rule in CONTEXT_RULES}  # the first tag of a rule names its kind of world
     voted = max(CONTEXT_RULES, key=lambda r: votes[r[6][0]]) if any(votes.values()) else None
     rule = voted if voted and votes[voted[6][0]] > 0 else next((r for r in CONTEXT_RULES if words & set(r[0])), None)
+    if rule is None and words & set(FANTASY_WORDS):  # a fantasy world with no other kind of place: warm light, a wide lens, earth tones, a rune as its motif (a photoreal RENDER of a fantastic world)
+        rule = (FANTASY_WORDS, "golden hour backlight", "anamorphic 40mm", "rich earth tones", "polished high-budget cinema still", "one recurring rune carved on a few stones and doors", ["window"])
     lighting, lens, grade, texture, motif, rule_tags = rule[1:] if rule else DEFAULT_RULE
     kinds = {*rule_tags, *tags}
     forced = {tag: FORCED_BY_KIND[tag] for tag in sorted(kinds) if tag in FORCED_BY_KIND}  # every kind of place of the story keeps what it must show (the shelter has no daylight)
@@ -158,11 +161,11 @@ def shot_hour_style(style: dict, shot_time: str | None, story_hour: str | None =
 def style_via_llm(context: str, llm_json, seed: int = 0, attempts: int = 3) -> dict | None:
     """Ask a language model for a style: it must answer with the JSON schema, every axis an enum, then the answer is VALIDATED and the model is told what is wrong (2 repairs).
     `llm_json(prompt, schema) -> dict`. Returns None when the model never produces a valid style (the caller falls back to style_from_context)."""
-    prompt = ("You are a film production designer. Create ONE complete art direction for a short realistic cinematic story. All characters and places are fictional.\n"
+    prompt = ("You are a film production designer. Create ONE complete art direction for a short cinematic story of ANY genre (fantasy and supernatural included). All characters and places are fictional.\n"
               f"Story context: {context}\n"
               "Choose lighting, lens, grade and texture ONLY from the allowed lists of the schema. The motif is one recurring emblem or object shape that appears on props and walls. "
               "forced_elements maps a kind of place (e.g. window, space, shelter) to what it must ALWAYS show, so every shot of that place looks the same world (for a spaceship: the windows always "
-              "show the black void and stars). Keep it concrete, filmable, photoreal. No cartoon.")
+              "show the black void and stars). Keep it concrete, filmable, and RENDERED as a believable photographic image, whatever the genre. No cartoon.")
     last: list[str] = []
     for _ in range(attempts):
         try:

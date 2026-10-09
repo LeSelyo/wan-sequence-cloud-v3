@@ -35,12 +35,12 @@ def character_text(c: dict) -> str:
 
 def sheet_prompt(c: dict, style: dict) -> str:
     return (f"character reference sheet of {character_text(c)}, three views of the SAME person side by side on a plain neutral grey studio background: front view, three-quarter view and side profile, "
-            f"full body, photorealistic, sharp detailed face, natural skin, {ss.style_prompt(style)}")
+            f"full body, photorealistic, sharp detailed face, believable skin or surface texture, {ss.style_prompt(style)}")
 
 
 def portrait_prompt(c: dict, style: dict, loc: dict | None) -> str:
     place = f", in {loc['description']}" if loc else ""
-    return (f"cinematic medium close-up of {character_text(c)}{place}, looking straight at the camera, mouth slightly open as if speaking, photorealistic, sharp detailed face, natural skin, "
+    return (f"cinematic medium close-up of {character_text(c)}{place}, looking straight at the camera, mouth slightly open as if speaking, photorealistic, sharp detailed face, believable skin or surface texture, "
             f"{ss.style_prompt(style, (loc or {}).get('tags', []))}")
 
 

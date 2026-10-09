@@ -62,14 +62,17 @@ ACT_PURPOSE = {
 # ---------------------------------------------------------------------------------------------- the constant prompts
 ANALYST_PROMPT = """[[STAGE:analyst]]
 You are the ANALYST of a short-video studio. The trend is "you must choose": a second-person interactive story ("you") in which two characters offer to save you, the viewer chooses, and each choice
-leads to a different ending with a twist. Read the CONTEXT below (three sentences or more) and extract the BRIEF the other writers will work from.
+leads to a different ending with a twist. Read the CONTEXT below ({{context_size}}) and extract the BRIEF the other writers will work from. The GENRE is the one of the context (realistic, science fiction, fantasy,
+supernatural...): never make the story more realistic or more ordinary than the context says.
 
 RULES
-- Keep EVERY concrete fact of the context (places, roles, objects, numbers, the hour, the weather). Invent only what is missing, and make it fit.
-- Exactly two main characters, ids "c1" and "c2": the two people named or described in the context (their roles come from it); if the context names a real public figure, invent an archetype with a made-up
-  name instead and list the replacement in "substitutions". Give each a name, a gender (m or f), an age, a face description, a wardrobe, what they PUBLICLY promise the viewer, and a HIDDEN TRUTH
+- Keep EVERY concrete fact of the context (places, roles, objects, numbers, the hour, the weather, the rules of the world, its magic). Invent only what is missing, and make it fit. The longer the context, the more
+  of it must be found in the brief: every named place becomes a location (up to the number asked), every object or rule goes into "premise", "stakes" or "must_include".
+- Exactly two main characters, ids "c1" and "c2": the two beings named or described in the context (people or not: a fairy, an elf thief, a ghost, a robot, a knight...; their roles come from it). If the context
+  does not describe them, INVENT them, fitting its world and genre. If the context names a real public figure, invent an archetype with a made-up name instead and list the replacement in "substitutions".
+  Give each a name, a gender (m or f: the closest one, it is used for the voice), an age, a face or body description, a wardrobe, what they PUBLICLY promise the viewer, and a HIDDEN TRUTH
   (what they are really doing or hiding) that a clue can reveal later.
-- "locations": 5 or 6 places of this world, id = short lowercase word, the first one is the main set; tags only from {{location_tags}}.
+- "locations": {{n_locations}} places of this world, id = short lowercase word, the first one is the main set; tags only from {{location_tags}}.
 - "scale_image": ONE grandiose picture of this world (epic scale) that will open the video.
 - "keywords": 8 to 12 words or short phrases that people search for about this story (the disaster, the place, the roles, the feeling), lowercase.
 - "hour" is one of {{hours}}; if the context gives none, choose the most dramatic one.
@@ -136,7 +139,7 @@ BEATS TO WRITE ({{count}}):
 Answer with the JSON list of lines only, same order, same count."""
 
 DIRECTOR_PROMPT = """[[STAGE:director]]
-You are the DIRECTOR of a short-video studio, trend "you must choose": vertical 9:16, realistic dark cinematic look, ONE art direction for the whole video (hour: {{hour}}; atmosphere: {{atmosphere}}).
+You are the DIRECTOR of a short-video studio, trend "you must choose": vertical 9:16, a clean, believable photographic cinematic look (a photoreal RENDER applied to ANY world, fantasy and supernatural ones included), ONE art direction for the whole video (hour: {{hour}}; atmosphere: {{atmosphere}}).
 For each shot below (its spoken line is given), write the PICTURE and the CAMERA MOVE.
 
 RULES
@@ -147,7 +150,7 @@ RULES
 - WHO IS WHO: whenever a main character is in a picture write his or her NAME in the still AND in the motion, with what he or she wears; never "he", "she", "the figure", "the subject" alone. The viewer is never "the narrator": write "you" (first-person view), "your hands" or "the camera".
 - Kind pov = FIRST PERSON: the picture shows YOUR hands and forearms (or what you see ahead of you) in the middle of a physical action, and the "motion" says what MOVES: the hands crank, push, pull or climb and the object turns, opens or gives way, the camera moves with you. Describe ONLY what is in the picture and what happens to it. Never a person who just stands and trembles.
 - Every shot with a character in it names a physical verb (walks, runs, climbs, turns, opens, reaches, falls); the kind offer shows c1 and c2 side by side, both facing you and holding out an open hand toward the camera.
-- Keep every picture PHYSICALLY TRUE to this world: no rain, wind, sea or handheld breathing where this world has none (a lunar dome, a vacuum, a desert...); use its own light, dust, steam, sparks, snow.
+- Keep every picture consistent with the rules of THIS world (its magic and fantasy too): no rain, wind or sea where this world has none (a lunar dome, a vacuum, a desert...); use its own light, dust, steam, sparks, snow, glow.
 - "fx": zoom 0.03 to 0.08; shake 0 to 1 (above 0.7 only on impacts, chases, crashes); flash true only on a shock.
 - "camera" in {{cameras}}. "time": only when the hour of the picture differs from "{{hour}}" (e.g. the dawn of a good ending), English, e.g. "it is dawn: golden light".
 - Every direction starts with "n": the NUMBER of its shot in the list below (1, 2, 3...), so that the pictures stay aligned with the lines: direction n is for shot n, never for another one.
@@ -276,19 +279,23 @@ subject: a random seed gives the bones, you invent the rest.
 SEED (follow it): place = {{setting}} | what is happening = {{premise}} | hour = {{hour}} | the two characters who offer to save you = a {{role_a}} and a {{role_b}} | tone = {{tone}}
 
 Write the CONTEXT of ONE video: three or four sentences in English that say WHERE and WHEN we are, WHAT is happening to the world, who YOU are and what you need, and that two strangers each offer to save you
-(name their two roles). Be concrete and vivid, add one surprising detail of your own, no real people or brands, do not tell how it ends. Also give a short title (2 to 4 words).
+(name their two roles). Be concrete and vivid, add one surprising detail of your own, no real people or brands, do not tell how it ends. Any genre is welcome (realistic, science fiction, fantasy,
+supernatural). The context has about {{sentences}}. Also give a short title (2 to 4 words).
 
 Answer with the JSON only."""
 IDEA_INVENT_PROMPT = """[[STAGE:idea]]
 You are the IDEA writer of a short-video studio, trend "you must choose" (a second-person story: two characters each offer to save you, you choose, each choice has an ending with a twist). Nobody gave you a
 subject: you INVENT the place and the catastrophe, from the seed below.
 
-SEED (follow it): ingredients to build the place around = {{ingredients}} | hour = {{hour}} | the two characters who offer to save you = a {{role_a}} and a {{role_b}} | tone = {{tone}}
+SEED (follow it): ingredients to build the place around = {{ingredients}} | hour = {{hour}} | tone = {{tone}}
 The place must be NEW: never one of these (already made): {{avoid}}.
 
-Invent a filmable, physically concrete place (one where a person can run, climb, push, hold on) and what is happening to it right now. Then write the CONTEXT of ONE video: three or four sentences in English
-that say WHERE and WHEN we are, WHAT is happening, who YOU are and what you need, and that two strangers each offer to save you (name their two roles). Be vivid, add one surprising detail of your own, no real
-people or brands, do not tell how it ends. Also give the place in a few words ("setting"), what is happening to it ("premise") and a short title (2 to 4 words).
+Invent a filmable, physically concrete place (one where a person can run, climb, push, hold on) and what is happening to it right now. THE GENRE IS FREE: realistic, science fiction, fantasy or supernatural all
+work; whatever the genre, the pictures will be rendered as clean, believable photographic scenes.
+THE TWO CHARACTERS: invent them yourself, any kind of beings (people or not: a fairy, an elf thief, a ghost, a robot, a knight, an old fisherman...), each with a name or a title, a few words of look and clothes,
+and what he or she offers you. Two strangers each offer to save you.
+Write the CONTEXT of ONE video: about {{sentences}} in English that say WHERE and WHEN we are, WHAT is happening, who YOU are and what you need, who the two strangers are and what each one offers. Be vivid, add
+one surprising detail of your own, no real people or brands, do not tell how it ends. Also give the place in a few words ("setting"), what is happening to it ("premise") and a short title (2 to 4 words).
 
 Answer with the JSON only."""
 IDEA_SCHEMA = {"type": "object", "properties": {"title": {"type": "string"}, "context": {"type": "string"}, "setting": {"type": "string"}, "premise": {"type": "string"}}, "required": ["title", "context"]}

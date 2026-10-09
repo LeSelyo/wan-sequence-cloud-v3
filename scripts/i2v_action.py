@@ -40,7 +40,7 @@ STYLES = {
     "offer_hands": "{pair} slowly stretch their open hands toward the camera, their fingers reaching, they look at the viewer, blink, small head movements",
     "offer_step": "{pair} step forward together toward the camera and hold out their open hands, urgent faces, the camera pushes slowly in",
     "offer_next": "{pair} keep holding out their open hands toward the camera, steady urgent faces, blink, small head movements, the camera pushes in a little more",
-    "idle": "{subject} looks at the camera, waiting, blinks naturally, breathes, small head and eyebrow movements, eyes moving slightly, cinematic, realistic skin",
+    "idle": "{subject} looks at the camera, waiting, blinks naturally, breathes, small head and eyebrow movements, eyes moving slightly, cinematic, believable skin or surface",
 }
 # what the body does: real steps ONLY when the shot is a movement through the place; a close-up or a person who stays in place gets small natural movements (the same suffix on a close-up of a face or on a
 # "static shot" contradicted the director: "the whole body in motion" on a portrait)

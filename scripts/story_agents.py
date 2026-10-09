@@ -110,12 +110,24 @@ def draw_seed_elements(params: dict, trend) -> dict:
     return bones
 
 
-def validate_idea(answer: dict, bones: dict) -> list[str]:
+def context_size(context: str) -> dict:
+    """The size of a context, given to the analyst: its sentences and its words (a longer context is a richer brief, not a shorter one)."""
+    return {"sentences": max(1, len(re.findall(r"[.!?]+(?:\s|$)", context.strip()))), "words": se.count_words(context)}
+
+
+def context_sentences(params: dict, trend) -> int:
+    """How many sentences the idea agent is asked for: more for a longer video (about one per 20 s), between the bounds of the trend. More information = a more stable, more precise generation."""
+    low, high = getattr(trend, "IDEA_SENTENCES", (4, 12))
+    return max(low, min(high, round(params.get("target_seconds", 150) / 20)))
+
+
+def validate_idea(answer: dict, bones: dict, sentences: int = 4) -> list[str]:
     context = answer.get("context", "")
     problems = []
-    if len(re.findall(r"[.!?]", context)) < 3 or se.count_words(context) < 30:
-        problems.append("the context needs three or four sentences (at least 30 words)")
-    for role in (bones["role_a"], bones["role_b"]):
+    minimum = max(3, sentences - 2)
+    if len(re.findall(r"[.!?]", context)) < minimum or se.count_words(context) < 12 * minimum:
+        problems.append(f"the context needs about {sentences} sentences (at least {minimum} sentences and {12 * minimum} words)")
+    for role in ((bones["role_a"], bones["role_b"]) if bones.get("mode") != "invent" else ()):  # when the model invents the two characters it is free to name them as it likes
         if role.split()[-1].lower() not in context.lower():
             problems.append(f"the role '{role}' must be named in the context")
     if not answer.get("title", "").strip():
@@ -130,12 +142,15 @@ def run_idea(params: dict, trend, llm) -> tuple[str, dict]:
     plain = f"{world[0].capitalize()}, {bones['hour']}. {world[1].capitalize()}. Two strangers each offer to save you: a {bones['role_a']} and a {bones['role_b']}."
     if llm is None:
         return plain, {"source": "template", "bones": bones}
+    count = context_sentences(params, trend)
+    sentences = f"{count} sentences (between {count - 1} and {count + 2})"
     if bones["mode"] == "invent":
-        prompt = fill(trend.IDEA_INVENT_PROMPT, {"ingredients": " + ".join(bones["ingredients"]), "hour": bones["hour"], "role_a": bones["role_a"], "role_b": bones["role_b"], "tone": bones["tone"],
-                                                 "avoid": "; ".join(w[0] for w in trend.IDEA_WORLDS)})
+        prompt = fill(trend.IDEA_INVENT_PROMPT, {"ingredients": " + ".join(bones["ingredients"]), "hour": bones["hour"], "tone": bones["tone"], "avoid": "; ".join(w[0] for w in trend.IDEA_WORLDS),
+                                                 "sentences": sentences})
     else:
-        prompt = fill(trend.IDEA_PROMPT, {"setting": bones["setting"], "premise": bones["premise"], "hour": bones["hour"], "role_a": bones["role_a"], "role_b": bones["role_b"], "tone": bones["tone"]})
-    answer, problems, attempts = call_agent(llm, prompt, trend.IDEA_SCHEMA, lambda a: validate_idea(a, bones), seed=params["seed"])
+        prompt = fill(trend.IDEA_PROMPT, {"setting": bones["setting"], "premise": bones["premise"], "hour": bones["hour"], "role_a": bones["role_a"], "role_b": bones["role_b"], "tone": bones["tone"],
+                                          "sentences": sentences})
+    answer, problems, attempts = call_agent(llm, prompt, trend.IDEA_SCHEMA, lambda a: validate_idea(a, bones, count), seed=params["seed"])
     if answer is None:
         return plain, {"source": "template", "bones": bones, "attempts": attempts, "problems": problems[:3]}
     return answer["context"].strip(), {"source": "llm", "bones": bones, "attempts": attempts, "title": answer["title"], "invented": {"setting": answer.get("setting"), "premise": answer.get("premise")} if bones["mode"] == "invent" else None}
@@ -182,7 +197,9 @@ def heuristic_brief(context: str, params: dict, trend) -> dict:
 
 
 def run_analyst(context: str, params: dict, trend, llm) -> tuple[dict, dict]:
-    prompt = fill(trend.ANALYST_PROMPT, {"context": context.strip(), "language": {"en": "English", "fr": "French"}[params["language"]], "tone": params["tone"], "hours": trend.HOURS,
+    size = context_size(context)
+    n_locations = "5 or 6" if size["sentences"] < 7 else "6 or 7" if size["sentences"] < 10 else "7 or 8"
+    prompt = fill(trend.ANALYST_PROMPT, {"context": context.strip(), "context_size": f"{size['sentences']} sentences, {size['words']} words", "n_locations": n_locations, "language": {"en": "English", "fr": "French"}[params["language"]], "tone": params["tone"], "hours": trend.HOURS,
                                          "location_tags": trend.LOCATION_TAGS})
     brief, problems, attempts = (None, ["no model"], 0) if llm is None else call_agent(llm, prompt, trend.BRIEF_SCHEMA, lambda b: validate_brief(b, trend), seed=params["seed"])
     if brief is None:

@@ -82,7 +82,8 @@ class CannedModel:
             return {"polarity": "bad" if ("collected" in lines or "never rescued" in lines) else "good", "reason": "canned"}
         if stage == "idea":
             roles = re.search(r"a (.+?) and a (.+?) \| tone", prompt)
-            return {"title": "Flood", "context": f"The water is rising fast at night. You are alone on a roof and the city is lost. Two strangers each offer to save you: a {roles.group(1)} and a {roles.group(2)}."}
+            first, second = roles.groups() if roles else ("fairy", "elf thief")  # when the model invents the two characters the prompt gives no roles
+            return {"title": "Flood", "context": f"The water is rising fast at night and the old city bells ring by themselves. You are alone on a roof and the whole city is lost beneath the waves. Two strangers each offer to save you: a {first} and a {second}, and each one promises a boat. The {first} glows softly and speaks of a hidden harbor. The {second} grins and speaks of a secret canal. A small light moves far away on the black water. You have until the tide reaches the bell tower to decide."}
         if stage == "judge":
             return {"hook": 8, "coherence": 8, "clues": 7, "twist": 8, "voice": 7, "faithfulness": 9, "variety": 8, "weakness": "none"}
         raise AssertionError(stage)
@@ -123,8 +124,8 @@ def test_without_a_model_every_stage_falls_back_to_its_template_and_the_plan_is_
 
 def test_the_prompts_are_constant_only_the_slots_change_and_a_missing_slot_is_an_error():
     template = TREND.ANALYST_PROMPT
-    one = sa.fill(template, {"context": "AAA", "language": "English", "tone": "tense", "hours": TREND.HOURS, "location_tags": TREND.LOCATION_TAGS})
-    two = sa.fill(template, {"context": "BBB", "language": "French", "tone": "bleak", "hours": TREND.HOURS, "location_tags": TREND.LOCATION_TAGS})
+    one = sa.fill(template, {"context": "AAA", "language": "English", "tone": "tense", "hours": TREND.HOURS, "location_tags": TREND.LOCATION_TAGS, "context_size": "4 sentences, 60 words", "n_locations": "5 or 6"})
+    two = sa.fill(template, {"context": "BBB", "language": "French", "tone": "bleak", "hours": TREND.HOURS, "location_tags": TREND.LOCATION_TAGS, "context_size": "4 sentences, 60 words", "n_locations": "5 or 6"})
     assert one.replace("AAA", "X").replace("English", "L").replace("tense", "T") == two.replace("BBB", "X").replace("French", "L").replace("bleak", "T")  # the same text
     assert "{{" not in one
     with pytest.raises(KeyError):
@@ -412,7 +413,27 @@ def test_the_idea_agent_invents_the_place_from_two_drawn_ingredients_and_never_r
 
     def llm(prompt, schema, seed=0):
         seen["prompt"] = prompt
-        return {"title": "Salt Bells", "context": "The salt flats ring at dusk while every bell of the old station rings by itself. You are a courier stuck on a cable car high above the white plain with the last water almost gone. A " + bones["role_a"] + " and a " + bones["role_b"] + " each offer to save you.", "setting": "a salt cable car", "premise": "the cable is singing"}
+        return {"title": "Salt Bells", "context": "The salt flats ring at dusk while every bell of the old station rings by itself. You are a courier stuck on a cable car high above the white plain with the last water almost gone. The wind smells of burnt sugar. Far below, a caravan of lanterns is walking away from you. Two strangers reach your cabin along the cable and each offers to save you. A " + bones["role_a"] + " and a " + bones["role_b"] + " each offer to save you. One of them is lying and you have until the last lantern disappears.", "setting": "a salt cable car", "premise": "the cable is singing"}
     context, report = sa.run_idea({"seed": 7}, TREND, llm)
     assert " + ".join(bones["ingredients"]) in seen["prompt"] and "never one of these (already made)" in seen["prompt"] and "a flooded megacity" in seen["prompt"]
     assert report["invented"] == {"setting": "a salt cable car", "premise": "the cable is singing"} and "[[STAGE:idea]]" in seen["prompt"]
+
+
+def test_the_idea_prompt_lets_the_model_invent_both_characters_any_genre_and_asks_for_a_size_that_follows_the_video():
+    assert "{{role_a}}" not in TREND.IDEA_INVENT_PROMPT and "invent them yourself" in TREND.IDEA_INVENT_PROMPT and "fairy, an elf thief" in TREND.IDEA_INVENT_PROMPT and "THE GENRE IS FREE" in TREND.IDEA_INVENT_PROMPT
+    assert sa.context_sentences({"target_seconds": 150}, TREND) == 8 and sa.context_sentences({"target_seconds": 30}, TREND) == 4 and sa.context_sentences({"target_seconds": 600}, TREND) == 12
+    short = sa.validate_idea({"title": "t", "context": "One. Two. Three."}, {"mode": "invent", "role_a": "x", "role_b": "y"}, sentences=8)
+    assert short and "about 8 sentences" in short[0]  # a longer video asks a richer context
+    assert sa.context_size("The sea rises. A fairy and an elf thief appear! You run?") == {"sentences": 3, "words": 12}
+
+
+def test_the_analyst_is_told_the_size_of_the_context_and_may_invent_the_characters_of_any_genre():
+    seen = {}
+
+    def llm(prompt, schema, seed=0):
+        seen["prompt"] = prompt
+        raise RuntimeError("stop here")
+    sa.run_analyst("A fairy and an elf thief offer you a boat. The sea rises. The city sleeps beneath it.", {"language": "en", "tone": "tense", "seed": 1}, TREND, llm)
+    prompt = seen["prompt"]
+    assert "(3 sentences, 18 words)" in prompt or "(3 sentences, 17 words)" in prompt and "5 or 6 places" in prompt and "INVENT them" in prompt and "fantasy" in prompt and "never make the story more realistic" in prompt
+    assert "realistic dark" not in TREND.DIRECTOR_PROMPT and "photoreal RENDER applied to ANY world" in TREND.DIRECTOR_PROMPT

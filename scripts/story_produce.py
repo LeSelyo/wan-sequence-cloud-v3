@@ -35,7 +35,7 @@ REGISTRY = ROOT / "results" / "story_trend" / "generations.json"
 VOICES_JSON = se.VOICES_FILE
 STEPS = ("transcribe", "voices", "animate", "render")
 OFFER_METHOD = None  # "i2v_offer_step" makes the choice moment the other way (the two step forward); None = plan A, the default the user chose
-LOOK = "cinematic, realistic, moody, natural motion"  # the default; a plan with a brief gets the atmosphere and the hour of ITS world (see look_of)
+LOOK = "cinematic, photographic, moody, natural motion"  # the default; a plan with a brief gets the atmosphere and the hour of ITS world (see look_of)
 
 
 def look_of(plan: dict) -> str:
@@ -43,7 +43,7 @@ def look_of(plan: dict) -> str:
     world = (plan.get("brief") or {}).get("world")
     if not world:
         return LOOK
-    return f"cinematic, realistic, {world['atmosphere']}, {world['hour']}, natural motion"
+    return f"cinematic, photographic, {world['atmosphere']}, {world['hour']}, natural motion"
 
 
 class Box:
