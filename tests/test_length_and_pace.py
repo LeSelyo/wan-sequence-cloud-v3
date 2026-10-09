@@ -254,3 +254,34 @@ def test_the_scripts_of_the_cli_accept_the_two_new_flags():
         source = (Path(__file__).resolve().parent.parent / "scripts" / f"{name}.py").read_text(encoding="utf-8")
         ast.parse(source)
         assert '"--shot-scale"' in source and ("--auto-length" in source)
+
+
+# ------------------------------------------------------------------------------------------------ soft problems: a model that is almost right is never replaced by a template
+def test_a_tie_between_two_answers_keeps_the_one_with_fewer_hard_problems_not_the_first():
+    answers = iter([{"n": 1}, {"n": 2}, {"n": 3}])
+    problems = {1: ["line 16: 10 words, the limit is 9", "line 5 is confusing for a viewer who sees it once (x)"], 2: ["line 1: 18 words, the limit is 14"] * 5,
+                3: ["line 7 is confusing for a viewer who sees it once (x)", "line 16 is confusing for a viewer who sees it once (y)"]}
+    soft = lambda p: " is confusing for a viewer" in p  # noqa: E731
+    answer, left, attempts = sa.call_agent(lambda prompt, schema, seed=0: next(answers), "p", {}, lambda a: problems[a["n"]], soft=soft)
+    assert answer == {"n": 3} and attempts == 3 and all(soft(p) for p in left)  # the third one has the same number of problems as the first but none is hard
+
+
+def test_a_line_one_or_two_words_over_its_limit_is_a_matter_of_taste_three_is_not():
+    assert sa.soft_writer_problem("line 16: 10 words, the limit is 9") and sa.soft_writer_problem("line 3: 16 words, the limit is 14")
+    assert not sa.soft_writer_problem("line 3: 17 words, the limit is 14") and not sa.soft_writer_problem("line 3: 0 words, the limit is 14")
+
+
+def test_an_outline_with_a_few_beats_more_or_less_than_asked_is_kept_the_model_is_not_replaced_by_the_template():
+    assert sa.soft_outline_problem("act setup: 13 beats, 17 are needed") and sa.soft_outline_problem("40 beats in total, 50 are needed (a video of the right length)")
+    assert not sa.soft_outline_problem("the acts must come in this order: ['hook']") and not sa.soft_outline_problem("beat 3: the purpose needs at least 4 words")
+    brief = sa.heuristic_brief(CONTEXT, {"seed": 1}, TREND)
+    counts = TREND.budget(600, 2)
+
+    def short_setup(prompt, schema, seed=0):
+        answer = PartPlanner()(prompt, schema, seed)
+        if "- setup:" in prompt:  # the model writes 8 beats less than the setup asks for (more than the tolerance)
+            answer["beats"] = [b for b in answer["beats"] if not (b["act"] == "setup" and int(b["purpose"].split("step ")[1].split(":")[0]) > counts["setup"] - 8)]
+        return answer
+
+    outline, report = sa.run_planner(brief, counts, ENDINGS, {"seed": 1, "language": "en"}, TREND, short_setup)
+    assert [p["source"] for p in report["parts"]] == ["llm", "llm", "llm"] and report["parts"][0]["attempts"] == 3 and len(outline["beats"]) == sum(counts.values()) - 8

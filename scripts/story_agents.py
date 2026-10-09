@@ -87,7 +87,7 @@ def call_agent(llm, prompt: str, schema: dict, check, attempts: int = 3, seed: i
     `soft(problem)` marks the problems that are a matter of taste (a line a little long, an ending that reads mixed): when the attempts are used up and the BEST answer has only those, it is kept
     (with its problems listed) instead of falling back to a template, which is made of truncated purposes and reads like notes."""
     problems: list[str] = []
-    best: tuple[dict, list[str]] | None = None
+    best: tuple[dict, list[str], tuple[int, int]] | None = None
     for attempt in range(1, attempts + 1):
         text = prompt + (f"\n\nYour previous answer had these problems. Answer again, the whole JSON, and fix them: {problems[:10]}" if problems else "")
         try:
@@ -98,8 +98,9 @@ def call_agent(llm, prompt: str, schema: dict, check, attempts: int = 3, seed: i
         problems = check(answer)
         if not problems:
             return answer, [], attempt
-        if best is None or len(problems) < len(best[1]):
-            best = (answer, problems)
+        key = (sum(1 for p in problems if not (soft and soft(p))), len(problems))  # the answer with the fewest HARD problems wins, then the fewest problems (a tie used to keep the first one, even
+        if best is None or key < best[2]:  # when it had a hard problem and the last one only had remarks of taste: the whole chunk then fell back to a template)
+            best = (answer, problems, key)
     if soft and best and all(soft(p) for p in best[1]):
         return best[0], best[1], attempts
     return None, problems, attempts
@@ -405,6 +406,12 @@ def planner_prompt(brief: dict, counts: dict, endings: dict, params: dict, trend
                                        "language": {"en": "English", "fr": "French"}[params["language"]], "brief": compact_brief(brief)})
 
 
+def soft_outline_problem(problem: str) -> bool:
+    """The counts of beats are a guide (the length is decided by the lines): an act with a few beats more or less than asked, or a total a little off, does not make an outline unusable; the order,
+    the offers, the choice, the branches and the twists are what must be right."""
+    return (problem.startswith("act ") and " beats, " in problem) or " beats in total, " in problem
+
+
 def run_planner_in_parts(brief: dict, counts: dict, endings: dict, params: dict, trend, llm) -> tuple[dict, dict]:
     """A long video (more beats than ONE answer of the model can hold) is planned part by part: up to the choice, the branch A, the rewind and the branch B. Each part is shown the beats already planned and
     is checked on its own acts; a part the model never gets right falls back to the template beats for THAT part only."""
@@ -416,7 +423,7 @@ def run_planner_in_parts(brief: dict, counts: dict, endings: dict, params: dict,
     for number, part_counts in enumerate(parts, 1):
         needs = part_needs(part_counts, last=number == len(parts))
         prompt = planner_prompt(brief, part_counts, endings, params, trend) + "\n\n" + fill(trend.PLANNER_PART_NOTE, {"parts": len(parts), "part": number, "already": planned_so_far(beats)})
-        outline, problems, attempts = call_agent(llm, prompt, trend.OUTLINE_SCHEMA, lambda o, c=part_counts, n=needs: validate_outline(o, c, endings, trend, n), seed=params["seed"] + 100 * number)
+        outline, problems, attempts = call_agent(llm, prompt, trend.OUTLINE_SCHEMA, lambda o, c=part_counts, n=needs: validate_outline(o, c, endings, trend, n), seed=params["seed"] + 100 * number, soft=soft_outline_problem)
         if outline is None:
             part_beats, source = [b for b in fallback["beats"] if b["act"] in part_counts], "template"
         else:
@@ -436,7 +443,7 @@ def run_planner(brief: dict, counts: dict, endings: dict, params: dict, trend, l
                                         "max_talk": getattr(trend, "MAX_TALK_BEATS", 4), "mood_a": trend.ENDING_MOOD[endings["A"]], "mood_b": trend.ENDING_MOOD[endings["B"]] if "B" in endings else "(there is no branch B in this video)", "language": {"en": "English", "fr": "French"}[params["language"]], "brief": compact_brief(brief)})
     best, report = None, {"candidates": []}
     for k in range(candidates if llm else 0):
-        outline, problems, attempts = call_agent(llm, prompt, trend.OUTLINE_SCHEMA, lambda o: validate_outline(o, counts, endings, trend), seed=params["seed"] + 100 * k)
+        outline, problems, attempts = call_agent(llm, prompt, trend.OUTLINE_SCHEMA, lambda o: validate_outline(o, counts, endings, trend), seed=params["seed"] + 100 * k, soft=soft_outline_problem)
         report["candidates"].append({"ok": outline is not None, "attempts": attempts, "problems": problems[:4], "score": outline_score(outline, brief) if outline else None})
         if outline and (best is None or outline_score(outline, brief) > outline_score(best, brief)):
             best = outline
@@ -518,7 +525,11 @@ def verify_clarity(llm, trend, picked: list[dict], lines: list[dict], previous: 
 
 
 def soft_writer_problem(problem: str) -> bool:
-    """The problems of a written chunk that do not make it unusable: lines a little long on average, an ending that reads MIXED (a teaser question left open), an ending that closes everything."""
+    """The problems of a written chunk that do not make it unusable: lines a little long on average, a line one or two words over its limit, an ending that reads MIXED (a teaser question left open),
+    an ending that closes everything."""
+    over = re.match(r"line \d+: (\d+) words, the limit is (\d+)$", problem)
+    if over and 0 < int(over.group(1)) - int(over.group(2)) <= 2:
+        return True
     return problem.startswith("the lines are too long on average") or " is confusing for a viewer" in problem or ("must end" in problem and "read MIXED" in problem) or problem.startswith("the last line closes everything")
 
 
