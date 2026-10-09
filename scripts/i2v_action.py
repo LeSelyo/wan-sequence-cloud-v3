@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import time
 import uuid
@@ -32,8 +33,8 @@ NEGATIVE = "static, frozen, motionless pose, still image, blurry, deformed face,
 # the prompt STYLES the lab compared (the user chose: action or follow for people who move, pov for hands, offer_hands for the choice moment, idle for a waiting face; plain is "average")
 STYLES = {
     "plain": "{motion}.",
-    "action": "{motion}, real steps and body movement, arms swinging, clothes and hair moving, natural weight and balance, the whole body in motion.",
-    "follow": "{motion}, real steps and body movement, arms swinging, clothes and hair moving; the camera follows the movement smoothly at the same speed, steady, cinematic.",
+    "action": "{motion}, {body}",
+    "follow": "{motion}, {body}; the camera follows the movement smoothly at the same speed, steady, cinematic.",
     "pov": "{motion}",  # the motion written by the director already says what the hands do and what moves
     "scene": "{motion}",  # a place, an object, a landscape: the camera move and what moves in it, as written by the director
     "offer_hands": "{pair} slowly stretch their open hands toward the camera, their fingers reaching, they look at the viewer, blink, small head movements",
@@ -41,6 +42,10 @@ STYLES = {
     "offer_next": "{pair} keep holding out their open hands toward the camera, steady urgent faces, blink, small head movements, the camera pushes in a little more",
     "idle": "{subject} looks at the camera, waiting, blinks naturally, breathes, small head and eyebrow movements, eyes moving slightly, cinematic, realistic skin",
 }
+# what the body does: real steps ONLY when the shot is a movement through the place; a close-up or a person who stays in place gets small natural movements (the same suffix on a close-up of a face or on a
+# "static shot" contradicted the director: "the whole body in motion" on a portrait)
+BODY_MOVING = "real steps and body movement, arms swinging, clothes and hair moving, natural weight and balance, the whole body in motion."
+BODY_STILL = "the person keeps their place: natural small movements, breathing, blinking, a slight shift of weight, clothes and hair moving a little."
 MAX_SECONDS = 5.0  # 81 frames at 16 fps: the length of one I2V clip
 
 
@@ -48,18 +53,37 @@ def person_word(character: dict) -> str:
     return "woman" if character.get("gender") == "f" else "man"
 
 
+def short_wardrobe(character: dict) -> str:
+    return " ".join((character.get("wardrobe") or "").rstrip(". ").split()[:9])
+
+
+def who_is(character: dict) -> str:
+    """'Kael, the man in torn olive-drab uniform, heavy combat boots': the name AND what he or she wears, so that the video model knows who is who in the picture."""
+    name = character.get("name") or f"the {person_word(character)}"
+    wardrobe = short_wardrobe(character)
+    return f"{name}, the {person_word(character)}" + (f" in {wardrobe[:1].lower() + wardrobe[1:]}" if wardrobe else "")
+
+
 def pair_word(first: dict, second: dict) -> str:
-    """'The man and the woman', 'The two men', 'The two women' (the first character stands on the left)."""
-    a, b = person_word(first), person_word(second)
-    return f"The {a} and the {b}" if a != b else "The two men" if a == "man" else "The two women"
+    """'Kael, the man in ..., on the left, and Elara, the woman in ..., on the right' (the first character stands on the left)."""
+    return f"{who_is(first)}, on the left, and {who_is(second)}, on the right,"
 
 
 def build_prompt(style: str, motion: str = "", characters: list[dict] | None = None) -> str:
-    """The text of an I2V clip: the style template filled with the motion of the director and who is in the picture."""
+    """The text of an I2V clip: who is in the picture (names and clothes: the model sees only the picture and this text), then the style template filled with the motion of the director.
+    "The narrator" (the viewer) is turned into "the viewer"; real steps are asked only for a movement through the place."""
+    import method_registry as mr
     characters = characters or []
-    subject = f"The {person_word(characters[0])}" if characters else "The person"
+    motion = (motion or "").strip().rstrip(".")
+    motion = re.sub(r"\bthe narrator['\u2019]s\b", "your", motion, flags=re.I)
+    motion = re.sub(r"\bthe narrator\b", "the viewer", motion, flags=re.I)
+    subject = who_is(characters[0]) if characters else "The person"
     pair = pair_word(characters[0], characters[1]) if len(characters) >= 2 else subject
-    return STYLES[style].format(motion=(motion or "").strip().rstrip("."), subject=subject, pair=pair)
+    body = BODY_MOVING if mr.words_of(motion) & mr.LOCOMOTION else BODY_STILL
+    text = STYLES[style].format(motion=motion, subject=subject, pair=pair, body=body)
+    if characters and not style.startswith("offer") and style != "idle":
+        text = f"{'; '.join(who_is(c) for c in characters)}. {text}"
+    return text
 
 
 def frames_for(seconds: float) -> int:

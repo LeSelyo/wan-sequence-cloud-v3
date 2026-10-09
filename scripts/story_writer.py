@@ -169,12 +169,16 @@ def validate_story(story: dict, params: dict, endings: dict, location_ids: list[
     offers = [i for i, s in enumerate(shots) if s.get("kind") == "offer"]
     if offers and (len(offers) != 2 or offers[1] != offers[0] + 1 or [shots[i].get("offer_of", shots[i].get("speaker")) for i in offers] != ["c1", "c2"]):
         problems.append("exactly two consecutive offer shots, c1 then c2: the ONLY moment where both are in the picture and speak")
+    if offers and any(shots[i].get("kind") != "choice" for i in [offers[-1] + 1] if i < len(shots)):
+        problems.append("the choice comes immediately after the second offer")
     by_id = {c.get("id"): c.get("name", "") for c in story.get("characters", [])}
     for i, shot in enumerate(shots):
-        other = "c2" if shot.get("branch") == "A" else "c1" if shot.get("branch") == "B" and shot.get("kind") != "rewind" else None
-        if other and by_id.get(other):
-            if other in shot.get("in_shot", []) or re.search(rf"\b{re.escape(by_id[other].lower())}\b", shot.get("text", "").lower()):
-                problems.append(f"shot {i + 1}: after the choice, branch {shot['branch']} is independent: {by_id[other]} is neither shown nor named")
+        chosen = {"A": "c1", "B": "c2"}.get(shot.get("branch")) if shot.get("kind") != "rewind" else None
+        if not chosen:
+            continue
+        other = "c2" if chosen == "c1" else "c1"
+        if other in shot.get("in_shot", []) or (by_id.get(other) and re.search(rf"\b{re.escape(by_id[other].lower())}\b", shot.get("text", "").lower())):
+            problems.append(f"shot {i + 1}: branch {shot['branch']} is about you and {by_id.get(chosen)} only: {by_id.get(other)} is neither shown nor named")
     total = estimate_seconds(shots, params["language"])
     if not (0.75 * params["target_seconds"] <= total <= 1.3 * params["target_seconds"]):
         problems.append(f"the spoken text lasts about {total:.0f} s, the target is {params['target_seconds']} s")

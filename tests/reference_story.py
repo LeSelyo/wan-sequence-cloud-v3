@@ -20,6 +20,21 @@ def new_structure(plan: dict) -> dict:
     shots[32].update(text="Someone screams your name across the water.", in_shot=[])
     for index in (17, 19, 23, 27, 34, 35, 37, 41):
         shots[index].update(kind="pov", still=shots[index].get("still") or "First-person view: your two hands grip the wet railing of the boat while it slams through the black waves between the drowned towers of the flooded city at night", camera="pov")
+    # the context comes BEFORE the offer: the two characters are introduced (shots 8-13), then the two offers, then the choice at once
+    plan["shots"] = shots[:6] + shots[8:14] + shots[6:8] + shots[14:]
+    names = {"c1": "Brandt", "c2": "Ilse"}
+    for number, shot in enumerate(plan["shots"], 1):
+        shot["id"] = f"s{number:03d}"
+        # the director NAMES the characters of a shot in its still and its motion (the video model is not told who is who otherwise)
+        who = [cid for cid, name in names.items() if cid in shot.get("in_shot", []) or name.lower() in shot["text"].lower()]
+        for cid in who:
+            if shot["kind"] != "offer":
+                if shot.get("still") and names[cid].lower() not in shot["still"].lower():
+                    shot["still"] += f", {names[cid]} in the picture"
+                if names[cid].lower() not in shot["motion"].lower():
+                    shot["motion"] += f", {names[cid]} moves"
+        shot["still"] = (shot.get("still") or "").replace("narrator", "viewer")
+        shot["motion"] = shot["motion"].replace("narrator", "viewer")
     return plan
 
 

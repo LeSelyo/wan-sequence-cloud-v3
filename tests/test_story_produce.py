@@ -70,9 +70,9 @@ def test_people_move_with_i2v_the_choice_is_the_two_shot_and_the_second_offer_go
     jobs = {j["id"]: j for j in sp.animate_jobs(plan, CARDS, tmp_path, registry_in(tmp_path))}
     assert set(jobs) == {"s001", "s002", "s003", "s004", "s005"}  # the choice is ONE clip now
     assert all(j["engine"] == "i2v" for j in jobs.values())
-    assert jobs["s001"]["source"].name == "two_shot.png" and "The man and the woman slowly stretch their open hands" in jobs["s001"]["prompt"] and "chain_from" not in jobs["s001"]
-    assert jobs["s002"]["chain_from"] == "s001" and "keep holding out their open hands" in jobs["s002"]["prompt"]
-    assert jobs["s003"]["source"].name == "s003.png" and jobs["s003"]["style"] == "follow" and "the camera follows the movement" in jobs["s003"]["prompt"] and "sprints down the corridor" in jobs["s003"]["prompt"]
+    assert jobs["s001"]["source"].name == "two_shot.png" and jobs["s001"]["prompt"].startswith("Brandt, the man in a heavy thermal suit, on the left, and Ilse, the woman in a white coat, on the right, slowly stretch their open hands") and "chain_from" not in jobs["s001"]
+    assert jobs["s002"]["chain_from"] == "s001" and "Brandt, the man in" in jobs["s002"]["prompt"] and "keep holding out their open hands" in jobs["s002"]["prompt"]
+    assert jobs["s003"]["source"].name == "s003.png" and jobs["s003"]["style"] == "follow" and "the camera follows the movement" in jobs["s003"]["prompt"] and "sprints down the corridor" in jobs["s003"]["prompt"] and jobs["s003"]["prompt"].startswith("Ilse, the woman in a white coat.") and "real steps" in jobs["s003"]["prompt"]
     assert jobs["s004"]["style"] == "pov" and jobs["s004"]["prompt"] == "your hands crank the valve wheel, steam bursts out"
     assert jobs["s005"]["source"].name == "two_shot.png" and jobs["s005"]["method"] == "i2v_offer_hands"  # the choice moment: always plan A
 

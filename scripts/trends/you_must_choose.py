@@ -10,7 +10,8 @@ the BRIEF that the analyst agent extracts from the context. `PROMPT_VERSION` cha
 from __future__ import annotations
 
 NAME = "you_must_choose"
-PROMPT_VERSION = "2026-10-09.4"  # .3: ONE offer shot (both hold out a hand), independent branches, suspense, more first-person action; .4: characters speak rarely (orders only), the narrator quotes the offers
+PROMPT_VERSION = "2026-10-09.5"  # .5: the characters are introduced by name BEFORE the offer, the offer is immediately followed by the choice, both characters may appear in a branch, the director names them
+PROMPT_VERSION_PREVIOUS = "2026-10-09.4"  # .3: ONE offer shot (both hold out a hand), independent branches, suspense, more first-person action; .4: characters speak rarely (orders only), the narrator quotes the offers
 KINDS = ["narration", "talk", "pov", "choice", "twist", "rewind", "offer"]
 CAMERAS = ["wide", "medium", "close", "pov"]
 LOCATION_TAGS = ["space", "sea", "city", "shelter", "window", "forest", "desert", "ice", "underground"]  # the tags that make the style prompt force what a kind of place must always show
@@ -38,6 +39,8 @@ def budget(seconds: float, branches: int) -> dict[str, int]:
     two = branches >= 2
     shares = dict(SHARES) if two else {"hook": 0.09, "setup": 0.11, "offers": 0.28, "branch_a": 0.52, "branch_b": 0.0}
     counts = {act: max(3, round(total * share)) for act, share in shares.items() if share > 0}
+    counts["setup"] += max(0, counts["offers"] - 2)  # the offers are exactly the two proposals: everything that gave context goes BEFORE them (the characters introduced, the clues)
+    counts["offers"] = 2
     counts["choice"] = 1
     if two:
         counts["rewind"] = 1
@@ -46,13 +49,14 @@ def budget(seconds: float, branches: int) -> dict[str, int]:
 
 ACT_PURPOSE = {
     "hook": "GRANDIOSE first picture (epic scale, awe) that puts the viewer in the world at once; the spoken lines contain the key words of the story; the third shot puts YOU in danger.",
-    "setup": "help arrives; the two main characters come into view.",
-    "offers": "ONE moment where BOTH characters stand side by side and hold out a hand to you: exactly TWO consecutive beats of kind 'offer' (first c1, then c2, the speaker field says whose proposal it is), each is the proposal "
-              "of that character in ONE very short line told by the narrator; they never accuse each other. The other beats of the act are narration or pov (no talk beats here) and show ONE CLUE each (an object, a detail in the picture).",
-    "choice": "the narrator says it is time to choose (kind 'choice'): the same moment, c1 and c2 still hold out their hands.",
-    "branch_a": "you follow c1 ALONE: c2 never appears and is never named again; real ACTION of your own hands and body (first-person 'pov' beats); the clues come true; ends with a twist (kind 'twist') and a last line that leaves a question open.",
+    "setup": "CONTEXT before the offer. First the place and the danger, then the two main characters are INTRODUCED one AFTER the other, c1 first then c2: each in a clear picture of his or her own, named, with what he or she wears "
+             "and carries, and ONE visible CLUE (an object or a detail that hints at his or her hidden truth). Every beat names the character it is about. Nothing else happens before the offer.",
+    "offers": "EXACTLY two beats and nothing else: kind 'offer', first c1 then c2 (the speaker field says whose proposal it is). Both stand side by side and hold out a hand to you; each beat is the proposal of that "
+              "character in ONE very short line told by the narrator; they never accuse each other.",
+    "choice": "IMMEDIATELY after the second offer (no beat in between): the narrator says it is time to choose (kind 'choice'), the same scene, c1 and c2 still hold out their hands.",
+    "branch_a": "the WHOLE first point of view: you follow c1 (the one you chose) from start to end; c2 never appears and is never named; real ACTION of your own hands and body (first-person 'pov' beats); the clues come true; ends with a twist (kind 'twist') and a last line that leaves a question open.",
     "rewind": "the story rewinds: the narrator asks what if you had chosen c2 (kind 'rewind').",
-    "branch_b": "you follow c2 ALONE: c1 never appears and is never named again; FAST action shots (chase, collapse, escape) and real ACTION of your own hands and body (first-person 'pov' beats); ends with a twist (kind 'twist') and a last line that leaves a question open.",
+    "branch_b": "the WHOLE second point of view: you follow c2 (the one you chose) from start to end; c1 never appears and is never named; FAST action shots (chase, collapse, escape) and real ACTION of your own hands and body (first-person 'pov' beats); ends with a twist (kind 'twist') and a last line that leaves a question open.",
 }
 
 # ---------------------------------------------------------------------------------------------- the constant prompts
@@ -85,12 +89,12 @@ WHAT EACH ACT MUST DO
 {{act_purposes}}
 
 RULES
-- THE OFFER: in the offers act exactly two beats of kind offer, consecutive, speaker c1 then c2 (both in the same picture, both holding out a hand; the narrator tells each proposal). No talk beat in that act, nobody accuses the other.
+- STRUCTURE: setup (the characters are introduced) -> offers (EXACTLY the two beats of kind offer, speaker c1 then c2, both in the same picture holding out a hand, the narrator tells each proposal, nobody accuses the other) -> choice (the very next beat) -> the whole branch A -> rewind -> the whole branch B. NOTHING happens between the second offer and the choice. The context and the clues are told BEFORE the offers.
 - THE CHARACTERS SPEAK RARELY: kind talk (a close-up whose mouth follows the voice) ONLY when a character gives an ORDER or shouts to someone in the scene, at most {{max_talk}} in the whole video. Everything else is told by the narrator, who may quote what they say.
-- THE BRANCHES ARE INDEPENDENT: after the choice, branch A is only about you and c1, branch B only about you and c2. The other one is never in a picture and never named (except by the rewind narrator).
+- ONE CHARACTER PER BRANCH: branch A is you and c1 from start to end, branch B is you and c2 from start to end. The other one never appears and is never named (except by the rewind narrator). Anything that helps the viewer understand the story can happen around you, in or out of the frame of the chosen character (an explosion, a door closing, a countdown).
 - ACTION: at least a third of the beats of each branch are kind pov: YOUR hands or body DO something (turn, push, pull, climb, grab, lift, run, open, hold on to something that moves) - never just "holding an arm".
 - SUSPENSE: the last beat of each branch leaves ONE question open (a sound, a door, a name, a detail that was not explained); it never closes the story with a full explanation.
-- The clues: c1's hidden truth and c2's hidden truth must each be hinted at in the OFFERS act (one clue each) and CONFIRMED in their branch (branch A confirms c1's, branch B confirms c2's).
+- The clues: c1's hidden truth and c2's hidden truth must each be hinted at in the SETUP act (one clue each, when the character is introduced) and CONFIRMED in their branch (branch A confirms c1's, branch B confirms c2's).
 - ENDINGS. Branch A: {{mood_a}}
   Branch B: {{mood_b}}
   Each branch has a twist beat that RECASTS what you believed, with a short UPPERCASE ending label ("COLLECTED", "THE CURE"...).
@@ -140,6 +144,7 @@ RULES
   split screen. Characters: use their look and wardrobe from the brief. For kind talk and choice leave "still" empty (the portrait of the character is used) but ALWAYS write the "motion": how the character acts while speaking (gesture, glance, expression, what moves around).
 - "motion" = the camera move and what moves in the picture, 10 to 25 words, English. Use a DIFFERENT camera move from the neighbouring shots, from this list or similar: {{camera_moves}}. At least one third of
   the shots must be dynamic (fast flight, chase, whip pan, impact).
+- WHO IS WHO: whenever a main character is in a picture write his or her NAME in the still AND in the motion, with what he or she wears; never "he", "she", "the figure", "the subject" alone. The viewer is never "the narrator": write "you" (first-person view), "your hands" or "the camera".
 - Kind pov = FIRST PERSON: the picture shows YOUR hands and forearms (or what you see ahead of you) in the middle of a physical action, and the "motion" says what MOVES: the hands crank, push, pull or climb and the object turns, opens or gives way, the camera moves with you. Describe ONLY what is in the picture and what happens to it. Never a person who just stands and trembles.
 - Every shot with a character in it names a physical verb (walks, runs, climbs, turns, opens, reaches, falls); the kind offer shows c1 and c2 side by side, both facing you and holding out an open hand toward the camera.
 - Keep every picture PHYSICALLY TRUE to this world: no rain, wind, sea or handheld breathing where this world has none (a lunar dome, a vacuum, a desert...); use its own light, dust, steam, sparks, snow.

@@ -29,7 +29,7 @@ class CannedModel:
     @staticmethod
     def acts_of(shots: list[dict]) -> list[str]:
         """The act of every shot of the reference story, read from its structure (3 hook shots, 3 of setup, then the offers up to the choice, branch A up to its twist, the rewind, branch B)."""
-        acts, phase = [], "offers"
+        acts, phase = [], "setup"
         for index, shot in enumerate(shots):
             if shot["kind"] == "choice":
                 acts.append("choice")
@@ -37,8 +37,10 @@ class CannedModel:
             elif shot["kind"] == "rewind":
                 acts.append("rewind")
                 phase = "branch_b"
+            elif shot["kind"] == "offer":
+                acts.append("offers")
             else:
-                acts.append("hook" if index < 3 else "setup" if index < 6 else phase)
+                acts.append("hook" if index < 3 else phase)
         return acts
 
     @classmethod
@@ -228,7 +230,7 @@ def test_the_look_of_the_animation_comes_from_the_world_of_the_story_not_from_a_
 
 def outline_of(counts: dict, extra_offers: int = 2) -> dict:
     """A valid outline of the NEW structure: the offers act = the offer pair + narration, the branches with a third of first-person action, a twist closing each branch."""
-    acts = [a for a in counts for _ in range(counts[a] + (extra_offers if a == "offers" else 0))]
+    acts = [a for a in counts for _ in range(counts[a] + (extra_offers if a == "setup" else 0))]  # the context beats are in the setup act, the offers act is EXACTLY the two offers
     kinds = {"choice": "choice", "rewind": "rewind"}
     beats = [{"act": a, "branch": "B" if a in ("rewind", "branch_b") else "A" if a == "branch_a" else "main", "kind": kinds.get(a, "narration"), "speaker": "narrator", "purpose": "something happens here now"} for a in acts]
     pair = [b for b in beats if b["act"] == "offers"][:2]
@@ -251,17 +253,19 @@ def test_the_planner_is_not_rejected_for_a_few_beats_too_many_but_is_for_a_wrong
     assert any("order" in p for p in sa.validate_outline(outline, counts, {"A": "bad", "B": "good"}, TREND))
 
 
-def test_the_offers_act_has_exactly_one_pair_of_offer_beats_and_no_talk():
+def test_the_offers_act_is_exactly_the_pair_of_offers_and_the_choice_follows_at_once():
     counts = TREND.budget(150, 2)
     endings = {"A": "bad", "B": "good"}
+    assert counts["offers"] == 2 and counts["setup"] > 3  # the context beats of the old offers act went to the setup
     outline = outline_of(counts)
     first_offer = next(i for i, b in enumerate(outline["beats"]) if b["kind"] == "offer")
-    outline["beats"][first_offer + 1]["kind"] = "narration"
-    outline["beats"][first_offer + 1]["speaker"] = "narrator"
+    assert sa.validate_outline(outline, counts, endings, TREND) == []
+    outline["beats"][first_offer + 1].update(kind="narration", speaker="narrator")
     assert any("exactly two consecutive beats of kind offer" in p for p in sa.validate_outline(outline, counts, endings, TREND))
     outline = outline_of(counts)
-    outline["beats"][first_offer + 3].update(kind="talk", speaker="c1")
-    assert any("no talk beat in the offers act" in p for p in sa.validate_outline(outline, counts, endings, TREND))
+    outline["beats"].insert(first_offer + 2, {"act": "offers", "branch": "main", "kind": "narration", "speaker": "narrator", "purpose": "a clue after the offer which adds nothing"})
+    problems = sa.validate_outline(outline, counts, endings, TREND)
+    assert any("EXACTLY the two offer beats" in p for p in problems) and any("immediately after the second offer" in p for p in problems)
     outline = outline_of(counts)
     outline["beats"][first_offer].update(speaker="c2")
     outline["beats"][first_offer + 1].update(speaker="c1")
@@ -281,12 +285,15 @@ def test_a_branch_belongs_to_its_character_and_is_made_of_real_action():
     assert any("branch_b" in p and "first-person action" in p for p in sa.validate_outline(outline, counts, endings, TREND))
 
 
-def test_the_lines_of_a_branch_never_name_the_other_character_and_the_offer_lines_are_short():
+def test_the_lines_of_a_branch_never_name_the_other_character():
     brief = {"characters": [{"id": "c1", "name": "Brandt"}, {"id": "c2", "name": "Ilse"}]}
     beats = [{"act": "branch_a", "kind": "narration"}, {"act": "branch_b", "kind": "narration"}, {"act": "rewind", "kind": "rewind"}]
     lines = [{"text": "Far behind you, Ilse's light goes out."}, {"text": "Brandt screams your name."}, {"text": "What if you had chosen Ilse?"}]
     problems = sa.validate_independence(lines, beats, brief)
     assert len(problems) == 2 and "Ilse must not be named" in problems[0] and "Brandt must not be named" in problems[1]  # the rewind may name them
+
+
+def test_the_offer_lines_are_short():
     offer = {"lines": [{"text": "I am Captain Brandt and I know a dry harbor now.", "location": "boat"}]}
     assert sa.validate_lines(offer, [{"kind": "offer"}], ["boat"], 14, None, 9) == ["line 1: 11 words, the limit is 9"]
     assert sa.validate_lines(offer, [{"kind": "narration"}], ["boat"], 14, None, 9) == []
@@ -300,7 +307,7 @@ def test_a_branch_that_closes_everything_is_sent_back_to_the_writer_for_a_lack_o
     assert sa.verify_polarity(lambda prompt, schema, seed=0: {"polarity": "bad", "reason": "x", "suspense": True}, TREND, [{"text": "A door opens."}], "bad") == []
 
 
-def test_the_offer_shot_puts_both_in_the_picture_and_a_branch_never_shows_the_other_character():
+def test_the_offer_shot_puts_both_in_the_picture_and_a_branch_shows_only_its_character():
     brief = {"title": "T", "world": {"premise": "p", "hour": "night"}, "characters": [{"id": "c1", "name": "Brandt", "role": "r", "gender": "m", "age": 40, "look": "l", "wardrobe": "w"},
                                                                                    {"id": "c2", "name": "Ilse", "role": "r", "gender": "f", "age": 40, "look": "l", "wardrobe": "w"}]}
     base = {"fx": {"zoom": 0.05, "shake": 0.0, "flash": False}, "camera": "medium", "motion": "m", "still": "s"}
@@ -312,18 +319,31 @@ def test_the_offer_shot_puts_both_in_the_picture_and_a_branch_never_shows_the_ot
     shots = sa.assemble_story(brief, outline, lines, [dict(base) for _ in beats], {"A": "bad", "B": "good"}, TREND)["shots"]
     assert [s["in_shot"] for s in shots[:2]] == [["c1", "c2"], ["c1", "c2"]] and "overlap" not in shots[1]  # one after the other
     assert [s["speaker"] for s in shots[:2]] == ["narrator", "narrator"] and [s["offer_of"] for s in shots[:2]] == ["c1", "c2"]  # the narrator quotes the two proposals
-    assert shots[2]["in_shot"] == ["c1"] and shots[3]["in_shot"] == ["c2"]
+    assert shots[2]["in_shot"] == ["c1"] and shots[3]["in_shot"] == ["c2"]  # the chosen one is in the shot, the other never
 
 
-def test_a_character_named_in_a_shot_is_in_the_shot_and_the_other_one_never_is_after_the_choice():
+def test_the_other_character_of_a_branch_is_removed_and_the_chosen_one_is_not_forced_into_the_picture():
     brief = {"characters": [{"id": "c1", "name": "Kael"}, {"id": "c2", "name": "Elara"}]}
     shots = [{"id": "s1", "kind": "narration", "branch": "main", "text": "Kael steps forward.", "still": "close-up of a scarred face", "motion": "push-in", "in_shot": []},
              {"id": "s2", "kind": "narration", "branch": "main", "text": "Two figures.", "still": "medium shot of Elara standing", "motion": "x", "in_shot": ["c1"]},
-             {"id": "s3", "kind": "narration", "branch": "A", "text": "He grabs you.", "still": "Kael and Elara", "motion": "x", "in_shot": ["c2"]},
-             {"id": "s4", "kind": "rewind", "branch": "B", "text": "What if you chose Elara instead of Kael?", "still": "x", "motion": "x", "in_shot": []},
-             {"id": "s5", "kind": "talk", "branch": "main", "text": "Kael", "still": "", "motion": "x", "in_shot": ["c1"]}]
+             {"id": "s3", "kind": "pov", "branch": "A", "text": "You climb.", "still": "your hands on a rusted grate, Elara far below", "motion": "x", "in_shot": ["c2"]},
+             {"id": "s4", "kind": "pov", "branch": "B", "text": "A door slams somewhere.", "still": "a steel door shaking in its frame", "motion": "x", "in_shot": []},
+             {"id": "s5", "kind": "rewind", "branch": "B", "text": "What if you chose Elara instead of Kael?", "still": "x", "motion": "x", "in_shot": []},
+             {"id": "s6", "kind": "talk", "branch": "main", "text": "Kael", "still": "", "motion": "x", "in_shot": ["c1"]}]
     assert sa.infer_in_shot(shots, brief) == 4
-    assert [s["in_shot"] for s in shots] == [["c1"], ["c1", "c2"], ["c1"], ["c1", "c2"], ["c1"]]  # the rewind names both and shows both; a talk keeps its own list
+    assert [s["in_shot"] for s in shots] == [["c1"], ["c1", "c2"], [], [], ["c1", "c2"], ["c1"]]  # c2 is removed from branch A; nobody is forced in (an event elsewhere is allowed); the rewind shows both
+
+
+def test_the_director_must_name_the_characters_and_never_write_the_narrator():
+    shots = [{"kind": "narration", "text": "a", "in_shot": ["c1"]}, {"kind": "narration", "text": "b", "in_shot": []}]
+    item = {"still": "a wide photograph of a flooded street at night with a boat and a light, rain falling hard", "motion": "slow push-in on the boat now", "camera": "wide", "fx": {"zoom": 0.05, "shake": 0, "flash": False}}
+    answer = {"directions": [{**item, "n": 1}, {**item, "n": 2, "motion": "slow push-in toward the narrator's face"}]}
+    problems = sa.validate_directions(answer, shots, TREND, {"c1": "Kael", "c2": "Elara"})
+    assert len(problems) == 2 and "Kael is in this shot, write Kael's NAME" in problems[0] and "never write 'the narrator'" in problems[1]
+    answer["directions"][0]["still"] = "Kael in his torn olive-drab uniform walks down a flooded street at night with a boat and a light behind him"
+    assert len(sa.validate_directions(answer, shots, TREND, {"c1": "Kael"})) == 1
+    assert sa.viewer_words("push-in toward the narrator's face, the narrator stands") == "push-in toward your face, the viewer stands"
+    assert sa.clean_strings({"a": ["Kael�s hand", "x�"]}) == {"a": ["Kael's hand", "x"]}
 
 
 def test_the_offers_and_the_choice_are_one_scene_in_the_place_of_the_choice():

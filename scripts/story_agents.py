@@ -62,6 +62,17 @@ def prompt_fingerprint(trend) -> dict:
 
 
 # ---------------------------------------------------------------------------------------------- one agent: ask, check, repair
+def clean_strings(value):
+    """The model sometimes returns a broken apostrophe (U+FFFD: "Kael?s"): it is turned back into an apostrophe, a lone one is dropped."""
+    if isinstance(value, str):
+        return re.sub(r"(?<=\w)\ufffd(?=\w)", "'", value).replace("\ufffd", "")
+    if isinstance(value, list):
+        return [clean_strings(v) for v in value]
+    if isinstance(value, dict):
+        return {k: clean_strings(v) for k, v in value.items()}
+    return value
+
+
 def call_agent(llm, prompt: str, schema: dict, check, attempts: int = 3, seed: int = 0, soft=None) -> tuple[dict | None, list[str], int]:
     """Ask the model; check the answer with code; tell the model what is wrong and ask again. Returns (answer or None, the problems of the last attempt, attempts used).
     `soft(problem)` marks the problems that are a matter of taste (a line a little long, an ending that reads mixed): when the attempts are used up and the BEST answer has only those, it is kept
@@ -74,6 +85,7 @@ def call_agent(llm, prompt: str, schema: dict, check, attempts: int = 3, seed: i
             answer = llm(text, schema, seed=seed + attempt)
         except Exception as error:  # the model is down, too slow or answered outside the schema
             return None, [f"model error: {str(error)[:200]}"], attempt
+        answer = clean_strings(answer)
         problems = check(answer)
         if not problems:
             return answer, [], attempt
@@ -217,8 +229,10 @@ def validate_outline(outline: dict, counts: dict[str, int], endings: dict, trend
         pair = [i for i in offers if beats[i].get("kind") == "offer"]
         if len(pair) != 2 or pair[1] != pair[0] + 1 or [beats[i].get("speaker") for i in pair] != ["c1", "c2"]:
             problems.append("the offers act needs exactly two consecutive beats of kind offer, speaker c1 then c2 (both hold out a hand in ONE shot)")
-        if any(beats[i].get("kind") == "talk" for i in offers):
-            problems.append("no talk beat in the offers act: c1 and c2 speak only in the two offer beats")
+        if len(offers) != 2:
+            problems.append("the offers act is EXACTLY the two offer beats: the context and the clues belong to the setup act, nothing happens between the offers and the choice")
+        if pair and pair[-1] + 1 < len(beats) and beats[pair[-1] + 1].get("kind") != "choice":
+            problems.append("the choice beat comes immediately after the second offer")
     for act, own_speakers in (("branch_a", ("narrator", "c1")), ("branch_b", ("narrator", "c2"))):
         if act not in counts:
             continue
@@ -310,7 +324,7 @@ def offer_rule(trend) -> str:
 
 
 def validate_independence(lines: list[dict], beats: list[dict], brief: dict) -> list[str]:
-    """After the choice the two possibilities are no longer linked: in branch A c2 is never named (and never in the picture), in branch B c1 is never named. The rewind line may name the other one."""
+    """ONE character per branch: in branch A c2 is never named, in branch B c1 is never named. The rewind line may name the other one."""
     names = {c["id"]: c["name"] for c in brief["characters"]}
     problems = []
     for i, (line, beat) in enumerate(zip(lines, beats)):
@@ -407,7 +421,17 @@ def run_writer(brief: dict, outline: dict, params: dict, trend, llm, library_exa
 
 
 # ---------------------------------------------------------------------------------------------- stage 4: the director
-def validate_directions(answer: dict, picked: list[dict], trend) -> list[str]:
+def viewer_words(text: str) -> str:
+    """The viewer is never "the narrator" in a picture or a movement (the video model took it for a person): it is "you" / "the viewer"."""
+    text = re.sub(r"\bthe narrator['\u2019]s\b", "your", text, flags=re.I)
+    return re.sub(r"\bthe narrator\b", "the viewer", text, flags=re.I)
+
+
+def soft_director_problem(problem: str) -> bool:
+    return "NAME" in problem or "never write 'the narrator'" in problem
+
+
+def validate_directions(answer: dict, picked: list[dict], trend, names: dict[str, str] | None = None) -> list[str]:
     items = answer.get("directions", [])
     if len(items) != len(picked):
         return [f"{len(items)} directions but {len(picked)} shots: one per shot, same order"]
@@ -417,6 +441,15 @@ def validate_directions(answer: dict, picked: list[dict], trend) -> list[str]:
             problems.append(f"direction {i + 1} says n={item.get('n')}: the directions come in the order of the shots and each one repeats the number of its shot")
         if se.count_words(item.get("motion", "")) < 4:  # every shot needs its acting or camera move, a talking shot too
             problems.append(f"shot {i + 1}: a motion of at least 4 words is needed (for a talk shot: how the character acts while speaking)")
+        written = f"{item.get('still', '')} {item.get('motion', '')}".lower()
+        if "narrator" in written:
+            problems.append(f"direction {i + 1}: never write 'the narrator' in a picture or a movement: the viewer is 'you' (first-person view), 'your hands' or 'the camera'")
+        if names and shot["kind"] != "offer":
+            for cid in shot.get("in_shot", []):
+                name = names.get(cid, "")
+                where = item.get("motion", "") if shot["kind"] in ("talk", "choice") else written
+                if name and not re.search(rf"\b{re.escape(name.lower())}\b", where.lower()):
+                    problems.append(f"direction {i + 1}: {name} is in this shot, write {name}'s NAME and what {name} wears or does in the still and the motion (not he / she / the figure)")
         if shot["kind"] in ("talk", "choice"):
             continue
         words = se.count_words(item.get("still", ""))
@@ -452,12 +485,13 @@ def run_director(brief: dict, shots: list[dict], params: dict, trend, llm, examp
     directions: list[dict | None] = [None] * len(shots)
     report = {"chunks": []}
     size = 12
+    names_by_id = {c["id"]: c["name"] for c in brief["characters"]}
     for start in range(0, len(shots), size):
         picked = shots[start:start + size]
         prompt = fill(trend.DIRECTOR_PROMPT, {"hour": brief["world"]["hour"], "atmosphere": brief["world"]["atmosphere"], "camera_moves": ", ".join(trend.CAMERA_MOVES), "cameras": trend.CAMERAS,
                                              "scale_image": brief["world"]["scale_image"], "brief": compact_brief(brief), "count": len(picked), "examples": examples or "(none yet)",
-                                             "shots": "\n".join(f"{n + 1}. [{s['kind']}, {s['branch']}, place {s['location']}, visible {','.join(s['in_shot']) or 'nobody'}] {s['text']}" for n, s in enumerate(picked))})
-        answer, problems, attempts = (None, ["no model"], 0) if llm is None else call_agent(llm, prompt, trend.DIRECTIONS_SCHEMA, lambda a: validate_directions(a, picked, trend), seed=params["seed"] + 13 * start)
+                                             "shots": "\n".join(f"{n + 1}. [{s['kind']}, {s['branch']}, place {s['location']}, visible {', '.join(names_by_id.get(i, i) for i in s['in_shot']) or 'nobody'}] {s['text']}" for n, s in enumerate(picked))})
+        answer, problems, attempts = (None, ["no model"], 0) if llm is None else call_agent(llm, prompt, trend.DIRECTIONS_SCHEMA, lambda a: validate_directions(a, picked, trend, names_by_id), seed=params["seed"] + 13 * start, soft=soft_director_problem)
         if answer is None:
             locations = {loc["id"]: loc["description"] for loc in brief["locations"]}
             answer = {"directions": [{"still": "" if s["kind"] in ("talk", "choice") else f"{s['text']}, {locations.get(s['location'], '')}", "motion": f"{trend.CAMERA_MOVES[(start + n) % len(trend.CAMERA_MOVES)]}, slow, cinematic",
@@ -515,23 +549,22 @@ def offer_still(brief: dict, location: str) -> str:
     place = next((l["description"] for l in brief.get("locations", []) if l["id"] == location), "")
 
     def who(c: dict) -> str:
-        return f"{'a woman' if c['gender'] == 'f' else 'a man'} ({c['wardrobe'].rstrip('. ')})"
-    text = f"Two people stand side by side, close together, facing the camera: on the left {who(first)}, on the right {who(second)}; both hold out one open hand toward the camera, serious faces, {place.rstrip('. ')}"
-    return " ".join(text.split()[:48])
+        return f"{'a woman' if c['gender'] == 'f' else 'a man'} ({' '.join(c['wardrobe'].rstrip('. ').split()[:9])})"
+    return f"Two people stand side by side, close together, facing the camera: on the left {who(first)}, on the right {who(second)}; both hold out one open hand toward the camera, serious faces, {' '.join(place.rstrip('. ').split()[:22])}"
 
 
 def infer_in_shot(shots: list[dict], brief: dict) -> int:
     """Who is in the picture, from what the shot SAYS: the writer often leaves `in_shot` empty for 'Kael steps forward' or 'close-up of Elara's face', and a shot with nobody listed gets no identity pass and is
-    taken for a place. A character named in the line, the picture or the motion is in the shot (the other one never is, after the choice). Returns how many shots changed."""
+    taken for a place. A character named in the line, the picture or the motion is in the shot; in a branch the other character (c2 in A, c1 in B) never is (one character per branch; the chosen one may be out of frame).
+    Returns how many shots changed."""
     changed = 0
     for shot in shots:
         text = f"{shot.get('text', '')} {shot.get('still', '')} {shot.get('motion', '')}".lower()
         found = [c["id"] for c in brief["characters"][:2] if re.search(rf"\b{re.escape(c['name'].lower())}\b", text)]
         merged = [i for i in ("c1", "c2") if i in set(shot.get("in_shot", [])) | set(found)]
-        if shot.get("branch") == "A":
-            merged = [i for i in merged if i != "c2"]
-        elif shot.get("branch") == "B" and shot.get("kind") != "rewind":
-            merged = [i for i in merged if i != "c1"]
+        other = {"A": "c2", "B": "c1"}.get(shot.get("branch")) if shot.get("kind") != "rewind" else None
+        if other:
+            merged = [i for i in merged if i != other]
         if shot.get("kind") in ("talk", "choice", "offer"):
             continue  # decided by their kind
         if merged != shot.get("in_shot", []):
@@ -557,6 +590,7 @@ def assemble_story(brief: dict, outline: dict, lines: list[dict], directions: li
     for beat, line, direction in zip(outline["beats"], lines, directions):
         shot = {"kind": beat["kind"], "branch": beat["branch"], "speaker": beat["speaker"], "text": line["text"].strip(), "location": line["location"], "in_shot": [i for i in line.get("in_shot", []) if i in ("c1", "c2")],
                 "still": "" if beat["kind"] in ("talk", "choice") else direction["still"].strip(), "motion": direction["motion"].strip(), "camera": direction["camera"], "fx": dict(direction["fx"])}
+        shot["still"], shot["motion"] = viewer_words(shot["still"]), viewer_words(shot["motion"])
         shot["beat"] = {"act": beat["act"], "purpose": beat["purpose"]}  # what the planner wanted from this shot, kept in the plan (it was lost before)
         if ss.changes_the_hour(direction.get("time"), brief["world"].get("hour")):  # the same hour as the story is not a change of hour
             shot["time"] = direction["time"].strip()
@@ -571,9 +605,6 @@ def assemble_story(brief: dict, outline: dict, lines: list[dict], directions: li
                 shot["speaker"] = "narrator"  # the narrator quotes it: no mouth has to follow a voice
             if shots and shots[-1]["kind"] == "offer" and getattr(trend, "OFFER_OVERLAP", 0.0) > 0:
                 shot["overlap"] = trend.OFFER_OVERLAP  # seconds the second line starts before the first one ends
-        if beat["act"] in ("branch_a", "branch_b"):
-            gone = "c2" if beat["act"] == "branch_a" else "c1"  # after the choice the other character is never in a picture
-            shot["in_shot"] = [i for i in shot["in_shot"] if i != gone]
         if beat["act"] in ("branch_a", "branch_b") and beat["act"] not in seen_branch:
             seen_branch.add(beat["act"])
             shot["tag"] = f"CASE {'A' if beat['act'] == 'branch_a' else 'B'}: {(c1 if beat['act'] == 'branch_a' else c2)['name'].upper()}"
@@ -633,6 +664,7 @@ def make_plan(context: str | None = None, given: dict | None = None, seed: int |
         examples = library.examples_text(brief, k=2, exclude=exclude_examples)
         lines, report_w = run_writer(brief, outline, run_params, trend, llm, examples, endings)
         provisional = [{"kind": b["kind"], "branch": b["branch"], "text": l["text"], "location": l["location"], "in_shot": l.get("in_shot", [])} for b, l in zip(outline["beats"], lines)]
+        infer_in_shot(provisional, brief)  # the director is told who is in each shot, by name
         directions, report_d = run_director(brief, provisional, run_params, trend, llm, library.director_examples_text(brief, k=2, exclude=exclude_examples))
         story = assemble_story(brief, outline, lines, directions, endings, trend)
         rhythm = rhythm_pass(story["shots"], trend)
