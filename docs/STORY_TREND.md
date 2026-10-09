@@ -66,6 +66,23 @@ A plan written elsewhere can be given with `--plan plan.json` (the story step is
 `start_app.sh` / `stop_app.sh` run the app. The model downloads are the real cost of a fresh box (~130 GB: 3 hours at 11 MB/s): pick a box with a fast link, or reuse the same box for several videos.
 **Never close the box without the owner's word**; it bills while idle.
 
+### What the image already contains (since `story-voice-20261009`)
+
+Nothing of the audio / blink / LLM tooling is installed by hand on a new box any more. The image carries, where the pipeline looks for them:
+
+| In the image | What | Used by |
+|---|---|---|
+| `/root/ttsenv` | torch 2.6 cu124, `qwen-tts` (Qwen3-TTS), `openai-whisper` + the Whisper `small` weights (`/root/.cache/whisper`) | `story_voices.py` (transcribe, speak, align) |
+| `/root/eyelibs` | MediaPipe 0.10.14 + OpenCV + numpy < 2 (used with the python of `/root/ttsenv`) | `eyes_ear.py` (blink counter, the `qc` step) |
+| `/usr/local/bin/ollama` | Ollama 0.40.2 (checksum-verified release); the model is pulled by `setup_llm.sh` | all the story agents |
+| `/root/*.sh`, `/root/*.py` | the helpers of `scripts/box` (start/stop, downloads, voices, blink counter, upscaler) | the PC, over ssh |
+| `/root/ttsenv.freeze.txt`, `/root/eyelibs.freeze.txt` | the exact package versions installed | reproducibility |
+
+Still downloaded on a new box (they are weights, not tools): the model profiles and the three Qwen3-TTS repos (`download_all.sh`, Base + Tokenizer + VoiceDesign), the story model (`setup_llm.sh`), the extras (`fetch_extras.sh`).
+**Not in the image on purpose:** the recorded voice samples (rights not verified, the `-public` twin is world-readable) and every token. The PC sends the samples itself before they are used
+(`story_produce.ensure_voice_samples`: only the files the box lacks, ~1 MB).
+The build proves the tools at build time (it imports each of them), so a missing one fails the build and not a rented hour.
+
 ## Checklist when something goes wrong
 
 * `story_auto.py status NAME` says what is missing; rerun `run` — it resumes.

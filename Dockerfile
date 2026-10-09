@@ -134,6 +134,70 @@ RUN --mount=type=cache,target=/root/.cache/pip \
       pip install -r "$reqs"; \
     done
 
+# ---------------------------------------------------------------------------------------------------------------------------------
+# The story pipeline's own tools on the rented box (so that a deploy is "ready to go": nothing is installed by hand on a new box).
+# Each lives where the pipeline looks for it (scripts/story_produce.py, scripts/lab_tools.py, scripts/box/*):
+#   /root/ttsenv   the VOICE environment: torch 2.6 cu124 + qwen-tts (Qwen3-TTS) + openai-whisper (+ the "small" Whisper weights, 461 MB)
+#   /root/eyelibs  MediaPipe Face Mesh for the blink counter (scripts/box/eyes_ear.py), used with the python of /root/ttsenv through PYTHONPATH
+#   ollama         the story model's server (the model itself, qwen3.6:27b, is pulled into /workspace/models/ollama by scripts/box/setup_llm.sh)
+# A separate torch (2.6) from the ComfyUI one (2.5.1) is deliberate: it is the combination the voices were validated with, and qwen-tts pins its own transformers.
+# NOT in the image on purpose: the recorded voice samples (rights not verified, the public twin of this image is world-readable) and every token.
+# ---------------------------------------------------------------------------------------------------------------------------------
+FROM --platform=linux/amd64 ${CUDA_IMAGE} AS voice-builder
+
+ARG DEBIAN_FRONTEND=noninteractive
+ARG VOICE_TORCH_VERSION=2.6.0
+ARG VOICE_TORCHAUDIO_VERSION=2.6.0
+ARG WHISPER_MODEL=small
+ARG MEDIAPIPE_VERSION=0.10.14
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
+      build-essential ca-certificates curl python3 python3-dev python3-pip python3-venv
+
+# The same absolute path as on the box: a venv is not relocatable (its scripts and pyvenv.cfg hold it).
+RUN python3 -m venv /root/ttsenv && /root/ttsenv/bin/python -m pip install --upgrade pip
+
+RUN --mount=type=cache,target=/root/.cache/pip \
+    /root/ttsenv/bin/python -m pip install \
+      torch==${VOICE_TORCH_VERSION} torchaudio==${VOICE_TORCHAUDIO_VERSION} \
+      --index-url https://download.pytorch.org/whl/cu124 && \
+    /root/ttsenv/bin/python -m pip install qwen-tts openai-whisper soundfile
+
+# MediaPipe goes in its own target directory (it wants numpy < 2, the voice environment does not care): PYTHONPATH=/root/eyelibs.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    /root/ttsenv/bin/python -m pip install --target /root/eyelibs \
+      mediapipe==${MEDIAPIPE_VERSION} opencv-python-headless 'numpy<2'
+
+# The Whisper weights are fetched now (checked against their sha256 by whisper itself), not at the first video of a rented box.
+RUN /root/ttsenv/bin/python -c "import whisper; whisper.load_model('${WHISPER_MODEL}', device='cpu', download_root='/root/.cache/whisper')" && \
+    ls -la /root/.cache/whisper
+
+# What exactly was installed, kept in the image (and in the build log) so that the combination can be reproduced.
+RUN /root/ttsenv/bin/python -m pip freeze > /root/ttsenv.freeze.txt && \
+    /root/ttsenv/bin/python -m pip freeze --path /root/eyelibs > /root/eyelibs.freeze.txt && \
+    cat /root/ttsenv.freeze.txt /root/eyelibs.freeze.txt | grep -iE "^(torch|torchaudio|qwen|openai|soundfile|transformers|numpy|mediapipe|opencv)" && \
+    /root/ttsenv/bin/python -c "import torch, torchaudio, soundfile, whisper, qwen_tts; print('voice environment OK, torch', torch.__version__)" && \
+    PYTHONPATH=/root/eyelibs /root/ttsenv/bin/python -c "import cv2, mediapipe, numpy; print('eyes OK, mediapipe', mediapipe.__version__, 'opencv', cv2.__version__, 'numpy', numpy.__version__)"
+
+# Ollama, from its official release (the checksum is the one GitHub publishes for the asset). Extracted like the official install script does (into /usr/local).
+FROM --platform=linux/amd64 ${CUDA_IMAGE} AS ollama-builder
+
+ARG DEBIAN_FRONTEND=noninteractive
+ARG OLLAMA_VERSION=0.40.2
+ARG OLLAMA_SHA256=726bee78706c281b0eeef00746efe51a044d71c592c3f0b195820707f31fdf04
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends ca-certificates curl zstd
+RUN set -eux; \
+    curl -fsSL --retry 3 "https://github.com/ollama/ollama/releases/download/v${OLLAMA_VERSION}/ollama-linux-amd64.tar.zst" -o /tmp/ollama.tar.zst; \
+    echo "${OLLAMA_SHA256}  /tmp/ollama.tar.zst" | sha256sum -c -; \
+    mkdir -p /opt/ollama-root; \
+    zstd -d --stdout /tmp/ollama.tar.zst | tar -x -C /opt/ollama-root; \
+    rm -f /tmp/ollama.tar.zst; \
+    /opt/ollama-root/bin/ollama --version
+
 FROM --platform=linux/amd64 ${CUDA_IMAGE} AS runtime
 
 ARG DEBIAN_FRONTEND=noninteractive
@@ -193,6 +257,13 @@ COPY --from=python-builder /opt/venv /opt/venv
 COPY --from=python-builder /opt/ComfyUI /opt/ComfyUI
 COPY --from=python-builder /app/ui_workflows /app/ui_workflows
 
+# The story pipeline's tools (see the voice-builder stage): heavy and rarely changing, so they come BEFORE the application code (a code-only rebuild keeps these layers).
+COPY --from=voice-builder /root/ttsenv /root/ttsenv
+COPY --from=voice-builder /root/eyelibs /root/eyelibs
+COPY --from=voice-builder /root/.cache/whisper /root/.cache/whisper
+COPY --from=voice-builder /root/ttsenv.freeze.txt /root/eyelibs.freeze.txt /root/
+COPY --from=ollama-builder /opt/ollama-root/ /usr/local/
+
 WORKDIR /app
 COPY app /app/app
 COPY config /app/config
@@ -201,6 +272,11 @@ COPY scripts /app/scripts
 COPY examples /app/examples
 COPY VERSIONS.md README.md COMPATIBILITE.md /app/
 
+# The helpers the pipeline expects in /root of the box (start/stop of the app, downloads, voices, blink counter, upscaler, LLM setup). The PC still sends the current
+# version of the ones it runs (story_voices.py, upscale_clip.py), so an image older than the repository never wins.
+RUN cp /app/scripts/box/*.sh /app/scripts/box/*.py /root/ && chmod +x /root/*.sh /root/*.py && \
+    mkdir -p /root/logs /root/voices /root/voices_out
+
 RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin appuser && \
     mkdir -p /workspace /opt/ComfyUI/user /opt/ComfyUI/temp && \
     chown appuser:appuser /workspace && \
@@ -208,6 +284,17 @@ RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin appuser && \
     chown appuser:appuser /opt/ComfyUI/user /opt/ComfyUI/temp && \
     chmod +x /app/scripts/entrypoint.sh /app/scripts/build-and-push.sh \
       /app/scripts/smoke_runtime.sh /app/scripts/preflight-release.sh
+
+# Build-time proof that the story pipeline's tools are where it looks for them (a missing one fails the build, not an hour of a rented GPU):
+# the voice environment, the blink counter, the upscaler and the box-side render (scripts/story_produce.py, lab_tools.py, clip_post.py, remote_render.py), the story model's server.
+RUN /root/ttsenv/bin/python -c "import torch, torchaudio, soundfile, whisper, qwen_tts" && \
+    PYTHONPATH=/root/eyelibs /root/ttsenv/bin/python -c "import cv2, mediapipe, numpy; assert numpy.__version__.startswith('1.'), numpy.__version__" && \
+    /opt/venv/bin/python -c "import spandrel, torch, PIL, numpy" && \
+    test -x /opt/venv/lib/python3.10/site-packages/imageio_ffmpeg/binaries/ffmpeg-linux-x86_64-v7.0.2 && \
+    cd /app/scripts && /opt/venv/bin/python -c "import story_render, story_sound" && \
+    test -s /root/.cache/whisper/small.pt && test -x /root/start_app.sh && test -s /root/story_voices.py && \
+    ollama --version && \
+    ! find /root -maxdepth 2 \( -name '*.mp3' -o -name '.api_token' -o -name '.gh_token' -o -name 'id_*' \) | grep -q .
 
 ENV PATH=/opt/venv/bin:/opt/ffmpeg/bin:$PATH \
     FFMPEG_BIN=/opt/ffmpeg/bin/ffmpeg \

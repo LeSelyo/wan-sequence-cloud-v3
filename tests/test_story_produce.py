@@ -108,3 +108,35 @@ def test_the_other_way_of_making_the_choice_moment_is_kept_and_selectable(tmp_pa
     monkeypatch.setattr(sp, "OFFER_METHOD", "i2v_offer_step")
     step = sp.animate_jobs(plan, CARDS, tmp_path, registry_in(tmp_path))[0]
     assert step["method"] == "i2v_offer_step" and "step forward together" in step["prompt"]
+
+
+class FakeVoiceBox:
+    """What the voice samples step needs of a box: `run` (a listing of /root/voices) and `put`."""
+
+    def __init__(self, listing: str = ""):
+        self.listing, self.commands, self.sent = listing, [], []
+
+    def run(self, command: str, timeout: float = 0) -> str:
+        self.commands.append(command)
+        return self.listing if "find" in command else ""
+
+    def put(self, local: Path, remote: str) -> None:
+        self.sent.append((local.name, remote))
+
+
+def test_the_recorded_voices_the_box_lacks_are_sent_and_the_ones_it_has_are_not(tmp_path):
+    (tmp_path / "dan.mp3").write_bytes(b"d" * 100)
+    (tmp_path / "siren.mp3").write_bytes(b"s" * 200)
+    voices = [{"id": "dan", "file": "dan.mp3"}, {"id": "siren", "file": "siren.mp3"}, {"id": "ghost", "file": "ghost.mp3"}, {"id": "design"}]
+    box = FakeVoiceBox("dan.mp3 100\nsiren.mp3 7\n")  # dan is already on the box with the right size, siren has another size
+    sent = sp.ensure_voice_samples(box, voices, local_dir=tmp_path)
+    assert sent == ["siren.mp3"]
+    assert box.sent == [("siren.mp3", "/root/voices/siren.mp3")]
+
+
+def test_a_new_box_gets_every_recorded_voice_and_nothing_is_sent_without_a_sample(tmp_path):
+    (tmp_path / "dan.mp3").write_bytes(b"d" * 100)
+    assert sp.ensure_voice_samples(FakeVoiceBox(""), [{"id": "dan", "file": "dan.mp3"}], local_dir=tmp_path) == ["dan.mp3"]
+    box = FakeVoiceBox("")
+    assert sp.ensure_voice_samples(box, [{"id": "x", "file": "missing.mp3"}, {"id": "design"}], local_dir=tmp_path) == []
+    assert box.commands == [] and box.sent == []  # no sample on the PC: the box is not even called

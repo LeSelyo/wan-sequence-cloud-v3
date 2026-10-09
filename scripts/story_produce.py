@@ -67,8 +67,25 @@ class Box:
         subprocess.run(["scp", "-P", self.port, *self._opts(), f"{self.target}:{remote}", str(local)], check=True, capture_output=True, stdin=subprocess.DEVNULL, timeout=600)
 
 
+def ensure_voice_samples(box: Box, voices: list[dict], remote_dir: str = "/root/voices", local_dir: Path | None = None) -> list[str]:
+    """The recorded voices are NOT in the image (their rights are unverified and the public twin of the image is world-readable): before a voice is used, the sample files that the box lacks (or
+    has with another size) are sent. A new box therefore needs no manual step for the audio. Returns the names sent."""
+    local_dir = local_dir or VOICES_JSON.parent
+    wanted = {v["file"]: (local_dir / v["file"]).stat().st_size for v in voices if v.get("file") and (local_dir / v["file"]).exists()}
+    if not wanted:
+        return []
+    box.run(f"mkdir -p {remote_dir}")
+    listing = box.run(f"cd {remote_dir} && find . -maxdepth 1 -type f -printf '%f %s\\n'")
+    present = {line.split()[0]: int(line.split()[1]) for line in listing.splitlines() if len(line.split()) == 2}
+    sent = [name for name, size in wanted.items() if present.get(name) != size]
+    for name in sent:
+        box.put(local_dir / name, f"{remote_dir}/{name}")
+    return sent
+
+
 def step_transcribe(box: Box, language: str) -> dict:
     data = json.loads(VOICES_JSON.read_text(encoding="utf-8"))
+    ensure_voice_samples(box, data["voices"])
     done = {}
     for voice in data["voices"]:
         if voice.get("ref_text"):
@@ -84,7 +101,9 @@ def step_transcribe(box: Box, language: str) -> dict:
 def step_voices(box: Box, plan: dict, run: Path, seed: int) -> dict:
     started = time.time()
     remote_out = f"/root/voices_out/{run.name}"
-    job = vj.build_job(plan, se.load_voices(), "/root/voices", remote_out, seed)
+    voices = se.load_voices()
+    sent = ensure_voice_samples(box, voices)
+    job = vj.build_job(plan, voices, "/root/voices", remote_out, seed)
     local_job = run / "voice_job.json"
     local_job.write_text(json.dumps(job, indent=1, ensure_ascii=False), encoding="utf-8")
     box.put(local_job, f"/root/{run.name}_voice_job.json")
@@ -96,7 +115,7 @@ def step_voices(box: Box, plan: dict, run: Path, seed: int) -> dict:
     spoken = time.time() - started
     box.run(f"/root/ttsenv/bin/python /root/story_voices.py align {remote_out} --language {plan['params']['language']} 2>&1 | grep -v Warning | tail -n 3")  # the real time of every word, for the subtitles
     box.get(f"{remote_out}/align.json", run / "voices" / "align.json")
-    return {"seconds": round(time.time() - started, 1), "speak_seconds": round(spoken, 1), "align_seconds": round(time.time() - started - spoken, 1), "lines": {l["id"]: l["voice"]["kind"] for l in job["lines"]}}
+    return {"seconds": round(time.time() - started, 1), "speak_seconds": round(spoken, 1), "align_seconds": round(time.time() - started - spoken, 1), "lines": {l["id"]: l["voice"]["kind"] for l in job["lines"]}, "samples_sent": sent}
 
 
 def padded_wav(source: Path | None, seconds: float, out: Path) -> Path:
