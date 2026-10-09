@@ -362,3 +362,65 @@ def test_a_lighting_the_model_keeps_getting_wrong_is_replaced_by_the_one_of_the_
 
 def test_the_director_is_told_never_to_write_an_idiom_a_picture_model_draws_literally():
     assert "NEVER an idiom or a metaphor in a picture" in TREND.DIRECTOR_PROMPT and "fork in the road" in TREND.DIRECTOR_PROMPT
+
+
+# ------------------------------------------------------------------------------------------------ the premise is spoken, a chunk is never replaced by a template for a matter of taste
+def test_the_first_lines_must_say_what_happens_and_why_it_is_dangerous_the_answer_is_told_to_the_writer_and_a_silent_verifier_never_blocks():
+    lines = [{"text": "Sun bakes the giant ribs."}, {"text": "Wax seals weep down stairs."}, {"text": "Stairs crack under your feet."}]
+    premise = "the creature is waking and its tremors break the stairs"
+    verdicts = iter([{"situation": True, "cause": False, "missing": "that the creature is waking"}, {"situation": True, "cause": True, "missing": ""}])
+    llm = lambda prompt, schema, seed=0: next(verdicts)  # noqa: E731
+    problems = sa.verify_premise(llm, TREND, lines, premise)
+    assert len(problems) == 1 and "WHY it is dangerous" in problems[0] and "creature is waking" in problems[0] and sa.soft_writer_problem(problems[0])
+    assert sa.verify_premise(llm, TREND, lines, premise) == []
+
+    def broken(prompt, schema, seed=0):
+        raise RuntimeError("model down")
+    assert sa.verify_premise(broken, TREND, lines, premise) == []
+
+
+def test_the_writer_is_told_to_speak_the_premise_in_its_first_chunk_and_not_to_name_an_unexplained_danger_in_the_others():
+    brief = sa.heuristic_brief(CONTEXT, {"seed": 1}, TREND)
+    brief["world"]["premise"] = "the leviathan is waking"
+    beats = fake_beats(TREND.budget(150, 2))
+    prompts = []
+    place = [loc["id"] for loc in brief["locations"]]
+
+    def model(prompt, schema, seed=0):
+        stage = re.search(r"\[\[STAGE:(\w+)\]\]", prompt).group(1)
+        if stage in ("verifier",):
+            return {"polarity": "bad" if "COLLECTED" in prompt else "good", "reason": "x", "suspense": True}
+        if stage == "clarity":
+            return {"confusing": []}
+        if stage == "premise":
+            return {"situation": True, "cause": True, "missing": ""}
+        prompts.append(prompt)
+        count = int(re.search(r"BEATS TO WRITE \((\d+)\)", prompt).group(1))
+        return {"lines": [{"text": f"The leviathan wakes {len(prompts)} {i}", "location": place[0], "in_shot": []} for i in range(count)]}
+    sa.run_writer(brief, {"beats": beats}, {"seed": 1, "language": "en", "target_seconds": 150}, TREND, model, "", ENDINGS)
+    assert "THE PREMISE IS SPOKEN" in prompts[0] and "the leviathan is waking" in prompts[0] and "within the FIRST THREE lines" in prompts[0]
+    assert "THE PREMISE: the leviathan is waking" in prompts[1] and "THE PREMISE IS SPOKEN" not in prompts[1] and "{{" not in prompts[1]
+    assert "CAUSE" in TREND.ACT_PURPOSE["hook"]  # the planner is told too
+
+
+def test_a_place_the_model_invented_is_replaced_by_the_main_set_and_an_ending_read_the_other_way_is_kept_after_five_tries_not_replaced_by_a_template():
+    brief = sa.heuristic_brief(CONTEXT, {"seed": 1}, TREND)
+    beats = fake_beats(TREND.budget(150, 2))
+    place = [loc["id"] for loc in brief["locations"]]
+    calls = {"writer": 0}
+
+    def model(prompt, schema, seed=0):
+        stage = re.search(r"\[\[STAGE:(\w+)\]\]", prompt).group(1)
+        if stage == "verifier":
+            return {"polarity": "bad", "reason": "reads bad", "suspense": True}  # always BAD: the branch that must end GOOD never satisfies the verifier
+        if stage in ("clarity",):
+            return {"confusing": []}
+        if stage == "premise":
+            return {"situation": True, "cause": True, "missing": ""}
+        calls["writer"] += 1
+        count = int(re.search(r"BEATS TO WRITE \((\d+)\)", prompt).group(1))
+        return {"lines": [{"text": f"A good line number {calls['writer']} {i}", "location": "a place nobody drew", "in_shot": []} for i in range(count)]}
+    lines, report = sa.run_writer(brief, {"beats": beats}, {"seed": 1, "language": "en", "target_seconds": 150}, TREND, model, "", ENDINGS)
+    assert [c["source"] for c in report["chunks"]] == ["llm", "llm", "llm"]  # the model's text is kept in every chunk
+    assert report["chunks"][2]["attempts"] == 5 and any("must end GOOD" in p for p in report["chunks"][2]["problems"])  # branch B must end GOOD, the verifier always said BAD: five tries, kept, listed
+    assert all(line["location"] == place[0] for line in lines)

@@ -55,6 +55,8 @@ class CannedModel:
         if stage == "length":
             return {"events": ["the flooded streets", "the rescue boat", "the two offers", "the captain's secret", "the doctor's cure", "the twist of each branch"], "seconds": 287,
                     "why": "Two full journeys and a twist each need about five minutes."}
+        if stage == "premise":
+            return {"situation": True, "cause": True, "missing": ""}
         if stage == "look":
             return {"name": "Drowned Harbor", "logline": "A flooded harbor city at night.", "palette": ["deep teal", "amber", "rust", "off-white"], "materials": ["wet asphalt", "rusted steel", "drowned timber"],
                     "lighting": "cold moonlit", "lens": "35mm cinematic", "grade": "cold steel blue", "texture": "photoreal practical set, subtle grain", "motif": "a recurring rope-knot shape on a few boats and posts",
@@ -377,8 +379,12 @@ def test_a_chunk_with_only_soft_problems_keeps_the_best_answer_of_the_model_neve
     answers = iter([{"n": 1}, {"n": 1}, {"n": 1}])
     hard = sa.call_agent(llm, "p", {}, lambda a: ["line 3: 40 words, the limit is 14"], soft=sa.soft_writer_problem)
     assert hard[0] is None  # a line over the limit is not a matter of taste
-    assert sa.soft_writer_problem("this branch must end GOOD for you but its last lines read BAD (x)") is False  # the opposite outcome is a real failure
+    # the production test lost a whole branch to a template because a verifier read the ending BAD instead of GOOD three times: it is asked again (5 attempts for a branch ending), then KEPT and reported
+    assert sa.soft_writer_problem("this branch must end GOOD for you but its last lines read BAD (x)") is True
     assert sa.soft_writer_problem("this branch must end GOOD for you but its last lines read MIXED (x)") is True
+    assert sa.soft_writer_problem("line 4: this branch is only about you and Ravi: Tomas must not be named") is True
+    assert sa.soft_writer_problem("line 9: repeats an earlier line") is True and sa.soft_writer_problem("line 2: location must be one of ['a', 'b']") is True
+    assert sa.soft_writer_problem("line 3: 20 words, the limit is 14") is False and sa.soft_writer_problem("14 lines but 13 beats: one line per beat, same order") is False  # these stay real failures
 
 
 def test_a_list_of_directions_shifted_by_one_shot_is_refused():

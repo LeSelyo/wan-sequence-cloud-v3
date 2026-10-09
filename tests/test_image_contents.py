@@ -74,3 +74,8 @@ def test_opencv_finds_its_system_libraries_where_the_build_imports_it_and_where_
     runtime = DOCKERFILE.split("AS runtime", 1)[1]
     for stage in (voice_builder, runtime):  # the first build of the image failed on `import cv2`: libGL was missing in the builder stage
         assert "libgl1" in stage and "libglib2.0-0" in stage
+
+
+def test_a_dropped_download_is_resumed_by_the_script_not_by_hand():
+    script = (BOX / "download_all.sh").read_text(encoding="utf-8")
+    assert "retry()" in script and script.count("retry python") == 2  # the model profiles and the Hugging Face repos: the same resumable command is run again (Krea2 once stopped at 6 of 13 GB)

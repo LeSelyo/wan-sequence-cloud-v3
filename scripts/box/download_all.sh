@@ -6,12 +6,14 @@ export BASE_MODEL_CATALOG=/app/config/base_models.json DATA_ROOT=/workspace PATH
 mkdir -p /root/logs
 LOG=/root/logs/download_all.log
 note() { echo "$(date +%H:%M:%S) $1" >> $LOG; }
+# a dropped connection must not cost a model (Krea2 stopped at 6 of 13 GB and had to be restarted by hand): the downloaders are resumable, so the same command is simply run again, up to 5 times
+retry() { n=0; until "$@"; do n=$((n+1)); [ "$n" -ge 5 ] && return 1; echo "retry $n of $*" >&2; sleep 10; done; }
 for profile in ${PROFILES:-krea2 wan22-s2v qwen-edit i2v-turbo}; do
   note "start $profile"
-  python /app/scripts/download_base_models.py --profile "$profile" > "/root/logs/dl_${profile}.log" 2>&1 && note "done $profile" || note "FAILED $profile (see dl_${profile}.log)"
+  retry python /app/scripts/download_base_models.py --profile "$profile" >> "/root/logs/dl_${profile}.log" 2>&1 && note "done $profile" || note "FAILED $profile (see dl_${profile}.log)"
 done
 for repo in ${HF_REPOS:-Qwen/Qwen3-TTS-12Hz-1.7B-Base Qwen/Qwen3-TTS-Tokenizer-12Hz Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign}; do
   note "start $repo"
-  python /root/dl_hf_repo.py "$repo" "/workspace/models/hf/${repo##*/}" > "/root/logs/dl_${repo##*/}.log" 2>&1 && note "done $repo" || note "FAILED $repo"
+  retry python /root/dl_hf_repo.py "$repo" "/workspace/models/hf/${repo##*/}" >> "/root/logs/dl_${repo##*/}.log" 2>&1 && note "done $repo" || note "FAILED $repo"
 done
 note "ALL DONE"

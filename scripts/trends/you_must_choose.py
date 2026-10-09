@@ -10,8 +10,8 @@ the BRIEF that the analyst agent extracts from the context. `PROMPT_VERSION` cha
 from __future__ import annotations
 
 NAME = "you_must_choose"
-PROMPT_VERSION = "2026-10-10.1"  # 10.1: the director never writes an idiom or a metaphor in a picture; 09.7: the LOOK agent (the art direction comes from the invented world), no format or ratio in a picture description; 09.6: the LENGTH agent, the outline planned by parts
-PROMPT_VERSION_PREVIOUS = "2026-10-09.7"  # 09.7: the LOOK agent, no ratio in a picture description (09.6: the LENGTH agent decides the length when none is fixed, the outline of a long video is planned by parts)
+PROMPT_VERSION = "2026-10-10.2"  # 10.2: the premise (what happens and why it is dangerous) is spoken in the first lines and checked; 10.1: no idiom in a picture; 09.7: the LOOK agent; 09.6: the LENGTH agent
+PROMPT_VERSION_PREVIOUS = "2026-10-10.1"  # 10.1: the director never writes an idiom or a metaphor in a picture (09.7: the LOOK agent, no ratio in a picture description; 09.6: the LENGTH agent)
 KINDS = ["narration", "talk", "pov", "choice", "twist", "rewind", "offer"]
 CAMERAS = ["wide", "medium", "close", "pov"]
 LOCATION_TAGS = ["space", "sea", "city", "shelter", "window", "forest", "desert", "ice", "underground"]  # the tags that make the style prompt force what a kind of place must always show
@@ -69,7 +69,7 @@ def locations_asked(seconds: float, sentences: int) -> str:
 
 
 ACT_PURPOSE = {
-    "hook": "GRANDIOSE first picture (epic scale, awe) that puts the viewer in the world at once; the spoken lines contain the key words of the story; the third shot puts YOU in danger.",
+    "hook": "GRANDIOSE first picture (epic scale, awe) that puts the viewer in the world at once; the spoken lines name WHAT is happening and its CAUSE in plain words (a viewer who knows nothing must understand why the danger exists), with the key words of the story; the third shot puts YOU in danger.",
     "setup": "CONTEXT before the offer. First the place and the danger, then the two main characters are INTRODUCED one AFTER the other, c1 first then c2: each in a clear picture of his or her own, named, with what he or she wears "
              "and carries, and ONE visible CLUE (an object or a detail that hints at his or her hidden truth). Every beat names the character it is about. Nothing else happens before the offer.",
     "offers": "EXACTLY two beats and nothing else: kind 'offer', first c1 then c2 (the speaker field says whose proposal it is). Both stand side by side and hold out a hand to you; each beat is the proposal of that "
@@ -158,6 +158,22 @@ The other parts are planned separately: ignore every rule about an act that is n
 but always answer every field of the JSON.
 {{already}}"""
 
+PREMISE_FIRST = ("THE PREMISE IS SPOKEN. The viewer knows NOTHING: within the FIRST THREE lines say PLAINLY, in words anybody understands, WHAT is happening and WHY this place is dangerous (the cause), "
+                 "from this: <<premise>>. No detail of atmosphere (a smell, a light) before the cause is told. A danger you name later (a collapse, a flood, a fire...) must already have been explained by an earlier line.")
+PREMISE_NEXT = ("THE PREMISE: <<premise>>. The viewer was told it at the start; any danger or object you name must have been explained by an earlier line (or by the PREVIOUS LINES below), never a new unexplained one.")
+PREMISE_PROMPT = """[[STAGE:premise]]
+You are the SCRIPT DOCTOR of a short-video studio. A viewer who knows NOTHING about the story hears the FIRST LINES of a story told to him or her ("you"), once, with no pause. Decide from these lines ONLY (not from what you
+know of the story) whether the viewer learns, in plain words:
+- the SITUATION: where we are and what is happening;
+- the CAUSE: what makes it dangerous (a creature waking, a dam breaking, a fire spreading...).
+THE STORY BEHIND THE LINES (for you only, the viewer does not have it): {{premise}}
+
+THE FIRST LINES:
+{{lines}}
+
+Answer with the JSON only: "situation" (true or false), "cause" (true or false), "missing" (one short sentence: what the viewer is never told, empty when nothing is missing)."""
+PREMISE_SCHEMA = {"type": "object", "properties": {"situation": {"type": "boolean"}, "cause": {"type": "boolean"}, "missing": {"type": "string"}}, "required": ["situation", "cause", "missing"]}
+
 WRITER_PROMPT = """[[STAGE:writer]]
 You are the WRITER of a short-video studio, trend "you must choose". Write the SPOKEN LINES of the beats below, in order, one line per beat, in {{language}}.
 
@@ -169,6 +185,7 @@ RULES
 - Respect each beat's purpose, keep the story continuous with the previous lines, never repeat a line or an opening word three times in a row.
 - Facts that must appear somewhere: {{must_include}}.
 - "location" of each beat is one of {{location_ids}}; "in_shot" = the character ids visible in it.
+- {{premise_rule}}
 
 APPROVED STORIES (examples of STYLE only, other plots; do not copy their words):
 {{examples}}

@@ -58,7 +58,7 @@ def constant_hash(template: str) -> str:
 
 
 def prompt_fingerprint(trend) -> dict:
-    return {"version": trend.PROMPT_VERSION, **{n.lower().replace("_prompt", ""): constant_hash(getattr(trend, n)) for n in ("ANALYST_PROMPT", "PLANNER_PROMPT", "WRITER_PROMPT", "DIRECTOR_PROMPT", "JUDGE_PROMPT", "LENGTH_PROMPT", "LOOK_PROMPT") if hasattr(trend, n)}}
+    return {"version": trend.PROMPT_VERSION, **{n.lower().replace("_prompt", ""): constant_hash(getattr(trend, n)) for n in ("ANALYST_PROMPT", "PLANNER_PROMPT", "WRITER_PROMPT", "DIRECTOR_PROMPT", "JUDGE_PROMPT", "LENGTH_PROMPT", "LOOK_PROMPT", "PREMISE_PROMPT") if hasattr(trend, n)}}
 
 
 # ---------------------------------------------------------------------------------------------- one agent: ask, check, repair
@@ -574,13 +574,32 @@ def verify_clarity(llm, trend, picked: list[dict], lines: list[dict], previous: 
             if isinstance(item.get("n"), int) and 1 <= item["n"] <= len(lines)][:4]
 
 
+def verify_premise(llm, trend, lines: list[dict], premise: str, seed: int = 0) -> list[str]:
+    """The viewer hears the first lines knowing nothing: do they say WHAT is happening and WHY it is dangerous? (the stacked test said "Choose before stairs collapse" and never that a creature was waking.)
+    A yes/no question to a second call, its answer is told to the writer; a verifier that cannot answer never blocks the story."""
+    numbered = "\n".join(f"{n + 1}. {l.get('text', '')}" for n, l in enumerate(lines))
+    try:
+        verdict = llm(fill(trend.PREMISE_PROMPT, {"premise": premise, "lines": numbered}), trend.PREMISE_SCHEMA, seed=seed)
+    except Exception:
+        return []
+    problems = []
+    if not verdict.get("situation", True):
+        problems.append(f"the first lines never say WHAT is happening ({str(verdict.get('missing', ''))[:140]}): say it in plain words in the first three lines")
+    if not verdict.get("cause", True):
+        problems.append(f"the first lines never say WHY it is dangerous ({str(verdict.get('missing', ''))[:140]}): tell the cause in plain words in the first three lines, before any detail of atmosphere")
+    return problems
+
+
 def soft_writer_problem(problem: str) -> bool:
     """The problems of a written chunk that do not make it unusable: lines a little long on average, a line one or two words over its limit, an ending that reads MIXED (a teaser question left open),
     an ending that closes everything."""
     over = re.match(r"line \d+: (\d+) words, the limit is (\d+)$", problem)
     if over and 0 < int(over.group(1)) - int(over.group(2)) <= 2:
         return True
-    return problem.startswith("the lines are too long on average") or " is confusing for a viewer" in problem or ("must end" in problem and "read MIXED" in problem) or problem.startswith("the last line closes everything")
+    if re.match(r"line \d+: (location must be one of|repeats an earlier line)", problem):  # a place the model invented is replaced by code, a repeated line is a matter of taste
+        return True
+    return (problem.startswith(("the lines are too long on average", "the first lines never say", "this branch must end", "the last line closes everything")) or " is confusing for a viewer" in problem
+            or " this branch is only about you and " in problem)  # the ending a verifier reads differently from the one drawn, the other character named: asked again, then kept (the QA report says it)
 
 
 def verify_polarity(llm, trend, lines: list[dict], expected: str, seed: int = 0) -> list[str]:
@@ -596,6 +615,12 @@ def verify_polarity(llm, trend, lines: list[dict], expected: str, seed: int = 0)
     if not verdict.get("suspense", True):
         problems.append("the last line closes everything: end on ONE open question (an unexplained sound, door, name or detail) so that the viewer wants to know what comes next")
     return problems
+
+
+def before_the_offers(lines: list[dict], beats: list[dict]) -> list[dict]:
+    """The lines a viewer hears BEFORE the offers (the hook and the setup): where the premise must have been told."""
+    cut = next((i for i, b in enumerate(beats) if b.get("kind") == "offer"), len(beats))
+    return lines[:max(3, min(cut, 14))]
 
 
 def run_writer(brief: dict, outline: dict, params: dict, trend, llm, library_examples: str, endings: dict | None = None) -> tuple[list[dict], dict]:
@@ -618,18 +643,32 @@ def run_writer(brief: dict, outline: dict, params: dict, trend, llm, library_exa
         previous = " / ".join(l["text"] for l in lines[:chunk[0]][-5:] if l) or "(this is the start)"
         prompt = fill(trend.WRITER_PROMPT, {"language": {"en": "English", "fr": "French"}[params["language"]], "max_words": max_words, "must_include": "; ".join(brief["must_include"]) or "(none)",
                                            "location_ids": location_ids, "brief": compact_brief(brief), "previous_lines": previous, "count": len(picked), "examples": library_examples or "(none yet)",
-                                           "offer_rule": offer_rule(trend), "avg_words": f"{average:.0f}", "total_words": int(params["target_seconds"] * se.WORDS_PER_SECOND[params["language"]] * 0.85), "ending_mood": mood,
+                                           "offer_rule": offer_rule(trend), "premise_rule": getattr(trend, "PREMISE_FIRST" if chunk[0] == 0 else "PREMISE_NEXT", "").replace("<<premise>>", brief["world"].get("premise", "")), "avg_words": f"{average:.0f}", "total_words": int(params["target_seconds"] * se.WORDS_PER_SECOND[params["language"]] * 0.85), "ending_mood": mood,
                                            "beats": "\n".join(f"{n + 1}. [{b['kind']}, speaker {b['speaker']}] {b['purpose']}" for n, b in enumerate(picked))})
+        def check(a, picked=picked, expected=expected, previous=previous, first=chunk[0] == 0):
+            basic = validate_lines(a, picked, location_ids, max_words, average, offer_words)
+            found = basic + validate_independence(a.get("lines", []), picked, brief)
+            if any(not soft_writer_problem(p) for p in basic):  # the lines themselves are unusable (a wrong count, a line far over its limit): no use asking the verifiers
+                return found
+            if expected:
+                found += verify_polarity(llm, trend, a.get("lines", []), expected, seed=params["seed"])
+            if hasattr(trend, "CLARITY_PROMPT"):
+                found += verify_clarity(llm, trend, picked, a.get("lines", []), previous, seed=params["seed"])
+            if first and hasattr(trend, "PREMISE_PROMPT"):
+                found += verify_premise(llm, trend, before_the_offers(a.get("lines", []), picked), brief["world"].get("premise", ""), seed=params["seed"])
+            return found
+
         answer, problems, attempts = (None, ["no model"], 0) if llm is None else call_agent(
-            llm, prompt, sized(trend.LINES_SCHEMA, "lines", len(picked)),
-            lambda a: validate_lines(a, picked, location_ids, max_words, average, offer_words) + validate_independence(a.get("lines", []), picked, brief)
-            + (verify_polarity(llm, trend, a.get("lines", []), expected, seed=params["seed"]) if expected and not validate_lines(a, picked, location_ids, max_words) else [])
-            + (verify_clarity(llm, trend, picked, a.get("lines", []), previous, seed=params["seed"]) if hasattr(trend, "CLARITY_PROMPT") and not validate_lines(a, picked, location_ids, max_words) else []),
-            seed=params["seed"] + 7 * chunk[0], soft=soft_writer_problem)
+            llm, prompt, sized(trend.LINES_SCHEMA, "lines", len(picked)), check, seed=params["seed"] + 7 * chunk[0], soft=soft_writer_problem, attempts=5 if closes_branch else 3)
         from_model = answer is not None
+        if answer is not None:
+            for line in answer["lines"]:
+                if line.get("location") not in location_ids:  # a place the model invented: the main set (the QA report does not count it as a problem)
+                    line["location"] = location_ids[0]
         if answer is None:
             answer = {"lines": [{"text": " ".join(b["purpose"].split()[:max_words - 2]), "location": location_ids[0], "in_shot": []} for b in picked]}
-        report["chunks"].append({"beats": len(picked), "source": "llm" if from_model else "template", "attempts": attempts, "problems": problems[:3]})
+        report["chunks"].append({"beats": len(picked), "source": "llm" if from_model else "template", "attempts": attempts,
+                                 "problems": [p for p in problems if "location must be one of" not in p][:4]})  # a place the model invented was repaired by code: not a problem to report
         for i, line in zip(chunk, answer["lines"]):
             lines[i] = line
     return lines, report
