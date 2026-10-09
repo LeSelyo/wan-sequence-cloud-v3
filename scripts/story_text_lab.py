@@ -64,6 +64,52 @@ def story_range(seeds: list[int], seconds: int, llm, outline_candidates: int = 2
     return rows
 
 
+def briefs_range(ideas: list[dict], seconds: int, llm) -> list[dict]:
+    """The ANALYST on each invented context: the characters it creates (name, role, look, wardrobe, promise, hidden truth, voice), the world and the places. This is the 'character creation' step."""
+    rows = []
+    for idea in ideas:
+        started = time.time()
+        brief, report = ag.run_analyst(idea["context"], {"language": "en", "tone": idea["bones"]["tone"], "seed": idea["seed"], "target_seconds": seconds}, TREND, llm)
+        rows.append({"seed": idea["seed"], "seconds": round(time.time() - started, 1), "source": report["source"], "attempts": report.get("attempts"), "problems": report.get("problems"), "brief": brief})
+        print(f"brief seed {idea['seed']}: {rows[-1]['seconds']} s, {report['source']}: {[c['name'] + ' (' + c['role'] + ')' for c in brief['characters']]}", flush=True)
+    return rows
+
+
+def character_lines(brief: dict) -> list[str]:
+    out = []
+    for ch in brief.get("characters", []):
+        out += [f"- **{ch['id']} {ch['name']}**, {ch['role']} ({ch['gender']}, {ch['age']} years)", f"  - look: {ch['look']}", f"  - wardrobe: {ch['wardrobe']}", f"  - promises you: {ch['public_promise']}",
+                f"  - hidden truth: {ch['hidden_truth']}", f"  - voice: {ch['voice_style']}"]
+    return out
+
+
+def write_characters_report(out: Path, ideas: list[dict], briefs: list[dict], stories: list[dict], settings: dict) -> None:
+    """A report that STARTS with the characters: for every idea the analyst's creation, then the whole story chains."""
+    by_seed = {b["seed"]: b for b in briefs}
+    md = [f"# Characters, places and stories created by the model ({settings['model']}, {settings['seconds']} s videos)", "",
+          "Sections: **1. Characters and world created by the analyst for each invented idea** (below) · 2. the ideas (full contexts) · 3. the whole text chains (beats and lines).", "", "## 1. Characters created, idea by idea", ""]
+    for r in ideas:
+        b = by_seed.get(r["seed"])
+        md += [f"### seed {r['seed']}: {r.get('title')}  (genre {r['bones'].get('genre')}, kind of place: {r['bones'].get('kind')}, suggested names {r['bones'].get('names')})"]
+        if b:
+            world = b["brief"].get("world", {})
+            md += [f"- place invented by the idea agent: **{(r.get('invented') or {}).get('setting')}**", f"- world kept by the analyst: {world.get('setting')} | hour {world.get('hour')} | {world.get('atmosphere')}", ""]
+            md += character_lines(b["brief"])
+            md += ["", "- places: " + "; ".join(f"{loc['id']} ({', '.join(loc['tags'])})" for loc in b["brief"].get("locations", [])), ""]
+        else:
+            md += ["(analyst not run for this seed)", ""]
+    md += ["## 2. The ideas (full contexts)", ""]
+    for r in ideas:
+        md += [f"### seed {r['seed']}: {r.get('title')}  ({r['size']['sentences']} sentences / {r['size']['words']} words)", r["context"], ""]
+    if stories:
+        md += ["## 3. Whole text chains", ""]
+        for r in stories:
+            plan = r["plan"]
+            md += [f"### seed {r['seed']}: {plan['title']}  ({len(plan['shots'])} shots, ~{plan['estimated_seconds']} s of speech, problems left {plan['agents']['problems_left']})", "", "**Characters:**", *character_lines(plan["brief"]), "",
+                   "**Beats and lines:**", *beat_lines(plan), ""]
+    (out / "REPORT_CHARACTERS.md").write_text("\n".join(md), encoding="utf-8")
+
+
 def beat_lines(plan: dict) -> list[str]:
     lines = []
     for s in plan["shots"]:
@@ -107,8 +153,19 @@ def main() -> None:
     parser.add_argument("--seed-start", type=int, default=1)
     parser.add_argument("--model", default="qwen3.6:27b")
     parser.add_argument("--host", default="http://127.0.0.1:11434")
+    parser.add_argument("--briefs-from", type=Path, help="reuse the ideas of an earlier run (its report.json), run the ANALYST on each and write REPORT_CHARACTERS.md there")
     args = parser.parse_args()
     llm = ag.ollama(args.model, args.host)
+    if args.briefs_from:
+        earlier = json.loads((args.briefs_from / "report.json").read_text(encoding="utf-8"))
+        try:
+            briefs = briefs_range(earlier["ideas"], earlier["settings"]["seconds"], llm)
+        finally:
+            llm.unload()
+        write_characters_report(args.briefs_from, earlier["ideas"], briefs, earlier["stories"], earlier["settings"])
+        (args.briefs_from / "briefs.json").write_text(json.dumps(briefs, indent=1, ensure_ascii=False), encoding="utf-8")
+        print(f"report: {args.briefs_from / 'REPORT_CHARACTERS.md'}")
+        return
     ideas, stories = [], []
     started = time.time()
     try:
