@@ -166,7 +166,7 @@ def animate_jobs(plan: dict, cards: dict, run: Path, registry: "mr.Registry | No
     previous = None
     for index, shot in enumerate(plan["shots"]):
         voice = run / "voices" / f"{shot['id']}.wav"
-        seconds = sr.shot_seconds(shot["kind"], sr.wav_seconds(voice), last=index == len(plan["shots"]) - 1)
+        seconds = sr.shot_seconds(shot["kind"], sr.wav_seconds(voice), last=index == len(plan["shots"]) - 1, scale=(plan.get("params") or {}).get("shot_scale", 1.0))
         look = f"{shot['visual']}, {look_of(plan)}"
         route = mr.route(shot, plan, registry, OFFER_METHOD if shot["kind"] in ("offer", "choice") else None)
         people = [characters[i] for i in shot.get("in_shot", []) if i in characters]

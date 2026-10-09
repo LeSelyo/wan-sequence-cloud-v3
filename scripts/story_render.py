@@ -59,8 +59,14 @@ def wav_seconds(path: Path) -> float:
 END_CARD_SECONDS = 2.8  # the last shot keeps the screen for the closing question
 
 
-def shot_seconds(kind: str, voice_seconds: float, last: bool = False) -> float:
-    base = voice_seconds + TAIL.get(kind, 0.3) + (END_CARD_SECONDS if last else 0.0)
+def tail_of(kind: str, scale: float = 1.0) -> float:
+    """The silence after the line of a shot: the usual one, shortened with the shots in TEST mode (shot_scale < 1), never under 0.15 s unless it is none."""
+    tail = TAIL.get(kind, 0.3)
+    return tail if scale >= 1 or tail == 0 else round(max(0.15, tail * scale), 3)
+
+
+def shot_seconds(kind: str, voice_seconds: float, last: bool = False, scale: float = 1.0) -> float:
+    base = voice_seconds + tail_of(kind, scale) + (END_CARD_SECONDS if last else 0.0)
     return round(max(base, CHOICE_MIN_SECONDS) if kind == "choice" else base, 3)
 
 
@@ -455,11 +461,12 @@ def render_story(plan: dict, cards_dir: Path, run: Path, out: Path, sound: bool 
     work.mkdir(parents=True, exist_ok=True)
     characters = {c["id"]: c for c in plan["characters"]}
     timings, parts = {}, []
+    scale = (plan.get("params") or {}).get("shot_scale", 1.0)  # TEST mode: shorter shots (1 = normal)
     for index, shot in enumerate(plan["shots"]):
         started = time.time()
         sid, kind = shot["id"], shot["kind"]
         voice = voices_dir / f"{sid}.wav"
-        seconds = shot_seconds(kind, wav_seconds(voice), last=index == len(plan["shots"]) - 1)
+        seconds = shot_seconds(kind, wav_seconds(voice), last=index == len(plan["shots"]) - 1, scale=scale)
         raw, burned = work / f"{sid}_raw.mp4", work / f"{sid}.mp4"
         fallback = False
         fx = shot.get("fx") or {}
@@ -486,7 +493,7 @@ def render_story(plan: dict, cards_dir: Path, run: Path, out: Path, sound: bool 
                 picture = ROOT / (entry.get("closeup") or entry["portrait"])["file"] if kind == "talk" else ROOT / cards["locations"][shot["location"]]["file"]
             _encode_frames(kenburns_frames(Image.open(picture), seconds), raw, seconds, voice)
             print(f"{sid}: NO CLIP, push-in on {picture.name}", flush=True)
-        spoken = seconds - TAIL.get(kind, 0.3) - (END_CARD_SECONDS if index == len(plan["shots"]) - 1 else 0.0)
+        spoken = seconds - tail_of(kind, scale) - (END_CARD_SECONDS if index == len(plan["shots"]) - 1 else 0.0)
         words = aligned_windows(shot["text"], aligned.get(sid), spoken) if aligned.get(sid) else word_windows(shot["text"], spoken if kind != "choice" else 1.3)
         burn_subtitles(raw, subtitle_overlay(overlay_windows(plan, shot, index, seconds, spoken, words), seconds, work / f"{sid}_words"), burned)
         parts.append(burned)

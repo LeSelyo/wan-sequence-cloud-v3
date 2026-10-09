@@ -17,7 +17,7 @@
    }
   }
  },
- "prompt_version": "2026-10-09.5",
+ "prompt_version": "2026-10-09.6",
  "retry_policy": {
   "attempts": 3,
   "how": "the answer is checked by CODE; the problems found are appended to the prompt ('Your previous answer had these problems. Answer again, the whole JSON, and fix them: [...]') and the model is asked again; the best answer is kept when only SOFT problems remain (a line a little long, an ending that reads mixed, a line judged confusing), never a template; a hard problem (a line over 14 words, a wrong count, a wrong order) after 3 attempts falls back to a template",
@@ -29,7 +29,7 @@
     "order": 0,
     "role": "IDEA (only when no context is given)",
     "input": "bones drawn by the seed from pools: place + what happens + hour (IDEA_WORLDS), two roles (IDEA_ROLES), tone (IDEA_TONES)",
-    "prompt": "[[STAGE:idea]]\nYou are the IDEA writer of a short-video studio, trend \"you must choose\" (a second-person story: two characters each offer to save you, you choose, each choice has an ending with a twist). Nobody gave you a\nsubject: a random seed gives the bones, you invent the rest.\n\nSEED (follow it): place = {{setting}} | what is happening = {{premise}} | hour = {{hour}} | the two characters who offer to save you = a {{role_a}} and a {{role_b}} | tone = {{tone}}\n\nWrite the CONTEXT of ONE video: three or four sentences in English that say WHERE and WHEN we are, WHAT is happening to the world, who YOU are and what you need, and that two strangers each offer to save you\n(name their two roles). Be concrete and vivid, add one surprising detail of your own, no real people or brands, do not tell how it ends. Also give a short title (2 to 4 words).\n\nAnswer with the JSON only.",
+    "prompt": "[[STAGE:idea]]\nYou are the IDEA writer of a short-video studio, trend \"you must choose\" (a second-person story: two characters each offer to save you, you choose, each choice has an ending with a twist). Nobody gave you a\nsubject: a random seed gives the bones, you invent the rest.\n\nSEED (follow it): place = {{setting}} | what is happening = {{premise}} | hour = {{hour}} | the two characters who offer to save you = a {{role_a}} and a {{role_b}} | tone = {{tone}}\n\nWrite the CONTEXT of ONE video: three or four sentences in English that say WHERE and WHEN we are, WHAT is happening to the world, who YOU are and what you need, and that two strangers each offer to save you\n(name their two roles). Be concrete and vivid, add one surprising detail of your own, no real people or brands, do not tell how it ends. Any genre is welcome (realistic, science fiction, fantasy,\nsupernatural). The context has about {{sentences}}. Also give a short title (2 to 4 words).\n\nAnswer with the JSON only.",
     "output_schema": {
      "type": "object",
      "properties": {
@@ -37,6 +37,12 @@
        "type": "string"
       },
       "context": {
+       "type": "string"
+      },
+      "setting": {
+       "type": "string"
+      },
+      "premise": {
        "type": "string"
       }
      },
@@ -51,7 +57,7 @@
     "order": 1,
     "role": "ANALYST",
     "input": "the context (>= 3 sentences, given or invented)",
-    "prompt": "[[STAGE:analyst]]\nYou are the ANALYST of a short-video studio. The trend is \"you must choose\": a second-person interactive story (\"you\") in which two characters offer to save you, the viewer chooses, and each choice\nleads to a different ending with a twist. Read the CONTEXT below (three sentences or more) and extract the BRIEF the other writers will work from.\n\nRULES\n- Keep EVERY concrete fact of the context (places, roles, objects, numbers, the hour, the weather). Invent only what is missing, and make it fit.\n- Exactly two main characters, ids \"c1\" and \"c2\": the two people named or described in the context (their roles come from it); if the context names a real public figure, invent an archetype with a made-up\n  name instead and list the replacement in \"substitutions\". Give each a name, a gender (m or f), an age, a face description, a wardrobe, what they PUBLICLY promise the viewer, and a HIDDEN TRUTH\n  (what they are really doing or hiding) that a clue can reveal later.\n- \"locations\": 5 or 6 places of this world, id = short lowercase word, the first one is the main set; tags only from {{location_tags}}.\n- \"scale_image\": ONE grandiose picture of this world (epic scale) that will open the video.\n- \"keywords\": 8 to 12 words or short phrases that people search for about this story (the disaster, the place, the roles, the feeling), lowercase.\n- \"hour\" is one of {{hours}}; if the context gives none, choose the most dramatic one.\n\nLANGUAGE of the text fields: {{language}}. TONE: {{tone}}.\n\nCONTEXT:\n{{context}}\n\nAnswer with the JSON brief only.",
+    "prompt": "[[STAGE:analyst]]\nYou are the ANALYST of a short-video studio. The trend is \"you must choose\": a second-person interactive story (\"you\") in which two characters offer to save you, the viewer chooses, and each choice\nleads to a different ending with a twist. Read the CONTEXT below ({{context_size}}) and extract the BRIEF the other writers will work from. The GENRE is the one of the context (realistic, science fiction, fantasy,\nsupernatural...): never make the story more realistic or more ordinary than the context says.\n\nRULES\n- Keep EVERY concrete fact of the context (places, roles, objects, numbers, the hour, the weather, the rules of the world, its magic). Invent only what is missing, and make it fit. The longer the context, the more\n  of it must be found in the brief: every named place becomes a location (up to the number asked), every object or rule goes into \"premise\", \"stakes\" or \"must_include\".\n- Exactly two main characters, ids \"c1\" and \"c2\": the two beings named or described in the context (people or not: a fairy, an elf thief, a ghost, a robot, a knight...; their roles come from it). If the context\n  does not describe them, INVENT them, fitting its world and genre. If the context names a real public figure, invent an archetype with a made-up name instead and list the replacement in \"substitutions\".\n  Give each a name, a gender (m or f: the closest one, it is used for the voice), an age, a face or body description, a wardrobe, what they PUBLICLY promise the viewer, and a HIDDEN TRUTH\n  (what they are really doing or hiding) that a clue can reveal later.\n- \"locations\": {{n_locations}} places of this world, id = short lowercase word, the first one is the main set; tags only from {{location_tags}}.\n- \"scale_image\": ONE grandiose picture of this world (epic scale) that will open the video.\n- \"keywords\": 8 to 12 words or short phrases that people search for about this story (the disaster, the place, the roles, the feeling), lowercase.\n- \"hour\" is one of {{hours}}; if the context gives none, choose the most dramatic one.\n\nLANGUAGE of the text fields: {{language}}. TONE: {{tone}}.\n\nCONTEXT:\n{{context}}\n\nAnswer with the JSON brief only.",
     "output_schema": {
      "type": "object",
      "properties": {
@@ -211,6 +217,41 @@
      ]
     },
     "code_checks": "exactly 2 characters c1/c2 with gender, age, look, wardrobe, public_promise, hidden_truth, voice_style; 5-6 locations with allowed tags; hour in HOURS; keywords; fallback = heuristic_brief()"
+   },
+   {
+    "order": 1.5,
+    "role": "LENGTH (only when nobody fixes the length: --auto-length, the creation decides, 2:00 to 10:00)",
+    "input": "the context + what a shot and a minute cost in shots",
+    "prompt": "[[STAGE:length]]\nYou are the PRODUCER of a short-video studio, trend \"you must choose\": a second-person story in which two characters each offer to save you, you choose, you live the WHOLE story of the character you chose, then\nthe story rewinds and you live the whole story of the other one; each ends with a twist. Nobody fixed the length of this video: YOU decide it, from the CONTEXT below, as the story NEEDS: as long as it takes\nto tell it clearly and well, never padded, never rushed.\n\nHOW TO DECIDE\n- A shot lasts about {{shot_seconds}} seconds, so 2:00 is about {{shots_2min}} shots and every additional minute adds about {{shots_per_minute}} shots.\n- First list the KEY EVENTS the story contains: the places we go through, the dangers, the rules or objects of the world, the clues, the reversals, what each of the two characters does in his or her own\n  branch (6 to 20 short items). Then decide the length from them.\n- A simple story (one place, one danger, one clue and one twist per branch) needs 2:00 to 2:30. A story with several places, a real journey in each branch and a twist that needs a set-up needs 3:00 to 5:00:\n  this is the usual case. Only a vast world with many places, rules and reversals deserves 6:00 to 10:00.\n- Never less than {{min_seconds}} seconds, never more than {{max_seconds}} seconds.\n\nCONTEXT:\n{{context}}\n\nAnswer with the JSON only: \"events\", \"seconds\" (a whole number of seconds) and \"why\" (one sentence).",
+    "output_schema": {
+     "type": "object",
+     "properties": {
+      "events": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "seconds": {
+       "type": "integer"
+      },
+      "why": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "events",
+      "seconds",
+      "why"
+     ]
+    },
+    "code_checks": "at least 4 key events, a whole number of seconds, a reason; the answer is clamped to (120, 600) and rounded to 10 s; without a model: fallback_length() (30 s per sentence of the context above 4)",
+    "then": "the places asked of the analyst grow with the length (locations_asked); above 60 beats the outline is planned in 3 parts (up to the choice / branch A / rewind + branch B, each told the beats already planned); the lines are written in chunks of at most 28 beats"
+   },
+   {
+    "order": 1.6,
+    "role": "TEST MODE (never the default): shot_scale",
+    "does": "--shot-scale 0.4 multiplies the time a shot stays on screen: more shots in the same time (budget), shorter lines (max_words, max_offer_words), shorter silences after a line (story_render.tail_of), hence shorter clips; the choice keeps its countdown time"
    },
    {
     "order": 2,
@@ -435,7 +476,7 @@
     "order": 4,
     "role": "DIRECTOR (chunks of 12 shots)",
     "input": "the shots with their line, kind, branch, place, who is visible; the style (hour, atmosphere), camera moves list, the scale image of the world (first shot only)",
-    "prompt": "[[STAGE:director]]\nYou are the DIRECTOR of a short-video studio, trend \"you must choose\": vertical 9:16, realistic dark cinematic look, ONE art direction for the whole video (hour: {{hour}}; atmosphere: {{atmosphere}}).\nFor each shot below (its spoken line is given), write the PICTURE and the CAMERA MOVE.\n\nRULES\n- \"still\" = ONE concrete filmable photograph (what is in the frame, the angle, the light), 20 to 45 words, in English, a single continuous scene. NEVER ask for text, letters, captions, logos, a collage, panels or a\n  split screen. Characters: use their look and wardrobe from the brief. For kind talk and choice leave \"still\" empty (the portrait of the character is used) but ALWAYS write the \"motion\": how the character acts while speaking (gesture, glance, expression, what moves around).\n- \"motion\" = the camera move and what moves in the picture, 10 to 25 words, English. Use a DIFFERENT camera move from the neighbouring shots, from this list or similar: {{camera_moves}}. At least one third of\n  the shots must be dynamic (fast flight, chase, whip pan, impact).\n- WHO IS WHO: whenever a main character is in a picture write his or her NAME in the still AND in the motion, with what he or she wears; never \"he\", \"she\", \"the figure\", \"the subject\" alone. The viewer is never \"the narrator\": write \"you\" (first-person view), \"your hands\" or \"the camera\".\n- Kind pov = FIRST PERSON: the picture shows YOUR hands and forearms (or what you see ahead of you) in the middle of a physical action, and the \"motion\" says what MOVES: the hands crank, push, pull or climb and the object turns, opens or gives way, the camera moves with you. Describe ONLY what is in the picture and what happens to it. Never a person who just stands and trembles.\n- Every shot with a character in it names a physical verb (walks, runs, climbs, turns, opens, reaches, falls); the kind offer shows c1 and c2 side by side, both facing you and holding out an open hand toward the camera.\n- Keep every picture PHYSICALLY TRUE to this world: no rain, wind, sea or handheld breathing where this world has none (a lunar dome, a vacuum, a desert...); use its own light, dust, steam, sparks, snow.\n- \"fx\": zoom 0.03 to 0.08; shake 0 to 1 (above 0.7 only on impacts, chases, crashes); flash true only on a shock.\n- \"camera\" in {{cameras}}. \"time\": only when the hour of the picture differs from \"{{hour}}\" (e.g. the dawn of a good ending), English, e.g. \"it is dawn: golden light\".\n- Every direction starts with \"n\": the NUMBER of its shot in the list below (1, 2, 3...), so that the pictures stay aligned with the lines: direction n is for shot n, never for another one.\n- The grandiose picture of the world is for the FIRST shot only, never reuse it: {{scale_image}}. Every other shot has its OWN picture, made from ITS line.\n\nAPPROVED EXAMPLES of pictures and camera moves (other plots, copy only the level of detail):\n{{examples}}\n\nBRIEF (compact):\n{{brief}}\n\nSHOTS ({{count}}):\n{{shots}}\n\nAnswer with the JSON list of directions only, same order, same count.",
+    "prompt": "[[STAGE:director]]\nYou are the DIRECTOR of a short-video studio, trend \"you must choose\": vertical 9:16, a clean, believable photographic cinematic look (a photoreal RENDER applied to ANY world, fantasy and supernatural ones included), ONE art direction for the whole video (hour: {{hour}}; atmosphere: {{atmosphere}}).\nFor each shot below (its spoken line is given), write the PICTURE and the CAMERA MOVE.\n\nRULES\n- \"still\" = ONE concrete filmable photograph (what is in the frame, the angle, the light), 20 to 45 words, in English, a single continuous scene. NEVER ask for text, letters, captions, logos, a collage, panels or a\n  split screen. Characters: use their look and wardrobe from the brief. For kind talk and choice leave \"still\" empty (the portrait of the character is used) but ALWAYS write the \"motion\": how the character acts while speaking (gesture, glance, expression, what moves around).\n- \"motion\" = the camera move and what moves in the picture, 10 to 25 words, English. Use a DIFFERENT camera move from the neighbouring shots, from this list or similar: {{camera_moves}}. At least one third of\n  the shots must be dynamic (fast flight, chase, whip pan, impact).\n- WHO IS WHO: whenever a main character is in a picture write his or her NAME in the still AND in the motion, with what he or she wears; never \"he\", \"she\", \"the figure\", \"the subject\" alone. The viewer is never \"the narrator\": write \"you\" (first-person view), \"your hands\" or \"the camera\".\n- Kind pov = FIRST PERSON: the picture shows YOUR hands and forearms (or what you see ahead of you) in the middle of a physical action, and the \"motion\" says what MOVES: the hands crank, push, pull or climb and the object turns, opens or gives way, the camera moves with you. Describe ONLY what is in the picture and what happens to it. Never a person who just stands and trembles.\n- Every shot with a character in it names a physical verb (walks, runs, climbs, turns, opens, reaches, falls); the kind offer shows c1 and c2 side by side, both facing you and holding out an open hand toward the camera.\n- Keep every picture consistent with the rules of THIS world (its magic and fantasy too): no rain, wind or sea where this world has none (a lunar dome, a vacuum, a desert...); use its own light, dust, steam, sparks, snow, glow.\n- \"fx\": zoom 0.03 to 0.08; shake 0 to 1 (above 0.7 only on impacts, chases, crashes); flash true only on a shock.\n- \"camera\" in {{cameras}}. \"time\": only when the hour of the picture differs from \"{{hour}}\" (e.g. the dawn of a good ending), English, e.g. \"it is dawn: golden light\".\n- Every direction starts with \"n\": the NUMBER of its shot in the list below (1, 2, 3...), so that the pictures stay aligned with the lines: direction n is for shot n, never for another one.\n- The grandiose picture of the world is for the FIRST shot only, never reuse it: {{scale_image}}. Every other shot has its OWN picture, made from ITS line.\n\nAPPROVED EXAMPLES of pictures and camera moves (other plots, copy only the level of detail):\n{{examples}}\n\nBRIEF (compact):\n{{brief}}\n\nSHOTS ({{count}}):\n{{shots}}\n\nAnswer with the JSON list of directions only, same order, same count.",
     "output_schema": {
      "type": "object",
      "properties": {
@@ -654,7 +695,7 @@
     "offer_hands": "{pair} slowly stretch their open hands toward the camera, their fingers reaching, they look at the viewer, blink, small head movements",
     "offer_step": "{pair} step forward together toward the camera and hold out their open hands, urgent faces, the camera pushes slowly in",
     "offer_next": "{pair} keep holding out their open hands toward the camera, steady urgent faces, blink, small head movements, the camera pushes in a little more",
-    "idle": "{subject} looks at the camera, waiting, blinks naturally, breathes, small head and eyebrow movements, eyes moving slightly, cinematic, realistic skin"
+    "idle": "{subject} looks at the camera, waiting, blinks naturally, breathes, small head and eyebrow movements, eyes moving slightly, cinematic, believable skin or surface"
    },
    "routing": "method_registry.route(shot): need = classify_shot(kind, who is in the shot, motion words) -> method chosen by status (works > partial > untested; a failing method is never chosen)",
    "needs_and_methods": {

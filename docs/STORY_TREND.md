@@ -83,6 +83,18 @@ Still downloaded on a new box (they are weights, not tools): the model profiles 
 (`story_produce.ensure_voice_samples`: only the files the box lacks, ~1 MB).
 The build proves the tools at build time (it imports each of them), so a missing one fails the build and not a rented hour.
 
+## Test mode and automatic length (two options, neither is the default)
+
+* **`--shot-scale 0.4`** (`story_auto.py run`, `story_agents.py`, `story_text_lab.py`; the parameter `shot_scale`, 1.0 = normal): TESTS ONLY. It multiplies the time a shot stays on screen, so that a short
+  test holds MANY scenes: `budget()` plans more shots (a minute at 0.4 has as many shots as 2:30 at the normal pace, about 40), the lines get shorter (`max_words()`: 6 words instead of 14, offers 4 instead of 9), the silence
+  after a line shrinks (`story_render.tail_of()`, never under 0.15 s; the twist keeps 0.96 s instead of 2.4 s, the choice keeps its 3.2 s countdown) and the clips are as short as their shot (about 1.5 s: fewer frames to
+  generate). More shots also means more pictures to make (stills, identity pass), so the saving is on the length of the video and of every clip, not on the number of scenes. The plan records the scale it was made with.
+* **`--auto-length`** (the parameter `length_mode: auto`): nobody fixes the length, the creation decides it, never under 2:00 and never over 10:00 (`LENGTH_RANGE`). The idea agent writes as many sentences as its story
+  needs (5 to 14), then the LENGTH agent (`run_length`, prompt `LENGTH_PROMPT`) lists the key events of that context and gives a length (clamped, rounded to 10 s; without a model the length follows the size of the context).
+  Everything after it follows the decided length: the analyst is asked for more places (up to 10 or 11), an outline of more than 60 beats is planned in 3 parts (up to the choice, branch A, rewind + branch B, each told what
+  was planned before) because one answer of the model would be cut, and the lines are written in chunks of at most 28 beats. `story_text_lab.py --auto-length --ideas 0 --stories N --outline-candidates 1` writes the scripts
+  (text only) with a summary of the lengths at the top of REPORT.md (shortest, longest, average, within the bounds, average at least 2:30).
+
 ## Checklist when something goes wrong
 
 * `story_auto.py status NAME` says what is missing; rerun `run` — it resumes.

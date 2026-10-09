@@ -58,7 +58,7 @@ def constant_hash(template: str) -> str:
 
 
 def prompt_fingerprint(trend) -> dict:
-    return {"version": trend.PROMPT_VERSION, **{n.lower().replace("_prompt", ""): constant_hash(getattr(trend, n)) for n in ("ANALYST_PROMPT", "PLANNER_PROMPT", "WRITER_PROMPT", "DIRECTOR_PROMPT", "JUDGE_PROMPT")}}
+    return {"version": trend.PROMPT_VERSION, **{n.lower().replace("_prompt", ""): constant_hash(getattr(trend, n)) for n in ("ANALYST_PROMPT", "PLANNER_PROMPT", "WRITER_PROMPT", "DIRECTOR_PROMPT", "JUDGE_PROMPT", "LENGTH_PROMPT") if hasattr(trend, n)}}
 
 
 # ---------------------------------------------------------------------------------------------- one agent: ask, check, repair
@@ -125,6 +125,11 @@ def context_size(context: str) -> dict:
     return {"sentences": max(1, len(re.findall(r"[.!?]+(?:\s|$)", context.strip()))), "words": se.count_words(context)}
 
 
+def is_auto(params: dict) -> bool:
+    """The length of the video is decided by the creation (the length agent), not fixed by whoever asks."""
+    return params.get("length_mode") == "auto"
+
+
 def context_sentences(params: dict, trend) -> int:
     """How many sentences the idea agent is asked for: more for a longer video (about one per 20 s), between the bounds of the trend. More information = a more stable, more precise generation."""
     low, high = getattr(trend, "IDEA_SENTENCES", (4, 12))
@@ -154,6 +159,10 @@ def run_idea(params: dict, trend, llm) -> tuple[str, dict]:
         return plain, {"source": "template", "bones": bones}
     count = context_sentences(params, trend)
     sentences = f"{count} sentences (between {count - 1} and {count + 2})"
+    if is_auto(params):  # no length was fixed: the story decides how big its context is, and the length agent reads it afterwards
+        low, high = getattr(trend, "IDEA_AUTO_SENTENCES", (5, 14))
+        count = low + 2
+        sentences = f"as many sentences as THIS story needs, between {low} and {high} (a simple story needs few; a story with several places, reversals or rules of its own needs more)"
     if bones["mode"] == "invent":
         prompt = fill(trend.IDEA_INVENT_PROMPT, {"ingredients": " + ".join(bones["ingredients"]), "hour": bones["hour"], "tone": bones["tone"], "avoid": "; ".join(w[0] for w in trend.IDEA_WORLDS),
                                                  "sentences": sentences, "kind": bones["kind"], "genre": bones["genre"], "names": " and ".join(bones["names"])})
@@ -164,6 +173,39 @@ def run_idea(params: dict, trend, llm) -> tuple[str, dict]:
     if answer is None:
         return plain, {"source": "template", "bones": bones, "attempts": attempts, "problems": problems[:3]}
     return answer["context"].strip(), {"source": "llm", "bones": bones, "attempts": attempts, "title": answer["title"], "invented": {"setting": answer.get("setting"), "premise": answer.get("premise")} if bones["mode"] == "invent" else None}
+
+
+def validate_length(answer: dict, trend) -> list[str]:
+    """What the length agent answered must be usable: a few key events, a number of seconds (out of the bounds it is clamped, not refused), a reason."""
+    problems = []
+    events = [e for e in answer.get("events", []) if isinstance(e, str) and e.strip()]
+    if len(events) < 4:
+        problems.append("list 6 to 20 key events of the story (at least 4)")
+    if not isinstance(answer.get("seconds"), int) or answer["seconds"] <= 0:
+        problems.append("seconds must be a whole number of seconds")
+    if se.count_words(answer.get("why", "")) < 4:
+        problems.append("say in one sentence why this length")
+    return problems
+
+
+def fallback_length(context: str, trend) -> int:
+    """Without a model: the length follows the size of the context (a longer context tells a bigger story): the minimum for 4 sentences, 30 s more for each further sentence, clamped to the bounds."""
+    low, high = trend.LENGTH_RANGE
+    sentences = context_size(context)["sentences"]
+    return int(max(low, min(high, round((low + 30 * max(0, sentences - 4)) / 10) * 10)))
+
+
+def run_length(context: str, params: dict, trend, llm) -> tuple[int, dict]:
+    """AUTO LENGTH: nobody fixed how long the video is, the creation decides it from the key events of the context, between the bounds of the trend. Returns (seconds, report)."""
+    low, high = trend.LENGTH_RANGE
+    per_shot = trend.SECONDS_PER_SHOT * params.get("shot_scale", 1.0)
+    prompt = fill(trend.LENGTH_PROMPT, {"context": context.strip(), "shot_seconds": f"{per_shot:.1f}", "shots_2min": round(120 / per_shot), "shots_per_minute": round(60 / per_shot),
+                                        "min_seconds": low, "max_seconds": high})
+    answer, problems, attempts = (None, ["no model"], 0) if llm is None else call_agent(llm, prompt, trend.LENGTH_SCHEMA, lambda a: validate_length(a, trend), seed=params["seed"] + 3)
+    if answer is None:
+        return fallback_length(context, trend), {"source": "template", "attempts": attempts, "problems": problems[:3]}
+    chosen = int(max(low, min(high, round(answer["seconds"] / 10) * 10)))
+    return chosen, {"source": "llm", "attempts": attempts, "asked": answer["seconds"], "chosen": chosen, "events": answer["events"], "why": answer["why"]}
 
 
 # ---------------------------------------------------------------------------------------------- stage 1: the analyst
@@ -208,7 +250,7 @@ def heuristic_brief(context: str, params: dict, trend) -> dict:
 
 def run_analyst(context: str, params: dict, trend, llm) -> tuple[dict, dict]:
     size = context_size(context)
-    n_locations = "5 or 6" if size["sentences"] < 7 else "6 or 7" if size["sentences"] < 10 else "7 or 8"
+    n_locations = trend.locations_asked(params.get("target_seconds", 150), size["sentences"]) if hasattr(trend, "locations_asked") else "5 or 6" if size["sentences"] < 7 else "6 or 7" if size["sentences"] < 10 else "7 or 8"
     prompt = fill(trend.ANALYST_PROMPT, {"context": context.strip(), "context_size": f"{size['sentences']} sentences, {size['words']} words", "n_locations": n_locations, "language": {"en": "English", "fr": "French"}[params["language"]], "tone": params["tone"], "hours": trend.HOURS,
                                          "location_tags": trend.LOCATION_TAGS})
     brief, problems, attempts = (None, ["no model"], 0) if llm is None else call_agent(llm, prompt, trend.BRIEF_SCHEMA, lambda b: validate_brief(b, trend), seed=params["seed"])
@@ -235,17 +277,18 @@ def expected_branch(act: str) -> str:
     return "main" if act in ("hook", "setup", "offers", "choice") else ("A" if act == "branch_a" else "B")
 
 
-def validate_outline(outline: dict, counts: dict[str, int], endings: dict, trend) -> list[str]:
+def validate_outline(outline: dict, counts: dict[str, int], endings: dict, trend, needs: set[str] | None = None) -> list[str]:
+    """`needs` = the header and footer fields this answer must carry (None = all of them): a part of a long outline is only asked for the fields that belong to it."""
     problems = []
     beats = outline.get("beats", [])
-    if abs(len(beats) - sum(counts.values())) > 6:
+    if abs(len(beats) - sum(counts.values())) > max(6, round(0.08 * sum(counts.values()))):
         problems.append(f"{len(beats)} beats in total, {sum(counts.values())} are needed (a video of the right length)")
     order = [act for act in trend.ACT_PURPOSE if act in counts]
     sequence = [b.get("act") for b in beats]
     expected = [act for act in order for _ in range(counts[act])]
     for act in order:
         got = sequence.count(act)
-        if abs(got - counts[act]) > (0 if counts[act] == 1 else 3):  # the counts are a guide (the length is decided by the lines); the order and the kinds are what must be right
+        if abs(got - counts[act]) > (0 if counts[act] == 1 else max(3, round(0.12 * counts[act]))):  # the counts are a guide (the length is decided by the lines); the order and the kinds are what must be right
             problems.append(f"act {act}: {got} beats, {counts[act]} are needed")
     if [a for a in sequence if a] != sorted((a for a in sequence if a), key=lambda a: order.index(a) if a in order else 99):
         problems.append(f"the acts must come in this order: {order}")
@@ -285,16 +328,19 @@ def validate_outline(outline: dict, counts: dict[str, int], endings: dict, trend
             tail = [b for b in beats if b.get("act") == act][-2:]  # the twist is the last beat of the branch, or the one before an epilogue
             if not any(b.get("kind") == "twist" for b in tail):
                 problems.append(f"a twist must close {act} (one of its last two beats)")
-    if beats and beats[0].get("kind") not in ("narration", "pov"):
+    if beats and "hook" in counts and beats[0].get("kind") not in ("narration", "pov"):
         problems.append("the first beat is a narration or pov hook")
+    def wanted(name: str) -> bool:
+        return needs is None or name in needs  # a part of a long outline is only asked for the fields that belong to it
+
     title = outline.get("hook_title", "").strip()
-    if "\n" not in title or not title.upper().startswith(("POV", "POINT DE VUE", "TON POV")):
+    if wanted("hook_title") and ("\n" not in title or not title.upper().startswith(("POV", "POINT DE VUE", "TON POV"))):
         problems.append("hook_title: two lines, the first starts with POV:")
-    if "\n" not in outline.get("closing_question", "").strip():
+    if wanted("closing_question") and "\n" not in outline.get("closing_question", "").strip():
         problems.append("closing_question: two lines")
-    if outline.get("caption", "").count("#") < 5:
+    if wanted("caption") and outline.get("caption", "").count("#") < 5:
         problems.append("caption needs at least 5 hashtags")
-    if not outline.get("ending_label_a") or ("branch_b" in counts and not outline.get("ending_label_b")):
+    if (wanted("ending_label_a") and not outline.get("ending_label_a")) or (wanted("ending_label_b") and "branch_b" in counts and not outline.get("ending_label_b")):
         problems.append("the ending labels are required")
     return problems
 
@@ -326,7 +372,66 @@ def outline_score(outline: dict, brief: dict) -> float:
     return round(distinct + keyword_hits + kinds, 3)
 
 
+def plan_parts(counts: dict[str, int]) -> list[dict[str, int]]:
+    """The acts of a long outline grouped into parts planned one after the other: up to the choice, the branch A, the rewind and the branch B."""
+    groups = (("hook", "setup", "offers", "choice"), ("branch_a",), ("rewind", "branch_b"))
+    parts = [{act: counts[act] for act in group if act in counts} for group in groups]
+    return [part for part in parts if part]
+
+
+def part_needs(part_counts: dict[str, int], last: bool) -> set[str]:
+    """The header and footer fields of the outline that a part must carry: the title and caption come with the hook, an ending label with its branch, the closing question with the last part."""
+    needs: set[str] = set()
+    if "hook" in part_counts:
+        needs |= {"hook_title", "caption"}
+    if "branch_a" in part_counts:
+        needs.add("ending_label_a")
+    if "branch_b" in part_counts:
+        needs.add("ending_label_b")
+    if last:
+        needs.add("closing_question")
+    return needs
+
+
+def planned_so_far(beats: list[dict]) -> str:
+    if not beats:
+        return "BEATS ALREADY PLANNED: (none, this part starts the video)"
+    return "BEATS ALREADY PLANNED (continue the story from them, never repeat them):\n" + "\n".join(f"{n + 1}. [{b['act']}/{b['kind']}/{b['speaker']}] {' '.join(b['purpose'].split()[:22])}" for n, b in enumerate(beats))
+
+
+def planner_prompt(brief: dict, counts: dict, endings: dict, params: dict, trend) -> str:
+    return fill(trend.PLANNER_PROMPT, {"structure": structure_text(counts), "act_purposes": "\n".join(f"- {act}: {trend.ACT_PURPOSE[act]}" for act in counts), "max_talk": getattr(trend, "MAX_TALK_BEATS", 4),
+                                       "mood_a": trend.ENDING_MOOD[endings["A"]], "mood_b": trend.ENDING_MOOD[endings["B"]] if "B" in endings else "(there is no branch B in this video)",
+                                       "language": {"en": "English", "fr": "French"}[params["language"]], "brief": compact_brief(brief)})
+
+
+def run_planner_in_parts(brief: dict, counts: dict, endings: dict, params: dict, trend, llm) -> tuple[dict, dict]:
+    """A long video (more beats than ONE answer of the model can hold) is planned part by part: up to the choice, the branch A, the rewind and the branch B. Each part is shown the beats already planned and
+    is checked on its own acts; a part the model never gets right falls back to the template beats for THAT part only."""
+    parts = plan_parts(counts)
+    fallback = template_outline(brief, counts, endings, params, trend)
+    beats: list[dict] = []
+    fields: dict[str, str] = {}
+    report: dict = {"candidates": [], "parts": []}
+    for number, part_counts in enumerate(parts, 1):
+        needs = part_needs(part_counts, last=number == len(parts))
+        prompt = planner_prompt(brief, part_counts, endings, params, trend) + "\n\n" + fill(trend.PLANNER_PART_NOTE, {"parts": len(parts), "part": number, "already": planned_so_far(beats)})
+        outline, problems, attempts = call_agent(llm, prompt, trend.OUTLINE_SCHEMA, lambda o, c=part_counts, n=needs: validate_outline(o, c, endings, trend, n), seed=params["seed"] + 100 * number)
+        if outline is None:
+            part_beats, source = [b for b in fallback["beats"] if b["act"] in part_counts], "template"
+        else:
+            part_beats, source = outline["beats"], "llm"
+            fields.update({name: outline.get(name, "") for name in needs})
+        beats += part_beats
+        report["parts"].append({"acts": list(part_counts), "beats": len(part_beats), "source": source, "attempts": attempts, "problems": problems[:3]})
+    merged = {**{name: fallback[name] for name in ("hook_title", "ending_label_a", "ending_label_b", "closing_question", "caption")}, **{k: v for k, v in fields.items() if v}, "beats": beats}
+    sources = {part["source"] for part in report["parts"]}
+    return merged, {**report, "source": "llm" if sources == {"llm"} else "template" if sources == {"template"} else "partly template"}
+
+
 def run_planner(brief: dict, counts: dict, endings: dict, params: dict, trend, llm, candidates: int = 1) -> tuple[dict, dict]:
+    if llm is not None and sum(counts.values()) > getattr(trend, "PLANNER_SPLIT_BEATS", 10**6):  # a long video: one answer would be cut, the outline is planned part by part
+        return run_planner_in_parts(brief, counts, endings, params, trend, llm)
     prompt = fill(trend.PLANNER_PROMPT, {"structure": structure_text(counts), "act_purposes": "\n".join(f"- {act}: {trend.ACT_PURPOSE[act]}" for act in counts),
                                         "max_talk": getattr(trend, "MAX_TALK_BEATS", 4), "mood_a": trend.ENDING_MOOD[endings["A"]], "mood_b": trend.ENDING_MOOD[endings["B"]] if "B" in endings else "(there is no branch B in this video)", "language": {"en": "English", "fr": "French"}[params["language"]], "brief": compact_brief(brief)})
     best, report = None, {"candidates": []}
@@ -341,13 +446,22 @@ def run_planner(brief: dict, counts: dict, endings: dict, params: dict, trend, l
 
 
 # ---------------------------------------------------------------------------------------------- stage 3: the writer
-def chunks_of(beats: list[dict]) -> list[list[int]]:
-    """The beats are written in chunks that follow the story: the first acts up to the choice, the branch A, the rewind + the branch B."""
+def chunks_of(beats: list[dict], max_size: int | None = None) -> list[list[int]]:
+    """The beats are written in chunks that follow the story: the first acts up to the choice, the branch A, the rewind + the branch B. With `max_size` a longer chunk is cut into equal parts (a 10-minute
+    story has about 45 beats in a branch: one list of lines that long loses its thread)."""
     groups: list[list[int]] = [[], [], []]
     for i, beat in enumerate(beats):
         act = beat["act"]
         groups[0 if act in ("hook", "setup", "offers", "choice") else 1 if act == "branch_a" else 2].append(i)
-    return [g for g in groups if g]
+    chunks = [g for g in groups if g]
+    if not max_size:
+        return chunks
+    out: list[list[int]] = []
+    for chunk in chunks:
+        pieces = -(-len(chunk) // max_size)
+        size = -(-len(chunk) // pieces)
+        out += [chunk[i:i + size] for i in range(0, len(chunk), size)]
+    return out
 
 
 def offer_rule(trend) -> str:
@@ -429,26 +543,31 @@ def run_writer(brief: dict, outline: dict, params: dict, trend, llm, library_exa
     location_ids = [loc["id"] for loc in brief["locations"]]
     lines: list[dict | None] = [None] * len(beats)
     report = {"chunks": []}
-    for chunk in chunks_of(beats):
+    scale = params.get("shot_scale", 1.0)
+    max_words = trend.max_words(scale) if hasattr(trend, "max_words") else trend.MAX_SPOKEN_WORDS
+    offer_words = trend.max_offer_words(scale) if hasattr(trend, "max_offer_words") else getattr(trend, "MAX_OFFER_WORDS", None)
+    last_index = {b["act"]: i for i, b in enumerate(beats)}  # the last beat of every act: a branch only ENDS in the chunk that holds its last beat
+    for chunk in chunks_of(beats, getattr(trend, "WRITER_MAX_CHUNK", None)):
         picked = [beats[i] for i in chunk]
         acts = {b["act"] for b in picked}
         branch_letter = "A" if "branch_a" in acts else "B" if "branch_b" in acts else None
-        expected = (endings or {}).get(branch_letter) if branch_letter else None
+        closes_branch = branch_letter is not None and chunk[-1] == last_index["branch_a" if branch_letter == "A" else "branch_b"]
+        expected = (endings or {}).get(branch_letter) if closes_branch else None
         mood = trend.ENDING_MOOD[expected] if expected else trend.OPEN_MOOD
         previous = " / ".join(l["text"] for l in lines[:chunk[0]][-5:] if l) or "(this is the start)"
-        prompt = fill(trend.WRITER_PROMPT, {"language": {"en": "English", "fr": "French"}[params["language"]], "max_words": trend.MAX_SPOKEN_WORDS, "must_include": "; ".join(brief["must_include"]) or "(none)",
+        prompt = fill(trend.WRITER_PROMPT, {"language": {"en": "English", "fr": "French"}[params["language"]], "max_words": max_words, "must_include": "; ".join(brief["must_include"]) or "(none)",
                                            "location_ids": location_ids, "brief": compact_brief(brief), "previous_lines": previous, "count": len(picked), "examples": library_examples or "(none yet)",
                                            "offer_rule": offer_rule(trend), "avg_words": f"{average:.0f}", "total_words": int(params["target_seconds"] * se.WORDS_PER_SECOND[params["language"]] * 0.85), "ending_mood": mood,
                                            "beats": "\n".join(f"{n + 1}. [{b['kind']}, speaker {b['speaker']}] {b['purpose']}" for n, b in enumerate(picked))})
         answer, problems, attempts = (None, ["no model"], 0) if llm is None else call_agent(
             llm, prompt, sized(trend.LINES_SCHEMA, "lines", len(picked)),
-            lambda a: validate_lines(a, picked, location_ids, trend.MAX_SPOKEN_WORDS, average, getattr(trend, "MAX_OFFER_WORDS", None)) + validate_independence(a.get("lines", []), picked, brief)
-            + (verify_polarity(llm, trend, a.get("lines", []), expected, seed=params["seed"]) if expected and not validate_lines(a, picked, location_ids, trend.MAX_SPOKEN_WORDS) else [])
-            + (verify_clarity(llm, trend, picked, a.get("lines", []), previous, seed=params["seed"]) if hasattr(trend, "CLARITY_PROMPT") and not validate_lines(a, picked, location_ids, trend.MAX_SPOKEN_WORDS) else []),
+            lambda a: validate_lines(a, picked, location_ids, max_words, average, offer_words) + validate_independence(a.get("lines", []), picked, brief)
+            + (verify_polarity(llm, trend, a.get("lines", []), expected, seed=params["seed"]) if expected and not validate_lines(a, picked, location_ids, max_words) else [])
+            + (verify_clarity(llm, trend, picked, a.get("lines", []), previous, seed=params["seed"]) if hasattr(trend, "CLARITY_PROMPT") and not validate_lines(a, picked, location_ids, max_words) else []),
             seed=params["seed"] + 7 * chunk[0], soft=soft_writer_problem)
         from_model = answer is not None
         if answer is None:
-            answer = {"lines": [{"text": " ".join(b["purpose"].split()[:trend.MAX_SPOKEN_WORDS - 2]), "location": location_ids[0], "in_shot": []} for b in picked]}
+            answer = {"lines": [{"text": " ".join(b["purpose"].split()[:max_words - 2]), "location": location_ids[0], "in_shot": []} for b in picked]}
         report["chunks"].append({"beats": len(picked), "source": "llm" if from_model else "template", "attempts": attempts, "problems": problems[:3]})
         for i, line in zip(chunk, answer["lines"]):
             lines[i] = line
@@ -694,8 +813,11 @@ def make_plan(context: str | None = None, given: dict | None = None, seed: int |
     for k in range(max(1, candidates)):
         started = time.time()
         run_params = {**params, "seed": params["seed"] + 1000 * k}
+        length_report = None
+        if is_auto(run_params):  # no fixed length: the creation decides it from the context, between the bounds of the trend
+            run_params["target_seconds"], length_report = run_length(context, run_params, trend, llm)
         brief, report_a = run_analyst(context, run_params, trend, llm)
-        counts = trend.budget(params["target_seconds"], params["branches"])
+        counts = trend.budget(run_params["target_seconds"], run_params["branches"], run_params.get("shot_scale", 1.0))
         outline, report_p = run_planner(brief, counts, endings, run_params, trend, llm, outline_candidates)
         examples = library.examples_text(brief, k=2, exclude=exclude_examples)
         lines, report_w = run_writer(brief, outline, run_params, trend, llm, examples, endings)
@@ -706,9 +828,9 @@ def make_plan(context: str | None = None, given: dict | None = None, seed: int |
         rhythm = rhythm_pass(story["shots"], trend)
         location_ids = [loc["id"] for loc in brief["locations"]]
         problems = sw.validate_story(story, run_params, endings, location_ids)
-        plan = finish_plan(story, brief, context, run_params, provenance, endings, location_ids, voices)
+        plan = finish_plan(story, brief, context, run_params, {**provenance, **({"target_seconds": "auto"} if length_report else {})}, endings, location_ids, voices)
         plan["idea"] = idea_report
-        plan["agents"] = {"trend": trend.NAME, "prompts": prompt_fingerprint(trend), "analyst": report_a, "planner": report_p, "writer": report_w, "director": report_d, "rhythm": rhythm,
+        plan["agents"] = {"trend": trend.NAME, "prompts": prompt_fingerprint(trend), "length": length_report, "analyst": report_a, "planner": report_p, "writer": report_w, "director": report_d, "rhythm": rhythm,
                           "problems_left": problems, "seconds": round(time.time() - started, 1)}
         plan["story_source"] = "chain: " + ", ".join(f"{n}={plan['agents'][n]['source']}" for n in ("analyst", "planner")) + ", writer=" + ("llm" if all(c["source"] == "llm" for c in report_w["chunks"]) else "partly template") \
             + ", director=" + ("llm" if all(c["source"] == "llm" for c in report_d["chunks"]) else "partly template")
@@ -760,6 +882,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("context")
     parser.add_argument("--seconds", type=int, default=150)
+    parser.add_argument("--shot-scale", type=float, help="TEST ONLY: multiplies the time a shot stays on screen (0.4 = about 1.5 s per shot: many more shots in the same minute); not used by default")
+    parser.add_argument("--auto-length", action="store_true", help="the creation decides how long the video is (2 to 10 minutes, from the context); --seconds is then ignored")
     parser.add_argument("--seed", type=int)
     parser.add_argument("--language", choices=sorted(se.WORDS_PER_SECOND))
     parser.add_argument("--branches", type=int, choices=[1, 2])
@@ -771,7 +895,7 @@ def main() -> None:
     parser.add_argument("--judge", action="store_true")
     parser.add_argument("--out", type=Path)
     args = parser.parse_args()
-    given = {k: v for k, v in {"language": args.language, "target_seconds": args.seconds, "branches": args.branches}.items() if v is not None}
+    given = {k: v for k, v in {"language": args.language, "target_seconds": args.seconds, "branches": args.branches, "shot_scale": args.shot_scale, "length_mode": "auto" if args.auto_length else None}.items() if v is not None}
     plan = make_plan(args.context, given, args.seed, ollama(args.model) if args.llm else None, args.trend, args.candidates, args.judge, args.outline_candidates)
     if args.out:
         args.out.parent.mkdir(parents=True, exist_ok=True)

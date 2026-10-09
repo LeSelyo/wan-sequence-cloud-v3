@@ -46,8 +46,8 @@ STORY_SCHEMA = {"type": "object", "properties": {
     "required": ["title", "hook_title", "characters", "shots", "end_card", "end_card_small", "caption"]}
 
 
-def target_shots(seconds: float) -> int:
-    return max(10, int(round(seconds / SECONDS_PER_SHOT)))
+def target_shots(seconds: float, shot_scale: float = 1.0) -> int:
+    return max(10, int(round(seconds / (SECONDS_PER_SHOT * shot_scale))))
 
 
 def draw_endings(seed: int) -> dict:
@@ -111,7 +111,7 @@ def validate_story(story: dict, params: dict, endings: dict, location_ids: list[
     if set(characters) != {"c1", "c2"}:
         problems.append("exactly two main characters with ids c1 and c2")
     shots = story.get("shots", [])
-    n = target_shots(params["target_seconds"])
+    n = target_shots(params["target_seconds"], params.get("shot_scale", 1.0))
     if not (0.7 * n <= len(shots) <= 1.35 * n):
         problems.append(f"{len(shots)} shots: about {n} are needed for {params['target_seconds']} s")
     two = params["branches"] >= 2

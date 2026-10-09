@@ -31,8 +31,9 @@ GENDERS = {"Kael": "m", "Maren": "f", "Oren": "m", "Talia": "f", "Brandt": "m", 
            "Joss": "m", "Anika": "f"}
 # parameters: key -> (default, how it is drawn when no default is fixed)
 DEFAULTS = {"language": "en", "aspect": "9:16", "size": [576, 1024], "fps": 30, "target_seconds": 75, "choices": 1, "branches": 2, "pov": "second person", "world": "real world",
-            "characters": None, "talking_lines": None, "tone": None, "ending": None, "voices": None, "style": None, "seed": None, "llm_model": "qwen3.6:27b", "story_source": "auto"}
-FIXED = {"language", "aspect", "size", "fps", "target_seconds", "choices", "branches", "pov", "world", "llm_model", "story_source"}  # "default" provenance; the others are drawn by the seed
+            "characters": None, "talking_lines": None, "tone": None, "ending": None, "voices": None, "style": None, "seed": None, "llm_model": "qwen3.6:27b", "story_source": "auto",
+            "shot_scale": 1.0, "length_mode": "fixed"}  # shot_scale: TEST ONLY, multiplies the time a shot stays on screen (1 = normal); length_mode "auto": the creation decides the length (story_agents.run_length)
+FIXED = {"language", "aspect", "size", "fps", "target_seconds", "choices", "branches", "pov", "world", "llm_model", "story_source", "shot_scale", "length_mode"}  # "default" provenance; the others are drawn by the seed
 
 
 def resolve_params(given: dict | None = None, seed: int | None = None) -> tuple[dict, dict]:
@@ -57,6 +58,10 @@ def resolve_params(given: dict | None = None, seed: int | None = None) -> tuple[
             params[key], provenance[key] = drawn[key], "rng"
     if params["language"] not in WORDS_PER_SECOND:
         raise ValueError(f"language must be one of {sorted(WORDS_PER_SECOND)}")
+    if not 0.25 <= float(params["shot_scale"]) <= 2.0:
+        raise ValueError("shot_scale must be between 0.25 and 2 (1 = the normal time of a shot; below 1 is for tests only)")
+    if params["length_mode"] not in ("fixed", "auto"):
+        raise ValueError("length_mode must be 'fixed' or 'auto'")
     return params, provenance
 
 

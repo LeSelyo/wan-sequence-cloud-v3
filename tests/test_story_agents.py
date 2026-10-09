@@ -52,6 +52,9 @@ class CannedModel:
         stage = re.search(r"\[\[STAGE:(\w+)\]\]", prompt).group(1)
         self.calls.append(stage)
         shots = self.plan["shots"]
+        if stage == "length":
+            return {"events": ["the flooded streets", "the rescue boat", "the two offers", "the captain's secret", "the doctor's cure", "the twist of each branch"], "seconds": 287,
+                    "why": "Two full journeys and a twist each need about five minutes."}
         if stage == "analyst":
             characters = [{**{k: c[k] for k in ("id", "name", "role", "gender", "age", "look", "wardrobe")}, "public_promise": "I can save you", "hidden_truth": "is hiding what really happens to the people they save",
                            "voice_style": "calm"} for c in self.plan["characters"]]
@@ -96,7 +99,7 @@ def library(tmp_path):
 
 def test_the_chain_with_a_cooperative_model_gives_a_valid_plan_with_both_endings_and_every_stage_from_the_model(library, monkeypatch):
     model = CannedModel()
-    monkeypatch.setattr(TREND, "budget", lambda seconds, branches: CannedModel.counts(model.plan["shots"]))
+    monkeypatch.setattr(TREND, "budget", lambda seconds, branches, shot_scale=1.0: CannedModel.counts(model.plan["shots"]))
     plan = sa.make_plan(CONTEXT, {"target_seconds": 150, "endings": {"A": "bad", "B": "good"}}, seed=1, llm=model, library=library, voices=[], judge=True)
     assert plan["agents"]["problems_left"] == [] and plan["story_source"] == "chain: analyst=llm, planner=llm, writer=llm, director=llm"
     assert len(plan["shots"]) == 46 and [s["kind"] for s in plan["shots"]].count("twist") == 2 and any(s["kind"] == "rewind" for s in plan["shots"])
@@ -110,7 +113,7 @@ def test_the_chain_with_a_cooperative_model_gives_a_valid_plan_with_both_endings
 
 def test_a_chunk_of_lines_that_breaks_the_rules_is_sent_back_with_the_problems_and_repaired(library, monkeypatch):
     model = CannedModel(fail_first_writer=True)
-    monkeypatch.setattr(TREND, "budget", lambda seconds, branches: CannedModel.counts(model.plan["shots"]))
+    monkeypatch.setattr(TREND, "budget", lambda seconds, branches, shot_scale=1.0: CannedModel.counts(model.plan["shots"]))
     plan = sa.make_plan(CONTEXT, {"target_seconds": 150, "endings": {"A": "bad", "B": "good"}}, seed=1, llm=model, library=library, voices=[])
     assert plan["agents"]["writer"]["chunks"][0]["attempts"] == 2 and plan["agents"]["problems_left"] == [] and model.calls.count("writer") == 4
 
@@ -177,7 +180,7 @@ def test_a_talking_shot_needs_a_motion_too_so_the_director_is_asked_again():
 
 def test_from_nothing_the_idea_agent_draws_the_bones_by_seed_and_invents_the_context(library, monkeypatch):
     model = CannedModel()
-    monkeypatch.setattr(TREND, "budget", lambda seconds, branches: CannedModel.counts(model.plan["shots"]))
+    monkeypatch.setattr(TREND, "budget", lambda seconds, branches, shot_scale=1.0: CannedModel.counts(model.plan["shots"]))
     plan = sa.make_plan(None, {"target_seconds": 150, "endings": {"A": "bad", "B": "good"}}, seed=7, llm=model, library=library, voices=[])
     assert model.calls[0] == "idea" and model.calls[1] == "analyst" and plan["provenance"]["context"] == "rng" and plan["idea"]["source"] == "llm" and plan["context"]
     first = sa.draw_seed_elements({"seed": 7}, TREND)
@@ -199,7 +202,7 @@ def test_a_branch_that_ends_the_wrong_way_is_sent_back_to_the_writer_with_the_re
             return answer
 
     model = WrongEnding()
-    monkeypatch.setattr(TREND, "budget", lambda seconds, branches: CannedModel.counts(model.plan["shots"]))
+    monkeypatch.setattr(TREND, "budget", lambda seconds, branches, shot_scale=1.0: CannedModel.counts(model.plan["shots"]))
     plan = sa.make_plan(CONTEXT, {"target_seconds": 150, "endings": {"A": "bad", "B": "good"}}, seed=1, llm=model, library=library, voices=[])
     chunk = plan["agents"]["writer"]["chunks"][2]
     assert getattr(model, "spoiled", False) and chunk["attempts"] == 2 and chunk["source"] == "llm" and "polarity" not in json.dumps(chunk)
@@ -437,3 +440,27 @@ def test_the_analyst_is_told_the_size_of_the_context_and_may_invent_the_characte
     prompt = seen["prompt"]
     assert "(3 sentences, 18 words)" in prompt or "(3 sentences, 17 words)" in prompt and "5 or 6 places" in prompt and "INVENT them" in prompt and "fantasy" in prompt and "never make the story more realistic" in prompt
     assert "realistic dark" not in TREND.DIRECTOR_PROMPT and "photoreal RENDER applied to ANY world" in TREND.DIRECTOR_PROMPT
+
+
+def test_an_auto_length_video_gets_its_length_from_the_length_agent_and_the_idea_is_not_told_a_length(library, monkeypatch):
+    prompts = []
+
+    class Spy(CannedModel):
+        def __call__(self, prompt, schema, seed=0):
+            prompts.append(prompt)
+            return super().__call__(prompt, schema, seed)
+
+    model = Spy()
+    seen = {}
+
+    def budget(seconds, branches, shot_scale=1.0):
+        seen["seconds"] = seconds
+        return CannedModel.counts(model.plan["shots"])
+
+    monkeypatch.setattr(TREND, "budget", budget)
+    plan = sa.make_plan(None, {"length_mode": "auto", "endings": {"A": "bad", "B": "good"}}, seed=1, llm=model, library=library, voices=[])
+    assert model.calls[:3] == ["idea", "length", "analyst"]  # the length is decided from the context, before the analyst, the planner and everything that depends on it
+    assert plan["params"]["target_seconds"] == 290 and seen["seconds"] == 290 and plan["provenance"]["target_seconds"] == "auto"
+    assert plan["agents"]["length"]["chosen"] == 290 and plan["agents"]["length"]["asked"] == 287 and len(plan["agents"]["length"]["events"]) == 6
+    assert "as many sentences as THIS story needs" in prompts[0] and "about 8 sentences" not in prompts[0]  # the idea agent sizes its own context
+    assert "A shot lasts about 3.8 seconds, so 2:00 is about 32 shots and every additional minute adds about 16 shots" in prompts[1]  # the length agent is told what a minute costs in shots

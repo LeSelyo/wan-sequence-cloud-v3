@@ -23,15 +23,15 @@ import story_library as lib  # noqa: E402
 TREND = ag.load_trend("you_must_choose")
 
 
-def idea_range(seeds: list[int], seconds: int, llm) -> list[dict]:
+def idea_range(seeds: list[int], seconds: int, llm, given: dict | None = None) -> list[dict]:
     """The idea agent alone: what it invents for each seed (place, premise, context, title) and what the seed drew."""
     rows = []
     for seed in seeds:
         started = time.time()
-        context, report = ag.run_idea({"seed": seed, "target_seconds": seconds}, TREND, llm)
+        context, report = ag.run_idea({"seed": seed, "target_seconds": seconds, **(given or {})}, TREND, llm)
         size = ag.context_size(context)
         rows.append({"seed": seed, "seconds": round(time.time() - started, 1), "source": report["source"], "bones": report["bones"], "title": report.get("title"), "invented": report.get("invented"),
-                     "context": context, "size": size, "asked_sentences": ag.context_sentences({"target_seconds": seconds}, TREND), "attempts": report.get("attempts"), "problems": report.get("problems")})
+                     "context": context, "size": size, "asked_sentences": ag.context_sentences({"target_seconds": seconds, **(given or {})}, TREND), "attempts": report.get("attempts"), "problems": report.get("problems")})
         print(f"idea seed {seed}: {rows[-1]['seconds']} s, {size['sentences']} sentences, {report['source']}: {(report.get('invented') or {}).get('setting') or report['bones'].get('setting')}", flush=True)
     return rows
 
@@ -52,16 +52,51 @@ def structure_checks(plan: dict) -> dict:
             "characters_in_shots": {i: sum(1 for s in shots if i in s.get("in_shot", [])) for i in names}}
 
 
-def story_range(seeds: list[int], seconds: int, llm, outline_candidates: int = 2, library=None) -> list[dict]:
+def story_range(seeds: list[int], seconds: int, llm, outline_candidates: int = 2, library=None, given: dict | None = None) -> list[dict]:
     rows = []
     for seed in seeds:
         started = time.time()
-        plan = ag.make_plan(None, {"target_seconds": seconds}, seed, llm, outline_candidates=outline_candidates, voices=[], library=library)
+        plan = ag.make_plan(None, {"target_seconds": seconds, **(given or {})}, seed, llm, outline_candidates=outline_candidates, voices=[], library=library)
         elapsed = round(time.time() - started)
-        metrics = ev.plan_metrics(plan, plan["context"], seconds)
+        metrics = ev.plan_metrics(plan, plan["context"], plan["params"]["target_seconds"])
         rows.append({"seed": seed, "seconds": elapsed, "plan": plan, "metrics": metrics, "structure": structure_checks(plan)})
         print(f"story seed {seed}: {elapsed} s, {len(plan['shots'])} shots, problems left {plan['agents']['problems_left']}", flush=True)
     return rows
+
+
+def mmss(seconds: float) -> str:
+    return f"{int(seconds) // 60}:{int(seconds) % 60:02d}"
+
+
+def length_summary(stories: list[dict]) -> dict | None:
+    """What the creation decided about the length of each story (None when the stories had a fixed length): the rows, and the bounds the trend promises (never under 2:00, never over 10:00, 2:30 on average or more)."""
+    rows = []
+    for r in stories:
+        plan = r["plan"]
+        length = (plan.get("agents") or {}).get("length")
+        if not length:
+            continue
+        scale = plan["params"].get("shot_scale", 1.0)
+        rows.append({"seed": r["seed"], "title": plan["title"], "chosen": length["chosen"], "asked": length.get("asked"), "source": length["source"], "why": length.get("why"), "events": length.get("events", []),
+                     "shots": len(plan["shots"]), "speech_seconds": plan["estimated_seconds"], "video_estimate": round(len(plan["shots"]) * TREND.SECONDS_PER_SHOT * scale), "text_seconds": r["seconds"]})
+    if not rows:
+        return None
+    chosen = [row["chosen"] for row in rows]
+    low, high = TREND.LENGTH_RANGE
+    return {"rows": rows, "min": min(chosen), "max": max(chosen), "mean": round(sum(chosen) / len(chosen)), "within_bounds": all(low <= c <= high for c in chosen), "mean_at_least_2m30": sum(chosen) / len(chosen) >= 150}
+
+
+def length_lines(summary: dict) -> list[str]:
+    lines = ["## 0. Length decided by the creation (nobody fixed it)", "",
+             f"{len(summary['rows'])} stories: shortest {mmss(summary['min'])}, longest {mmss(summary['max'])}, **average {mmss(summary['mean'])}** (the bounds are {mmss(TREND.LENGTH_RANGE[0])} to {mmss(TREND.LENGTH_RANGE[1])}, "
+             f"within bounds: {summary['within_bounds']}, average at least 2:30: {summary['mean_at_least_2m30']}).", "",
+             "| seed | title | decided | shots | speech (estimate) | video (shots x 3.8 s) | text generation | source |", "|---|---|---|---|---|---|---|---|"]
+    for row in summary["rows"]:
+        lines.append(f"| {row['seed']} | {row['title']} | {mmss(row['chosen'])} | {row['shots']} | {mmss(row['speech_seconds'])} | {mmss(row['video_estimate'])} | {mmss(row['text_seconds'])} | {row['source']} |")
+    lines.append("")
+    for row in summary["rows"]:
+        lines += [f"- **seed {row['seed']}, {mmss(row['chosen'])}** (the model asked for {row['asked']} s): {row['why']}", f"  - key events it counted: {'; '.join(row['events'])}"]
+    return lines + [""]
 
 
 def briefs_range(ideas: list[dict], seconds: int, llm) -> list[dict]:
@@ -122,7 +157,11 @@ def beat_lines(plan: dict) -> list[str]:
 def write_report(out: Path, ideas: list[dict], stories: list[dict], settings: dict) -> None:
     out.mkdir(parents=True, exist_ok=True)
     (out / "report.json").write_text(json.dumps({"settings": settings, "ideas": ideas, "stories": stories}, indent=1, ensure_ascii=False), encoding="utf-8")
-    md = [f"# Text lab: {settings['model']}, {settings['seconds']} s videos, prompt version {TREND.PROMPT_VERSION}", ""]
+    auto = settings.get("auto_length")
+    md = [f"# Text lab: {settings['model']}, {'length decided by the creation (2:00 to 10:00)' if auto else str(settings['seconds']) + ' s videos'}{', shots at ' + str(settings['shot_scale']) + ' of their normal time (TEST)' if settings.get('shot_scale') else ''}, prompt version {TREND.PROMPT_VERSION}", ""]
+    summary = length_summary(stories)
+    if summary:
+        md += length_lines(summary)
     md += ["## 1. The idea agent alone (what the model invents from the drawn ingredients)", "",
            f"The context is asked at about {ideas[0]['asked_sentences']} sentences for {settings['seconds']} s." if ideas else "", ""]
     for r in ideas:
@@ -151,6 +190,9 @@ def main() -> None:
     parser.add_argument("--stories", type=int, default=4)
     parser.add_argument("--seconds", type=int, default=120)
     parser.add_argument("--seed-start", type=int, default=1)
+    parser.add_argument("--auto-length", action="store_true", help="nobody fixes the length: the creation decides it (2 to 10 minutes); --seconds is ignored")
+    parser.add_argument("--shot-scale", type=float, help="TEST ONLY: multiplies the time a shot stays on screen (0.4 = about 1.5 s per shot)")
+    parser.add_argument("--outline-candidates", type=int, default=2, help="outlines tried by the planner for a video that is not planned by parts (1 saves time)")
     parser.add_argument("--model", default="qwen3.6:27b")
     parser.add_argument("--host", default="http://127.0.0.1:11434")
     parser.add_argument("--briefs-from", type=Path, help="reuse the ideas of an earlier run (its report.json), run the ANALYST on each and write REPORT_CHARACTERS.md there")
@@ -168,14 +210,15 @@ def main() -> None:
         return
     ideas, stories = [], []
     started = time.time()
+    given = {k: v for k, v in {"length_mode": "auto" if args.auto_length else None, "shot_scale": args.shot_scale}.items() if v is not None}
     try:
-        ideas = idea_range(list(range(args.seed_start, args.seed_start + args.ideas)), args.seconds, llm)
+        ideas = idea_range(list(range(args.seed_start, args.seed_start + args.ideas)), args.seconds, llm, given) if args.ideas else []
         write_report(args.out, ideas, stories, vars(args) | {"out": str(args.out)})
         empty = lib.StoryLibrary(args.out / "no_examples", seed=False)  # no approved story is shown to the writer: the test measures the prompts, not the examples
-        stories = story_range(list(range(args.seed_start, args.seed_start + args.stories)), args.seconds, llm, library=empty)
+        stories = story_range(list(range(args.seed_start, args.seed_start + args.stories)), args.seconds, llm, outline_candidates=args.outline_candidates, library=empty, given=given)
     finally:
         llm.unload()
-        if ideas:
+        if ideas or stories:
             write_report(args.out, ideas, stories, vars(args) | {"out": str(args.out), "total_seconds": round(time.time() - started)})
     print(f"report: {args.out / 'REPORT.md'}")
 

@@ -186,7 +186,7 @@ class Pipeline:
         if args.plan:
             self.plan_path.write_text(Path(args.plan).read_text(encoding="utf-8"), encoding="utf-8")
             return {"source": f"given plan {args.plan}"}
-        given = {k: v for k, v in {"language": args.language, "target_seconds": args.seconds, "branches": args.branches}.items() if v is not None}
+        given = {k: v for k, v in {"language": args.language, "target_seconds": args.seconds, "branches": args.branches, "shot_scale": args.shot_scale, "length_mode": "auto" if args.auto_length else None}.items() if v is not None}
         llm = None if args.no_llm else ag.ollama(args.model)
         if args.story_method == "single":  # one call writes the whole plan (kept to compare with the chain)
             plan = sw.make_story_plan(args.context, given, args.seed, (lambda prompt, schema: llm(prompt, schema, seed=args.seed or 0)) if llm else None)
@@ -415,6 +415,8 @@ def main() -> None:
     run.add_argument("context", nargs="?", default="")
     run.add_argument("--plan", help="a plan written elsewhere (skips the story step)")
     run.add_argument("--seconds", type=int, default=150)
+    run.add_argument("--shot-scale", type=float, help="TEST ONLY: multiplies the time a shot stays on screen (0.4 = about 1.5 s per shot: many more shots in the same minute, shorter lines, shorter clips). Not used by default")
+    run.add_argument("--auto-length", action="store_true", help="the creation decides how long the video is (2 to 10 minutes, from the context); --seconds is then ignored")
     run.add_argument("--language", choices=sorted(se.WORDS_PER_SECOND))
     run.add_argument("--branches", type=int, choices=[1, 2])
     run.add_argument("--seed", type=int)

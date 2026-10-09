@@ -10,8 +10,8 @@ the BRIEF that the analyst agent extracts from the context. `PROMPT_VERSION` cha
 from __future__ import annotations
 
 NAME = "you_must_choose"
-PROMPT_VERSION = "2026-10-09.5"  # .5: the characters are introduced by name BEFORE the offer, the offer is immediately followed by the choice, both characters may appear in a branch, the director names them
-PROMPT_VERSION_PREVIOUS = "2026-10-09.4"  # .3: ONE offer shot (both hold out a hand), independent branches, suspense, more first-person action; .4: characters speak rarely (orders only), the narrator quotes the offers
+PROMPT_VERSION = "2026-10-09.6"  # .6: the LENGTH agent decides how long a video is when none is fixed (2 to 10 minutes), the outline of a long video is planned by parts, its lines are written in smaller chunks; the other prompts are unchanged
+PROMPT_VERSION_PREVIOUS = "2026-10-09.5"  # .5: the characters are introduced by name BEFORE the offer, the offer is immediately followed by the choice, both characters may appear in a branch, the director names them (.4: characters speak rarely, the narrator quotes the offers; .3: ONE offer shot, independent branches, suspense)
 KINDS = ["narration", "talk", "pov", "choice", "twist", "rewind", "offer"]
 CAMERAS = ["wide", "medium", "close", "pov"]
 LOCATION_TAGS = ["space", "sea", "city", "shelter", "window", "forest", "desert", "ice", "underground"]  # the tags that make the style prompt force what a kind of place must always show
@@ -23,6 +23,10 @@ OFFER_VOICE = "narrator"  # who says the two proposals: "narrator" (quotes them,
 MAX_TALK_BEATS = 4  # characters SPEAK (a close-up whose mouth follows the voice) only when the scene calls for it: an order, a shout
 MIN_POV_SHARE = 0.3  # share of the beats of a branch that are first-person action shots
 SECONDS_PER_SHOT = 3.8  # measured on the finished video "The Last Breath": 173.5 s for 46 shots = 3.77 s per shot (voice + pauses + the end card). With 3.1 a "2 minute" video came out near 3 minutes
+LENGTH_RANGE = (120, 600)  # AUTO LENGTH (no fixed length): what the length agent may decide, in seconds: never under 2 minutes, never over 10
+IDEA_AUTO_SENTENCES = (5, 14)  # the idea agent of an auto-length video writes as many sentences as the story needs, between these bounds
+PLANNER_SPLIT_BEATS = 60  # beyond this many beats the outline is planned act by act: one answer of the model is limited (about 7000 tokens) and a list of 150 beats would be cut
+WRITER_MAX_CHUNK = 28  # the lines are written in chunks of at most this many beats (a branch of a 10-minute story has about 45); a shorter video never reaches it
 SHARES = {"hook": 0.07, "setup": 0.09, "offers": 0.20, "branch_a": 0.27, "branch_b": 0.30}  # share of the shots of each act (two branches); one branch gets branch_a + branch_b
 CAMERA_MOVES = ("aerial flight forward", "whip pan", "low angle tilt up", "handheld run", "slow push-in", "crane up", "dolly forward", "orbit around the subject", "lateral glide", "fast zoom-in", "tilt down")
 FORBIDDEN_IN_PICTURES = ("text", "letters", "caption", "subtitle", "watermark", "logo", "collage", "split screen", "panels", "triptych", "diptych")
@@ -33,9 +37,9 @@ RENDER_PRESET = {"size": [720, 1280], "fps": 30, "subtitle": "one word at a time
                  "sound": "rain, water, drone, heartbeat on the choice, riser+impact on each twist, reverse swell on the rewind, bright pad on a good ending"}
 
 
-def budget(seconds: float, branches: int) -> dict[str, int]:
-    """How many shots each act has for a video of `seconds` (about one shot every 3.1 s)."""
-    total = max(12, round(seconds / SECONDS_PER_SHOT))
+def budget(seconds: float, branches: int, shot_scale: float = 1.0) -> dict[str, int]:
+    """How many shots each act has for a video of `seconds` (about one shot every SECONDS_PER_SHOT s). `shot_scale` < 1 is TEST MODE (never the default): shorter shots, so more of them in the same time."""
+    total = max(12, round(seconds / (SECONDS_PER_SHOT * shot_scale)))
     two = branches >= 2
     shares = dict(SHARES) if two else {"hook": 0.09, "setup": 0.11, "offers": 0.28, "branch_a": 0.52, "branch_b": 0.0}
     counts = {act: max(3, round(total * share)) for act, share in shares.items() if share > 0}
@@ -45,6 +49,23 @@ def budget(seconds: float, branches: int) -> dict[str, int]:
     if two:
         counts["rewind"] = 1
     return {act: counts[act] for act in ACT_PURPOSE if act in counts}  # always in the order of the story: the planner is told this order and the checker expects it
+
+
+def max_words(shot_scale: float = 1.0) -> int:
+    """The longest spoken line of a shot: the normal limit, shorter when the shots are (TEST mode: a shot of 1.5 s holds about 4 words, not 14)."""
+    return MAX_SPOKEN_WORDS if shot_scale >= 1 else max(5, round(MAX_SPOKEN_WORDS * shot_scale))
+
+
+def max_offer_words(shot_scale: float = 1.0) -> int:
+    return MAX_OFFER_WORDS if shot_scale >= 1 else max(4, round(MAX_OFFER_WORDS * shot_scale))
+
+
+def locations_asked(seconds: float, sentences: int) -> str:
+    """How many places the analyst is asked for: the size of the context decides (more sentences, more places) and a long video gets more of them, so that a hundred shots do not stay in six rooms
+    (one more place per 90 s above 2:30, at most 10 or 11)."""
+    base = 5 if sentences < 7 else 6 if sentences < 10 else 7
+    low = min(base + max(0, round((seconds - 150) / 90)), 10)
+    return f"{low} or {low + 1}"
 
 
 ACT_PURPOSE = {
@@ -112,6 +133,30 @@ BRIEF:
 {{brief}}
 
 Answer with the JSON outline only."""
+
+LENGTH_PROMPT = """[[STAGE:length]]
+You are the PRODUCER of a short-video studio, trend "you must choose": a second-person story in which two characters each offer to save you, you choose, you live the WHOLE story of the character you chose, then
+the story rewinds and you live the whole story of the other one; each ends with a twist. Nobody fixed the length of this video: YOU decide it, from the CONTEXT below, as the story NEEDS: as long as it takes
+to tell it clearly and well, never padded, never rushed.
+
+HOW TO DECIDE
+- A shot lasts about {{shot_seconds}} seconds, so 2:00 is about {{shots_2min}} shots and every additional minute adds about {{shots_per_minute}} shots.
+- First list the KEY EVENTS the story contains: the places we go through, the dangers, the rules or objects of the world, the clues, the reversals, what each of the two characters does in his or her own
+  branch (6 to 20 short items). Then decide the length from them.
+- A simple story (one place, one danger, one clue and one twist per branch) needs 2:00 to 2:30. A story with several places, a real journey in each branch and a twist that needs a set-up needs 3:00 to 5:00:
+  this is the usual case. Only a vast world with many places, rules and reversals deserves 6:00 to 10:00.
+- Never less than {{min_seconds}} seconds, never more than {{max_seconds}} seconds.
+
+CONTEXT:
+{{context}}
+
+Answer with the JSON only: "events", "seconds" (a whole number of seconds) and "why" (one sentence)."""
+LENGTH_SCHEMA = {"type": "object", "properties": {"events": {"type": "array", "items": {"type": "string"}}, "seconds": {"type": "integer"}, "why": {"type": "string"}}, "required": ["events", "seconds", "why"]}
+
+PLANNER_PART_NOTE = """THIS VIDEO IS LONG, so its plan is written in {{parts}} parts, one after the other. You are writing PART {{part}} of {{parts}}: plan ONLY the acts listed in the structure above, with their counts.
+The other parts are planned separately: ignore every rule about an act that is not in your structure (the hook beat, the title, the closing question and the endings concern only the part that contains them),
+but always answer every field of the JSON.
+{{already}}"""
 
 WRITER_PROMPT = """[[STAGE:writer]]
 You are the WRITER of a short-video studio, trend "you must choose". Write the SPOKEN LINES of the beats below, in order, one line per beat, in {{language}}.
