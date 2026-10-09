@@ -293,7 +293,7 @@ class Pipeline:
         report = {}
         if any(not v.get("ref_text") for v in json.loads(se.VOICES_FILE.read_text(encoding="utf-8"))["voices"]):
             report["transcribe"] = sp.step_transcribe(self.box, self.plan()["params"]["language"])
-        report["voices"] = sp.step_voices(self.box, self.plan(), self.run, args.seed or 1)
+        report["voices"] = sp.step_voices(self.box, self.plan(), self.run, args.seed or 1, passages=args.voice_mode != "line")
         return report
 
     def step_animate(self, args) -> dict:
@@ -415,6 +415,7 @@ def main() -> None:
     run.add_argument("context", nargs="?", default="")
     run.add_argument("--plan", help="a plan written elsewhere (skips the story step)")
     run.add_argument("--seconds", type=int, default=150)
+    run.add_argument("--voice-mode", choices=["passage", "line"], default="passage", help="passage (default): consecutive lines of the narrator are spoken as one passage (one pace, one intonation) and cut back into lines; line: every line alone (the former way)")
     run.add_argument("--shot-scale", type=float, help="TEST ONLY: multiplies the time a shot stays on screen (0.4 = about 1.5 s per shot: many more shots in the same minute, shorter lines, shorter clips). Not used by default")
     run.add_argument("--auto-length", action="store_true", help="the creation decides how long the video is (2 to 10 minutes, from the context); --seconds is then ignored")
     run.add_argument("--language", choices=sorted(se.WORDS_PER_SECOND))

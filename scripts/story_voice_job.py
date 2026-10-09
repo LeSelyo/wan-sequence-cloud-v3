@@ -27,14 +27,44 @@ def voice_spec(voice_id: str, voices: list[dict], samples_dir: str, fallback_des
     return {"kind": "design", "instruct": fallback_description, "note": f"voice '{voice_id}' has no transcript yet"}
 
 
-def build_job(plan: dict, voices: list[dict], samples_dir: str, out_dir: str, seed: int = 1) -> dict:
+BREAK_BEFORE = {"choice", "rewind"}  # a new passage starts here: the narrator draws breath for the choice and for the rewind
+BREAK_AFTER = {"twist"}  # a twist closes its passage
+MAX_PASSAGE_WORDS = 30  # about 12 s of speech: long enough for one pace and one intonation, short enough not to drift
+MAX_PASSAGE_LINES = 6
+
+
+def group_lines(plan: dict, lines: list[dict]) -> list[dict]:
+    """The lines that are SPOKEN AS ONE PASSAGE: consecutive lines of the same voice and the same branch, cut before a choice or a rewind and after a twist, at most MAX_PASSAGE_WORDS words. Lines of 3 to 5 words
+    generated alone had a pace between 1.3 and 4.9 words per second and levels 10 dB apart; read together they keep one pace and one intonation (box side: the passage is cut back into its lines)."""
+    groups: list[dict] = []
+    current: dict | None = None
+    for shot, line in zip(plan["shots"], lines):
+        key = json.dumps(line["voice"], sort_keys=True)
+        words = len(line["text"].split())
+        joins = (current is not None and current["key"] == key and shot.get("branch") == current["branch"] and shot.get("kind") not in BREAK_BEFORE and not current["closed"]
+                 and current["words"] + words <= MAX_PASSAGE_WORDS and len(current["line_ids"]) < MAX_PASSAGE_LINES)
+        if not joins:
+            current = {"key": key, "branch": shot.get("branch"), "line_ids": [], "words": 0, "closed": False, "voice": line["voice"]}
+            groups.append(current)
+        current["line_ids"].append(line["id"])
+        current["words"] += words
+        if shot.get("kind") in BREAK_AFTER:
+            current["closed"] = True
+    return [{"id": f"g{n + 1:02d}", "line_ids": g["line_ids"], "voice": g["voice"]} for n, g in enumerate(groups)]
+
+
+def build_job(plan: dict, voices: list[dict], samples_dir: str, out_dir: str, seed: int = 1, passages: bool = True) -> dict:
     characters = {c["id"]: c for c in plan["characters"]}
     lines = []
     for index, shot in enumerate(plan["shots"]):
         speaker = shot["speaker"]
         fallback = se.voice_description(characters[speaker]) if speaker in characters else "a calm captivating narrator, natural realistic voice"
         lines.append({"id": shot["id"], "text": shot["text"], "voice": voice_spec(plan["voices"][speaker], voices, samples_dir, fallback), "seed": seed * 1000 + index})
-    return {"out_dir": out_dir, "language": LANGUAGES.get(plan["params"]["language"], "English"), "lines": lines}
+    job = {"out_dir": out_dir, "language": LANGUAGES.get(plan["params"]["language"], "English"), "lines": lines}
+    groups = group_lines(plan, lines) if passages else []
+    if any(len(g["line_ids"]) > 1 for g in groups):  # nothing to read together: the lines stay alone
+        job["groups"] = [{**g, "seed": seed * 1000 + 500 + n} for n, g in enumerate(groups)]
+    return job
 
 
 def main() -> None:

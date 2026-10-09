@@ -98,12 +98,12 @@ def step_transcribe(box: Box, language: str) -> dict:
     return done
 
 
-def step_voices(box: Box, plan: dict, run: Path, seed: int) -> dict:
+def step_voices(box: Box, plan: dict, run: Path, seed: int, passages: bool = True) -> dict:
     started = time.time()
     remote_out = f"/root/voices_out/{run.name}"
     voices = se.load_voices()
     sent = ensure_voice_samples(box, voices)
-    job = vj.build_job(plan, voices, "/root/voices", remote_out, seed)
+    job = vj.build_job(plan, voices, "/root/voices", remote_out, seed, passages=passages)
     local_job = run / "voice_job.json"
     local_job.write_text(json.dumps(job, indent=1, ensure_ascii=False), encoding="utf-8")
     box.put(local_job, f"/root/{run.name}_voice_job.json")
