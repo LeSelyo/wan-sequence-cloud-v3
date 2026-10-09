@@ -420,7 +420,7 @@ def test_the_idea_agent_invents_the_place_from_two_drawn_ingredients_and_never_r
 
 
 def test_the_idea_prompt_lets_the_model_invent_both_characters_any_genre_and_asks_for_a_size_that_follows_the_video():
-    assert "{{role_a}}" not in TREND.IDEA_INVENT_PROMPT and "invent them yourself" in TREND.IDEA_INVENT_PROMPT and "fairy, an elf thief" in TREND.IDEA_INVENT_PROMPT and "THE GENRE IS FREE" in TREND.IDEA_INVENT_PROMPT
+    assert "{{role_a}}" not in TREND.IDEA_INVENT_PROMPT and "invent them yourself" in TREND.IDEA_INVENT_PROMPT and "fairy, an elf thief" in TREND.IDEA_INVENT_PROMPT and "Follow the genre of the seed" in TREND.IDEA_INVENT_PROMPT
     assert sa.context_sentences({"target_seconds": 150}, TREND) == 8 and sa.context_sentences({"target_seconds": 30}, TREND) == 4 and sa.context_sentences({"target_seconds": 600}, TREND) == 12
     short = sa.validate_idea({"title": "t", "context": "One. Two. Three."}, {"mode": "invent", "role_a": "x", "role_b": "y"}, sentences=8)
     assert short and "about 8 sentences" in short[0]  # a longer video asks a richer context

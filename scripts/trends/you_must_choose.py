@@ -22,7 +22,7 @@ OFFER_OVERLAP = 0.0  # seconds the second line of the offer may start before the
 OFFER_VOICE = "narrator"  # who says the two proposals: "narrator" (quotes them, the reference video does this) or "characters" (their own voices over the clip, the mouths do not move)
 MAX_TALK_BEATS = 4  # characters SPEAK (a close-up whose mouth follows the voice) only when the scene calls for it: an order, a shout
 MIN_POV_SHARE = 0.3  # share of the beats of a branch that are first-person action shots
-SECONDS_PER_SHOT = 3.1
+SECONDS_PER_SHOT = 3.8  # measured on the finished video "The Last Breath": 173.5 s for 46 shots = 3.77 s per shot (voice + pauses + the end card). With 3.1 a "2 minute" video came out near 3 minutes
 SHARES = {"hook": 0.07, "setup": 0.09, "offers": 0.20, "branch_a": 0.27, "branch_b": 0.30}  # share of the shots of each act (two branches); one branch gets branch_a + branch_b
 CAMERA_MOVES = ("aerial flight forward", "whip pan", "low angle tilt up", "handheld run", "slow push-in", "crane up", "dolly forward", "orbit around the subject", "lateral glide", "fast zoom-in", "tilt down")
 FORBIDDEN_IN_PICTURES = ("text", "letters", "caption", "subtitle", "watermark", "logo", "collage", "split screen", "panels", "triptych", "diptych")
@@ -267,10 +267,18 @@ IDEA_ROLES += [("lighthouse keeper", "surgeon"), ("bounty hunter", "librarian"),
                ("park ranger", "arms dealer"), ("magician", "forensic doctor"), ("chef", "mountain guide"), ("translator", "sapper"), ("farmer", "pharmacist"), ("sailor", "violinist")]
 IDEA_TONES += ["claustrophobic", "melancholic", "feverish", "ominous", "ruthless", "dreamlike", "grim", "restless"]
 # the ingredients the model is given to INVENT a place of its own (two are drawn by the seed, the place must be new and must not be one of the worlds above)
-IDEA_INGREDIENTS = ["salt", "glass", "ice", "rust", "moss", "neon", "sand", "ash", "steam", "fog", "copper", "bones", "silk", "oil", "lava", "coral", "concrete", "mirrors", "rope", "bells",
+IDEA_INGREDIENTS = ["salt", "glass", "ice", "rust", "moss", "neon", "sand", "ash", "steam", "fog", "copper", "bones", "silk", "oil", "lava", "coral", "concrete", "mirrors", "rope", "bells", "honey", "feathers", "amber", "antlers", "tapestries", "orchids", "obsidian", "pearls", "kites", "thunder",
+                    "lace", "clay", "moonlight", "embers", "willows", "mosaics", "gears", "horses", "ink", "stained glass",
                     "cables", "wax", "tar", "snow", "tide", "thorns", "lanterns", "dust", "marble", "wire", "rails", "sails", "chimneys", "bridges", "tunnels", "silos", "balloons", "antennas",
                     "greenhouses", "stairs", "elevators", "cranes", "locks", "orchards", "cliffs", "caves", "canals", "domes", "wells", "ladders", "pylons", "reefs", "ruins", "storms",
                     "pipes", "ferries", "windmills", "scaffolding", "dams", "railways"]
+IDEA_KINDS = ["a natural wonder", "a moving vehicle", "an underground world", "a city district", "a sacred or ancient site", "a water world", "a frozen land", "a place in the sky", "a desert", "a forest",
+              "the inside of a gigantic creature", "a ruined future city", "a dreamlike landscape", "a market or a festival", "a ship at sea", "a mountain village", "an island", "a castle or a palace",
+              "a train or a road", "a farm or a village in a valley"]
+IDEA_GENRES = ["realistic disaster", "science fiction", "high fantasy", "dark fantasy", "folk tale", "supernatural horror", "post-apocalyptic", "steampunk", "cosmic space opera", "fairy tale", "mythology", "gothic"]
+IDEA_NAMES = ["Mira", "Tobias", "Ines", "Rurik", "Amara", "Dov", "Salome", "Bram", "Noor", "Casimir", "Yuki", "Odalys", "Leif", "Zainab", "Teodor", "Anselm", "Imogen", "Kasimir", "Saoirse", "Ravi",
+              "Philippa", "Okoye", "Bastien", "Mei", "Gideon", "Thalia", "Anouk", "Jasper", "Esme", "Florian", "Nadia", "Cormac", "Hana", "Matthias", "Lucinda", "Idris", "Wren", "Benedikt", "Soraya", "Tomas",
+              "Marguerite", "Ansel", "Delphine", "Kofi", "Perrin", "Yara", "Ignatius", "Juno", "Oskar", "Vesna", "Lorcan", "Pilar", "Ezra", "Calliope", "Dmitri", "Rosalind", "Hiro", "Ottoline", "Bertrand", "Zuri"]
 IDEA_INVENT = True  # False = the place is drawn from IDEA_WORLDS as before
 IDEA_PROMPT = """[[STAGE:idea]]
 You are the IDEA writer of a short-video studio, trend "you must choose" (a second-person story: two characters each offer to save you, you choose, each choice has an ending with a twist). Nobody gave you a
@@ -287,13 +295,14 @@ IDEA_INVENT_PROMPT = """[[STAGE:idea]]
 You are the IDEA writer of a short-video studio, trend "you must choose" (a second-person story: two characters each offer to save you, you choose, each choice has an ending with a twist). Nobody gave you a
 subject: you INVENT the place and the catastrophe, from the seed below.
 
-SEED (follow it): ingredients to build the place around = {{ingredients}} | hour = {{hour}} | tone = {{tone}}
+SEED (follow it): kind of place = {{kind}} | genre = {{genre}} | ingredients to build the place around = {{ingredients}} | hour = {{hour}} | tone = {{tone}}
 The place must be NEW: never one of these (already made): {{avoid}}.
 
-Invent a filmable, physically concrete place (one where a person can run, climb, push, hold on) and what is happening to it right now. THE GENRE IS FREE: realistic, science fiction, fantasy or supernatural all
-work; whatever the genre, the pictures will be rendered as clean, believable photographic scenes.
+Invent a filmable place of that kind (a place with room to move through and several distinct areas) and what is happening to it right now. Follow the genre of the seed: whatever it is, the pictures will be
+rendered as clean, believable photographic scenes. Do not default to industrial structures (towers, catwalks, refineries, dams) unless the seed asks for them.
 THE TWO CHARACTERS: invent them yourself, any kind of beings (people or not: a fairy, an elf thief, a ghost, a robot, a knight, an old fisherman...), each with a name or a title, a few words of look and clothes,
-and what he or she offers you. Two strangers each offer to save you.
+and what he or she offers you. Two strangers each offer to save you. NAMES: use these names (or names in the same spirit, never Kael, Elara, Silas, Lyra or Aria): {{names}}. Introduce the two in two
+DIFFERENT ways (never "to your left ... to your right").
 Write the CONTEXT of ONE video: about {{sentences}} in English that say WHERE and WHEN we are, WHAT is happening, who YOU are and what you need, who the two strangers are and what each one offers. Be vivid, add
 one surprising detail of your own, no real people or brands, do not tell how it ends. Also give the place in a few words ("setting"), what is happening to it ("premise") and a short title (2 to 4 words).
 

@@ -62,6 +62,15 @@ def prompt_fingerprint(trend) -> dict:
 
 
 # ---------------------------------------------------------------------------------------------- one agent: ask, check, repair
+def sized(schema: dict, key: str, count: int) -> dict:
+    """The schema of an answer whose list `key` must have EXACTLY `count` items (measured on Ollama: the structured output enforces minItems/maxItems, so 'one line per beat' can no longer be missed: a chunk
+    of the lab came back with 19 lines for 18 beats three times and fell back to a template)."""
+    import copy
+    out = copy.deepcopy(schema)
+    out["properties"][key]["minItems"] = out["properties"][key]["maxItems"] = count
+    return out
+
+
 def clean_strings(value):
     """The model sometimes returns a broken apostrophe (U+FFFD: "Kael?s"): it is turned back into an apostrophe, a lone one is dropped."""
     if isinstance(value, str):
@@ -106,7 +115,8 @@ def draw_seed_elements(params: dict, trend) -> dict:
         role_a, role_b = role_b, role_a
     bones = {"setting": setting, "premise": premise, "hour": hour, "role_a": role_a, "role_b": role_b, "tone": rnd.choice(trend.IDEA_TONES), "mode": "pool"}
     if getattr(trend, "IDEA_INVENT", False):  # the model INVENTS the place from two ingredients drawn by the seed; the pool world stays as the fallback without a model
-        bones.update(mode="invent", ingredients=rnd.sample(trend.IDEA_INGREDIENTS, 2), hour=rnd.choice(trend.HOURS), fallback_world=(setting, premise))
+        bones.update(mode="invent", ingredients=rnd.sample(trend.IDEA_INGREDIENTS, 2), hour=rnd.choice(trend.HOURS), fallback_world=(setting, premise), kind=rnd.choice(trend.IDEA_KINDS),
+                     genre=rnd.choice(trend.IDEA_GENRES), names=rnd.sample(trend.IDEA_NAMES, 2))
     return bones
 
 
@@ -146,7 +156,7 @@ def run_idea(params: dict, trend, llm) -> tuple[str, dict]:
     sentences = f"{count} sentences (between {count - 1} and {count + 2})"
     if bones["mode"] == "invent":
         prompt = fill(trend.IDEA_INVENT_PROMPT, {"ingredients": " + ".join(bones["ingredients"]), "hour": bones["hour"], "tone": bones["tone"], "avoid": "; ".join(w[0] for w in trend.IDEA_WORLDS),
-                                                 "sentences": sentences})
+                                                 "sentences": sentences, "kind": bones["kind"], "genre": bones["genre"], "names": " and ".join(bones["names"])})
     else:
         prompt = fill(trend.IDEA_PROMPT, {"setting": bones["setting"], "premise": bones["premise"], "hour": bones["hour"], "role_a": bones["role_a"], "role_b": bones["role_b"], "tone": bones["tone"],
                                           "sentences": sentences})
@@ -431,7 +441,7 @@ def run_writer(brief: dict, outline: dict, params: dict, trend, llm, library_exa
                                            "offer_rule": offer_rule(trend), "avg_words": f"{average:.0f}", "total_words": int(params["target_seconds"] * se.WORDS_PER_SECOND[params["language"]] * 0.85), "ending_mood": mood,
                                            "beats": "\n".join(f"{n + 1}. [{b['kind']}, speaker {b['speaker']}] {b['purpose']}" for n, b in enumerate(picked))})
         answer, problems, attempts = (None, ["no model"], 0) if llm is None else call_agent(
-            llm, prompt, trend.LINES_SCHEMA,
+            llm, prompt, sized(trend.LINES_SCHEMA, "lines", len(picked)),
             lambda a: validate_lines(a, picked, location_ids, trend.MAX_SPOKEN_WORDS, average, getattr(trend, "MAX_OFFER_WORDS", None)) + validate_independence(a.get("lines", []), picked, brief)
             + (verify_polarity(llm, trend, a.get("lines", []), expected, seed=params["seed"]) if expected and not validate_lines(a, picked, location_ids, trend.MAX_SPOKEN_WORDS) else [])
             + (verify_clarity(llm, trend, picked, a.get("lines", []), previous, seed=params["seed"]) if hasattr(trend, "CLARITY_PROMPT") and not validate_lines(a, picked, location_ids, trend.MAX_SPOKEN_WORDS) else []),
@@ -516,12 +526,13 @@ def run_director(brief: dict, shots: list[dict], params: dict, trend, llm, examp
         prompt = fill(trend.DIRECTOR_PROMPT, {"hour": brief["world"]["hour"], "atmosphere": brief["world"]["atmosphere"], "camera_moves": ", ".join(trend.CAMERA_MOVES), "cameras": trend.CAMERAS,
                                              "scale_image": brief["world"]["scale_image"], "brief": compact_brief(brief), "count": len(picked), "examples": examples or "(none yet)",
                                              "shots": "\n".join(f"{n + 1}. [{s['kind']}, {s['branch']}, place {s['location']}, visible {', '.join(names_by_id.get(i, i) for i in s['in_shot']) or 'nobody'}] {s['text']}" for n, s in enumerate(picked))})
-        answer, problems, attempts = (None, ["no model"], 0) if llm is None else call_agent(llm, prompt, trend.DIRECTIONS_SCHEMA, lambda a: validate_directions(a, picked, trend, names_by_id), seed=params["seed"] + 13 * start, soft=soft_director_problem)
+        answer, problems, attempts = (None, ["no model"], 0) if llm is None else call_agent(llm, prompt, sized(trend.DIRECTIONS_SCHEMA, "directions", len(picked)), lambda a: validate_directions(a, picked, trend, names_by_id), seed=params["seed"] + 13 * start, soft=soft_director_problem)
+        from_model = answer is not None  # a kept answer with soft problems is still the model's
         if answer is None:
             locations = {loc["id"]: loc["description"] for loc in brief["locations"]}
             answer = {"directions": [{"still": "" if s["kind"] in ("talk", "choice") else f"{s['text']}, {locations.get(s['location'], '')}", "motion": f"{trend.CAMERA_MOVES[(start + n) % len(trend.CAMERA_MOVES)]}, slow, cinematic",
                                       "camera": s.get("camera_hint", "wide"), "fx": {"zoom": 0.05, "shake": 0.0, "flash": False}} for n, s in enumerate(picked)]}
-        report["chunks"].append({"shots": len(picked), "source": "llm" if llm and not problems else "template", "attempts": attempts, "problems": problems[:3]})
+        report["chunks"].append({"shots": len(picked), "source": "llm" if from_model else "template", "attempts": attempts, "problems": problems[:3]})
         for n, item in enumerate(answer["directions"]):
             item["still"] = clean_still(item.get("still", ""), trend)
             directions[start + n] = item
