@@ -67,3 +67,10 @@ def test_every_model_repo_the_voice_script_loads_is_downloaded_on_a_new_box():
 def test_the_box_shell_scripts_have_unix_line_endings_because_they_are_copied_as_they_are():
     for script in BOX.glob("*.sh"):
         assert b"\r\n" not in script.read_bytes(), f"{script.name} has Windows line endings: the box cannot run it"
+
+
+def test_opencv_finds_its_system_libraries_where_the_build_imports_it_and_where_the_pipeline_runs_it():
+    voice_builder = DOCKERFILE.split("AS voice-builder", 1)[1].split("AS ollama-builder", 1)[0]
+    runtime = DOCKERFILE.split("AS runtime", 1)[1]
+    for stage in (voice_builder, runtime):  # the first build of the image failed on `import cv2`: libGL was missing in the builder stage
+        assert "libgl1" in stage and "libglib2.0-0" in stage

@@ -154,8 +154,9 @@ ARG MEDIAPIPE_VERSION=0.10.14
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
-      build-essential ca-certificates curl python3 python3-dev python3-pip python3-venv
+      build-essential ca-certificates curl python3 python3-dev python3-pip python3-venv libgl1 libglib2.0-0
 
+# (libgl1 + libglib2.0-0 are what OpenCV needs to import; the runtime stage installs the same two, so the import proof below is the one of the final image.)
 # The same absolute path as on the box: a venv is not relocatable (its scripts and pyvenv.cfg hold it).
 RUN python3 -m venv /root/ttsenv && /root/ttsenv/bin/python -m pip install --upgrade pip
 
