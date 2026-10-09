@@ -371,6 +371,15 @@ def validate_outline(outline: dict, counts: dict[str, int], endings: dict, trend
         share = sum(1 for b in own if b.get("kind") == "pov") / max(1, len(own))
         if own and share < getattr(trend, "MIN_POV_SHARE", 0) - 0.08:
             problems.append(f"{act}: only {share:.0%} of its beats are first-person action (kind pov), at least {getattr(trend, 'MIN_POV_SHARE', 0):.0%} are needed")
+        top = getattr(trend, "MAX_POV_SHARE", None)
+        if own and top and share > top + 0.05:
+            problems.append(f"{act}: {share:.0%} of its beats are first-person (kind pov), at most {top:.0%}: alternate with narration beats that show the place, the world reacting, what is ahead of you")
+        run = longest = 0
+        for b in own:
+            run = run + 1 if b.get("kind") == "pov" else 0
+            longest = max(longest, run)
+        if getattr(trend, "MAX_POV_RUN", None) and longest > trend.MAX_POV_RUN:
+            problems.append(f"{act}: {longest} first-person beats (kind pov) in a row, at most {trend.MAX_POV_RUN}: put a narration beat that shows the place between them")
     for act, kind in (("choice", "choice"), ("rewind", "rewind")):
         if act in counts and not any(b.get("act") == act and b.get("kind") == kind for b in beats):
             problems.append(f"the {act} act needs a beat of kind {kind}")
@@ -459,7 +468,7 @@ def planner_prompt(brief: dict, counts: dict, endings: dict, params: dict, trend
 def soft_outline_problem(problem: str) -> bool:
     """The counts of beats are a guide (the length is decided by the lines): an act with a few beats more or less than asked, or a total a little off, does not make an outline unusable; the order,
     the offers, the choice, the branches and the twists are what must be right."""
-    return (problem.startswith("act ") and " beats, " in problem) or " beats in total, " in problem
+    return (problem.startswith("act ") and " beats, " in problem) or " beats in total, " in problem or " first-person " in problem  # the share of first-person action (too little, too much, too long a run) is a matter of rhythm
 
 
 def run_planner_in_parts(brief: dict, counts: dict, endings: dict, params: dict, trend, llm) -> tuple[dict, dict]:

@@ -424,3 +424,14 @@ def test_a_place_the_model_invented_is_replaced_by_the_main_set_and_an_ending_re
     assert [c["source"] for c in report["chunks"]] == ["llm", "llm", "llm"]  # the model's text is kept in every chunk
     assert report["chunks"][2]["attempts"] == 5 and any("must end GOOD" in p for p in report["chunks"][2]["problems"])  # branch B must end GOOD, the verifier always said BAD: five tries, kept, listed
     assert all(line["location"] == place[0] for line in lines)
+
+
+def test_a_branch_of_first_person_shots_only_is_sent_back_to_the_planner_and_alternating_is_accepted_the_rhythm_is_soft():
+    counts = TREND.budget(150, 2)
+    ok = {"hook_title": "POV: X\nY", "beats": fake_beats(counts), "ending_label_a": "A", "ending_label_b": "B", "closing_question": "A\nB", "caption": "#a #b #c #d #e"}
+    assert sa.validate_outline(ok, counts, ENDINGS, TREND) == []
+    beats = [dict(b, kind="pov") if b["act"] in ("branch_a", "branch_b") and b["kind"] != "twist" else b for b in ok["beats"]]  # every beat of both branches in the first person, like the 3-minute test
+    problems = sa.validate_outline({**ok, "beats": beats}, counts, ENDINGS, TREND)
+    assert any("at most 65%" in p for p in problems) and any("in a row" in p for p in problems)
+    assert all(sa.soft_outline_problem(p) for p in problems)  # asked again, then kept: a model that loves hands and feet is not replaced by a template
+    assert "at most two thirds" in TREND.PLANNER_PROMPT and "never more than three pov beats in a row" in TREND.PLANNER_PROMPT.lower().replace("never more than three pov beats in a row", "never more than three pov beats in a row")

@@ -10,8 +10,8 @@ the BRIEF that the analyst agent extracts from the context. `PROMPT_VERSION` cha
 from __future__ import annotations
 
 NAME = "you_must_choose"
-PROMPT_VERSION = "2026-10-10.2"  # 10.2: the premise (what happens and why it is dangerous) is spoken in the first lines and checked; 10.1: no idiom in a picture; 09.7: the LOOK agent; 09.6: the LENGTH agent
-PROMPT_VERSION_PREVIOUS = "2026-10-10.1"  # 10.1: the director never writes an idiom or a metaphor in a picture (09.7: the LOOK agent, no ratio in a picture description; 09.6: the LENGTH agent)
+PROMPT_VERSION = "2026-10-10.3"  # 10.3: a branch alternates first-person action with narration beats (at most 2/3 pov, never more than 3 in a row); 10.2: the premise is spoken and checked; 10.1: no idiom in a picture
+PROMPT_VERSION_PREVIOUS = "2026-10-10.2"  # 10.2: the premise (what happens and why it is dangerous) is spoken in the first lines and checked (10.1: no idiom in a picture; 09.7: the LOOK agent)
 KINDS = ["narration", "talk", "pov", "choice", "twist", "rewind", "offer"]
 CAMERAS = ["wide", "medium", "close", "pov"]
 LOCATION_TAGS = ["space", "sea", "city", "shelter", "window", "forest", "desert", "ice", "underground"]  # the tags that make the style prompt force what a kind of place must always show
@@ -22,6 +22,8 @@ OFFER_OVERLAP = 0.0  # seconds the second line of the offer may start before the
 OFFER_VOICE = "narrator"  # who says the two proposals: "narrator" (quotes them, the reference video does this) or "characters" (their own voices over the clip, the mouths do not move)
 MAX_TALK_BEATS = 4  # characters SPEAK (a close-up whose mouth follows the voice) only when the scene calls for it: an order, a shout
 MIN_POV_SHARE = 0.3  # share of the beats of a branch that are first-person action shots
+MAX_POV_SHARE = 0.65  # ... and at most this share: a branch of 12 hands-and-feet shots in a row is monotonous (the 3-minute test had 11 and 12)
+MAX_POV_RUN = 3  # never more than this many first-person beats in a row
 SECONDS_PER_SHOT = 3.8  # measured on the finished video "The Last Breath": 173.5 s for 46 shots = 3.77 s per shot (voice + pauses + the end card). With 3.1 a "2 minute" video came out near 3 minutes
 LENGTH_RANGE = (120, 600)  # AUTO LENGTH (no fixed length): what the length agent may decide, in seconds: never under 2 minutes, never over 10
 IDEA_AUTO_SENTENCES = (5, 14)  # the idea agent of an auto-length video writes as many sentences as the story needs, between these bounds
@@ -116,7 +118,7 @@ RULES
 - STRUCTURE: setup (the characters are introduced) -> offers (EXACTLY the two beats of kind offer, speaker c1 then c2, both in the same picture holding out a hand, the narrator tells each proposal, nobody accuses the other) -> choice (the very next beat) -> the whole branch A -> rewind -> the whole branch B. NOTHING happens between the second offer and the choice. The context and the clues are told BEFORE the offers.
 - THE CHARACTERS SPEAK RARELY: kind talk (a close-up whose mouth follows the voice) ONLY when a character gives an ORDER or shouts to someone in the scene, at most {{max_talk}} in the whole video. Everything else is told by the narrator, who may quote what they say.
 - ONE CHARACTER PER BRANCH: branch A is you and c1 from start to end, branch B is you and c2 from start to end. The other one never appears and is never named (except by the rewind narrator). Anything that helps the viewer understand the story can happen around you, in or out of the frame of the chosen character (an explosion, a door closing, a countdown).
-- ACTION: at least a third of the beats of each branch are kind pov: YOUR hands or body DO something (turn, push, pull, climb, grab, lift, run, open, hold on to something that moves) - never just "holding an arm".
+- ACTION: at least a third and at most two thirds of the beats of each branch are kind pov: YOUR hands or body DO something (turn, push, pull, climb, grab, lift, run, open, hold on to something that moves) - never just "holding an arm". Never more than three pov beats in a row: between them, narration beats show the PLACE, the world reacting and what is ahead of you (a wide shot, a danger coming, the chosen character in the scene).
 - SUSPENSE: the last beat of each branch leaves ONE question open (a sound, a door, a name, a detail that was not explained); it never closes the story with a full explanation.
 - The clues: c1's hidden truth and c2's hidden truth must each be hinted at in the SETUP act (one clue each, when the character is introduced) and CONFIRMED in their branch (branch A confirms c1's, branch B confirms c2's).
 - ENDINGS. Branch A: {{mood_a}}
