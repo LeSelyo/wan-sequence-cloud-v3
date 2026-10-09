@@ -412,7 +412,7 @@ def test_the_idea_agent_invents_the_place_from_two_drawn_ingredients_and_never_r
 
     def llm(prompt, schema, seed=0):
         seen["prompt"] = prompt
-        return {"title": "Salt Bells", "context": "The salt flats ring at dusk. You are a courier stuck on a cable car. A " + bones["role_a"] + " and a " + bones["role_b"] + " each offer to save you.", "setting": "a salt cable car", "premise": "the cable is singing"}
+        return {"title": "Salt Bells", "context": "The salt flats ring at dusk while every bell of the old station rings by itself. You are a courier stuck on a cable car high above the white plain with the last water almost gone. A " + bones["role_a"] + " and a " + bones["role_b"] + " each offer to save you.", "setting": "a salt cable car", "premise": "the cable is singing"}
     context, report = sa.run_idea({"seed": 7}, TREND, llm)
     assert " + ".join(bones["ingredients"]) in seen["prompt"] and "never one of these (already made)" in seen["prompt"] and "a flooded megacity" in seen["prompt"]
     assert report["invented"] == {"setting": "a salt cable car", "premise": "the cable is singing"} and "[[STAGE:idea]]" in seen["prompt"]
