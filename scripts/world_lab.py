@@ -30,6 +30,8 @@ DEFAULT_SHOTS = "s039,s033,s037,s004,s019,s003,s042,s043"
 
 
 def corrected_style(plan: dict, seed: int = 0) -> dict:
+    if plan.get("style"):
+        return plan["style"]
     world = (plan.get("brief") or {}).get("world") or {}
     tags = [tag for loc in plan["locations"] for tag in loc.get("tags", [])]
     return ss.style_from_context(plan["context"], random.Random(seed), tags=tags, hour=world.get("hour"), atmosphere=" ".join([world.get("atmosphere", ""), world.get("setting", "")]))

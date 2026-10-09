@@ -10,8 +10,8 @@ the BRIEF that the analyst agent extracts from the context. `PROMPT_VERSION` cha
 from __future__ import annotations
 
 NAME = "you_must_choose"
-PROMPT_VERSION = "2026-10-09.6"  # .6: the LENGTH agent decides how long a video is when none is fixed (2 to 10 minutes), the outline of a long video is planned by parts, its lines are written in smaller chunks; the other prompts are unchanged
-PROMPT_VERSION_PREVIOUS = "2026-10-09.5"  # .5: the characters are introduced by name BEFORE the offer, the offer is immediately followed by the choice, both characters may appear in a branch, the director names them (.4: characters speak rarely, the narrator quotes the offers; .3: ONE offer shot, independent branches, suspense)
+PROMPT_VERSION = "2026-10-09.7"  # .7: the LOOK agent (the art direction comes from the invented world), the director never writes a format or a ratio in a picture description; .6: the LENGTH agent, the outline planned by parts
+PROMPT_VERSION_PREVIOUS = "2026-10-09.6"  # .6: the LENGTH agent decides how long a video is when none is fixed (2 to 10 minutes), the outline of a long video is planned by parts, its lines are written in smaller chunks (.5: the characters are introduced by name BEFORE the offer, the offer is immediately followed by the choice)
 KINDS = ["narration", "talk", "pov", "choice", "twist", "rewind", "offer"]
 CAMERAS = ["wide", "medium", "close", "pov"]
 LOCATION_TAGS = ["space", "sea", "city", "shelter", "window", "forest", "desert", "ice", "underground"]  # the tags that make the style prompt force what a kind of place must always show
@@ -184,7 +184,7 @@ BEATS TO WRITE ({{count}}):
 Answer with the JSON list of lines only, same order, same count."""
 
 DIRECTOR_PROMPT = """[[STAGE:director]]
-You are the DIRECTOR of a short-video studio, trend "you must choose": vertical 9:16, a clean, believable photographic cinematic look (a photoreal RENDER applied to ANY world, fantasy and supernatural ones included), ONE art direction for the whole video (hour: {{hour}}; atmosphere: {{atmosphere}}).
+You are the DIRECTOR of a short-video studio, trend "you must choose": taller than wide (a portrait frame: NEVER write the format or a ratio in a picture description), a clean, believable photographic cinematic look (a photoreal RENDER applied to ANY world, fantasy and supernatural ones included), ONE art direction for the whole video (hour: {{hour}}; atmosphere: {{atmosphere}}).
 For each shot below (its spoken line is given), write the PICTURE and the CAMERA MOVE.
 
 RULES
@@ -211,6 +211,25 @@ SHOTS ({{count}}):
 {{shots}}
 
 Answer with the JSON list of directions only, same order, same count."""
+
+LOOK_PROMPT = """[[STAGE:look]]
+You are the PRODUCTION DESIGNER of a short-video studio. Create the ART DIRECTION of ONE video from the WORLD below: the look of its pictures, shot after shot, always the same world. All characters and places
+are fictional. Whatever the genre (realistic, science fiction, fantasy, supernatural), the pictures are RENDERED as clean, believable photographs.
+
+RULES
+- "materials": 2 to 5 things this world is REALLY made of, in its own terms (a living creature: bone, wax, chitin, wet flesh; a spaceship: brushed steel, glass; a flooded city: wet asphalt, rust). NEVER concrete,
+  steel or leather unless this world has them.
+- "palette": 3 to 5 colours that this world really shows at its hour ({{hour}}).
+- "lighting", "lens", "grade", "texture": ONLY from the allowed lists of the schema. The lighting must fit the hour ({{hour}}): a day never gets a moonlit or neon lighting, a night never gets daylight. "harsh fluorescent" only for a world that has electric tubes, "neon night" only for a lit city, "firelight and embers" only where fire is the light.
+- "motif": ONE recurring emblem or object SHAPE of this world that appears on a few props and walls. NEVER a number, a letter, a word, a sign or a symbol that holds text (a picture model paints them on the walls).
+- "forced_elements": for each kind of place of this world (its tags: {{tags}}), ONE short sentence saying what every picture of that place must ALWAYS show, true to THIS world (never a generic landscape, never
+  a bunker unless the world is one). The keys are those tags.
+- "forbidden": up to 6 things that must never appear (things that belong to another world). "tags": {{tags}}. "name": 2 or 3 words. "logline": the world in one sentence.
+
+WORLD:
+{{world}}
+
+Answer with the JSON only."""
 
 JUDGE_PROMPT = """[[STAGE:judge]]
 You are a strict EDITOR of TikTok storytelling videos, trend "you must choose". Score the STORY below from 1 (poor) to 10 (excellent) on each criterion, and name the single biggest weakness in one sentence.

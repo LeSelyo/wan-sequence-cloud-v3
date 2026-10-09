@@ -55,6 +55,10 @@ class CannedModel:
         if stage == "length":
             return {"events": ["the flooded streets", "the rescue boat", "the two offers", "the captain's secret", "the doctor's cure", "the twist of each branch"], "seconds": 287,
                     "why": "Two full journeys and a twist each need about five minutes."}
+        if stage == "look":
+            return {"name": "Drowned Harbor", "logline": "A flooded harbor city at night.", "palette": ["deep teal", "amber", "rust", "off-white"], "materials": ["wet asphalt", "rusted steel", "drowned timber"],
+                    "lighting": "cold moonlit", "lens": "35mm cinematic", "grade": "cold steel blue", "texture": "photoreal practical set, subtle grain", "motif": "a recurring rope-knot shape on a few boats and posts",
+                    "forced_elements": {"sea": "the horizon stays on the same side with the same black water", "bunker": "never kept: this key is no tag of the story"}, "forbidden": ["bright cheerful colours"], "tags": ["sea"]}
         if stage == "analyst":
             characters = [{**{k: c[k] for k in ("id", "name", "role", "gender", "age", "look", "wardrobe")}, "public_promise": "I can save you", "hidden_truth": "is hiding what really happens to the people they save",
                            "voice_style": "calm"} for c in self.plan["characters"]]
@@ -107,7 +111,7 @@ def test_the_chain_with_a_cooperative_model_gives_a_valid_plan_with_both_endings
     assert [t["ending"] for t in twists] == ["bad", "good"] and twists[0]["tag"] == "ENDING A: COLLECTED" and twists[1]["tag"] == "ENDING B: THE CURE"
     assert plan["shots"][0]["id"] == "s001" and next(s for s in plan["shots"] if s["kind"] == "choice")["choice"] == {"a": "Brandt", "b": "Ilse"}
     assert sum(1 for s in plan["shots"] if s.get("tag", "").startswith("CASE")) == 2
-    assert model.calls[:2] == ["analyst", "planner"] and model.calls.count("writer") == 3 and model.calls.count("director") == 4 and model.calls[-1] == "judge"  # 3 chunks of lines, 46 shots in chunks of 12
+    assert model.calls[:3] == ["analyst", "look", "planner"] and model.calls.count("writer") == 3 and model.calls.count("director") == 4 and model.calls[-1] == "judge"  # 3 chunks of lines, 46 shots in chunks of 12
     assert plan["agents"]["judge"]["mean"] > 7 and set(plan["voices"]) == {"narrator", "c1", "c2"}
 
 

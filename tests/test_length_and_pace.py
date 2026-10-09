@@ -285,3 +285,76 @@ def test_an_outline_with_a_few_beats_more_or_less_than_asked_is_kept_the_model_i
 
     outline, report = sa.run_planner(brief, counts, ENDINGS, {"seed": 1, "language": "en"}, TREND, short_setup)
     assert [p["source"] for p in report["parts"]] == ["llm", "llm", "llm"] and report["parts"][0]["attempts"] == 3 and len(outline["beats"]) == sum(counts.values()) - 8
+
+
+# ------------------------------------------------------------------------------------------------ the look agent: the art direction comes from the invented world
+import story_cards as sc  # noqa: E402
+
+
+def leviathan_brief() -> dict:
+    return {"world": {"setting": "the ribcage of a sleeping leviathan", "premise": "the creature is waking", "hour": "day", "atmosphere": "smells of honey and ozone", "scale_image": "a colossal leviathan on a barren horizon"},
+            "locations": [{"id": "ribcage", "tags": ["shelter"], "description": "the calcified interior of the chest"}, {"id": "shell", "tags": ["desert"], "description": "the exterior of the beast"}]}
+
+
+VALID_LOOK = {"name": "Bone Cathedral", "logline": "Inside a sleeping leviathan.", "palette": ["bone white", "honey gold", "wax amber"], "materials": ["bone", "wax", "chitin"], "lighting": "golden hour backlight",
+              "lens": "anamorphic 40mm", "grade": "rich earth tones", "texture": "polished high-budget cinema still", "motif": "a spiral shell shape on a few ribs",
+              "forced_elements": {"shelter": "the walls are always living bone weeping golden wax", "ocean": "never kept"}, "forbidden": ["concrete", "steel"], "tags": ["shelter"]}
+
+
+def test_the_look_comes_from_the_world_the_hour_is_added_by_code_and_a_key_that_is_no_tag_is_dropped():
+    style, report = sa.run_look(leviathan_brief(), {"seed": 1}, TREND, length_llm(VALID_LOOK))
+    assert report["source"] == "llm" and style["name"] == "bone-cathedral" and style["materials"] == ["bone", "wax", "chitin"] and style["tags"] == ["desert", "shelter"]
+    assert set(style["forced_elements"]) == {"shelter", "time"} and "never night" in style["forced_elements"]["time"]  # 'ocean' is no tag of the story, the day is told in every picture
+    assert not sa.validate_look(style, leviathan_brief())
+
+
+def test_a_motif_a_picture_model_would_paint_as_text_or_a_lighting_that_contradicts_the_hour_is_sent_back():
+    brief = leviathan_brief()
+    assert any("motif" in p for p in sa.validate_look({**VALID_LOOK, "motif": "a stencilled number on a few crates and doors"}, brief))
+    assert any("motif" in p for p in sa.validate_look({**VALID_LOOK, "motif": "the sign 9 on every door"}, brief))
+    assert any("contradicts the hour" in p for p in sa.validate_look({**VALID_LOOK, "lighting": "cold moonlit"}, brief))
+    llm = length_llm({**VALID_LOOK, "motif": "a number on the doors"}, VALID_LOOK)
+    style, report = sa.run_look(brief, {"seed": 1}, TREND, llm)
+    assert style and report["attempts"] == 2 and "Your previous answer had these problems" in llm.calls[1]
+
+
+def test_without_a_model_or_when_it_never_gets_it_right_the_rules_are_used_and_the_prompt_says_what_a_world_is_made_of():
+    style, report = sa.run_look(leviathan_brief(), {"seed": 1}, TREND, None)
+    assert style is None and report["source"] == "template"
+    never = length_llm({**VALID_LOOK, "motif": "a number"})
+    style, report = sa.run_look(leviathan_brief(), {"seed": 1}, TREND, never)
+    assert style is None and report["attempts"] == 3
+    prompt = never.calls[0]
+    assert "{{" not in prompt and "NEVER concrete" in prompt and "the ribcage of a sleeping leviathan" in prompt and "ribcage (tags: shelter)" in prompt and "hour (day)" in prompt
+
+
+def test_the_cards_use_the_style_of_the_plan_and_the_rules_only_when_it_has_none():
+    brief = leviathan_brief()
+    plan = {"context": "x", "style": VALID_LOOK, "brief": brief, "locations": [{"id": "ribcage", "tags": ["shelter"]}]}
+    assert sc.style_of(plan) == VALID_LOOK
+    plan.pop("style")
+    assert sc.style_of(plan)["motif"] == "a stencilled number on a few crates and doors"  # the old rule: what the leviathan world got by mistake (the tag shelter)
+
+
+def test_a_ratio_or_a_format_never_goes_into_a_picture_description():
+    dirty = "colossal leviathan on a barren horizon, epic scale, photoreal render, 9:16 vertical composition, golden wax dripping"
+    clean = sa.clean_still(dirty, TREND)
+    assert "9:16" not in clean and "vertical" not in clean and "golden wax dripping" in clean and "colossal leviathan" in clean
+    assert "16:9" not in sa.clean_still("a wide hall in 16:9 aspect ratio, dust in the air", TREND) and "dust in the air" in sa.clean_still("a wide hall in 16:9 aspect ratio, dust in the air", TREND)
+    assert "9:16" not in TREND.DIRECTOR_PROMPT and "9:16" not in TREND.LOOK_PROMPT  # the director must not read the ratio, a model copies what it reads
+
+
+def test_a_light_needs_a_source_in_the_world():
+    brief = leviathan_brief()
+    problems = sa.validate_look({**VALID_LOOK, "lighting": "harsh fluorescent"}, brief)
+    assert any("needs one of" in p for p in problems)  # no tube in a living creature
+    assert not any("needs one of" in p for p in sa.validate_look({**VALID_LOOK, "lighting": "golden hour backlight"}, brief))
+    lab_brief = {**brief, "locations": [{"id": "lab", "tags": ["shelter"], "description": "an electric laboratory with humming tubes"}]}
+    assert not any("needs one of" in p for p in sa.validate_look({**VALID_LOOK, "lighting": "harsh fluorescent"}, lab_brief))
+
+
+def test_a_lighting_the_model_keeps_getting_wrong_is_replaced_by_the_one_of_the_hour_and_the_rest_of_its_art_direction_is_kept():
+    wrong = {**VALID_LOOK, "lighting": "harsh fluorescent"}
+    style, report = sa.run_look(leviathan_brief(), {"seed": 1}, TREND, length_llm(wrong))
+    assert style is not None and report["source"] == "llm" and report["attempts"] == 3
+    assert style["lighting"] in ("golden hour backlight", "overcast flat daylight") and style["materials"] == ["bone", "wax", "chitin"] and not sa.validate_look(style, leviathan_brief())

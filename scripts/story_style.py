@@ -66,6 +66,12 @@ MATERIALS_BY_KIND = {  # a station is metal and glass, not carved wood and dusty
 }
 FANTASY_WORDS = ("magic", "magical", "fairy", "elf", "elves", "dragon", "wizard", "witch", "spell", "enchanted", "kingdom", "castle", "goblin", "sorcerer", "spirit", "ghost", "haunted")
 DEFAULT_RULE = ("cold moonlit", "35mm cinematic", "rich earth tones", "polished high-budget cinema still", "one recurring symbol repeated on props", ["window"])
+HOUR_SENTENCES = {"night": TIME_RULES[0][2], "dusk": TIME_RULES[1][2], "dawn": TIME_RULES[2][2], "day": "it is day in every shot: the sun is up, natural daylight, never night"}
+LIGHTING_NEEDS = {"harsh fluorescent": {"fluorescent", "tube", "tubes", "lamp", "lamps", "electric", "electrical", "lab", "laboratory", "hospital", "office", "factory", "station", "spaceship", "bunker", "screens", "screen", "lights"},
+                  "neon night": {"neon", "city", "street", "streets", "signs", "market", "district"}, "firelight and embers": {"fire", "flame", "flames", "torch", "torches", "candle", "candles", "embers", "lava", "forge", "burning", "molten"}}
+WRONG_LIGHTING = {"day": {"cold moonlit", "neon night"}, "night": {"overcast flat daylight", "golden hour backlight"}}  # a lighting that contradicts the hour of the story
+
+
 PALETTES = [["bronze", "brass", "charcoal", "ember orange"], ["steel blue", "ash grey", "sodium yellow", "black"], ["deep teal", "amber", "rust", "off-white"],
             ["olive", "mud brown", "tungsten orange", "soot"], ["midnight blue", "silver", "crimson accent", "concrete grey"]]
 MATERIALS = ["brushed bronze", "worn leather", "rough concrete", "scratched steel", "dusty fabric", "cracked stone", "wet asphalt", "carved wood", "glass and chrome"]

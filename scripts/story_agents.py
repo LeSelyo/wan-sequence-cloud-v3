@@ -58,7 +58,7 @@ def constant_hash(template: str) -> str:
 
 
 def prompt_fingerprint(trend) -> dict:
-    return {"version": trend.PROMPT_VERSION, **{n.lower().replace("_prompt", ""): constant_hash(getattr(trend, n)) for n in ("ANALYST_PROMPT", "PLANNER_PROMPT", "WRITER_PROMPT", "DIRECTOR_PROMPT", "JUDGE_PROMPT", "LENGTH_PROMPT") if hasattr(trend, n)}}
+    return {"version": trend.PROMPT_VERSION, **{n.lower().replace("_prompt", ""): constant_hash(getattr(trend, n)) for n in ("ANALYST_PROMPT", "PLANNER_PROMPT", "WRITER_PROMPT", "DIRECTOR_PROMPT", "JUDGE_PROMPT", "LENGTH_PROMPT", "LOOK_PROMPT") if hasattr(trend, n)}}
 
 
 # ---------------------------------------------------------------------------------------------- one agent: ask, check, repair
@@ -258,6 +258,56 @@ def run_analyst(context: str, params: dict, trend, llm) -> tuple[dict, dict]:
     if brief is None:
         return heuristic_brief(context, params, trend), {"source": "template", "attempts": attempts, "problems": problems[:5]}
     return brief, {"source": "llm", "attempts": attempts}
+
+
+# ---------------------------------------------------------------------------------------------- the LOOK agent: the art direction comes from the invented WORLD
+def look_tags(brief: dict) -> list[str]:
+    return sorted({t for loc in brief["locations"] for t in loc.get("tags", [])})
+
+
+def look_world_text(brief: dict) -> str:
+    world = brief["world"]
+    places = "\n".join(f"- {loc['id']} (tags: {', '.join(loc.get('tags', [])) or 'none'}): {loc['description']}" for loc in brief["locations"])
+    return f"setting: {world['setting']}\npremise: {world['premise']}\nhour: {world['hour']}\natmosphere: {world['atmosphere']}\nthe grandiose picture: {world['scale_image']}\nplaces:\n{places}"
+
+
+def validate_look(style: dict, brief: dict) -> list[str]:
+    """What makes an art direction unusable: an invalid axis, a motif that a picture model would PAINT as text (a number, a letter, a word: 'a stencilled number on the crates' put 912 on every door), a lighting
+    that contradicts the hour of the world."""
+    problems = ss.validate_style(style)
+    if re.search(r"\d|\b(?:numbers?|numerals?|letters?|words?|text|signs?|signage|writing|inscriptions?|labels?|stencil\w*)\b", str(style.get("motif", "")), re.I):
+        problems.append("the motif must be a SHAPE or an object (no number, letter, word, sign or text: a picture model paints them on the walls)")
+    hour = brief["world"].get("hour")
+    if style.get("lighting") in ss.WRONG_LIGHTING.get(hour, set()):
+        problems.append(f"the lighting '{style.get('lighting')}' contradicts the hour of this world ({hour})")
+    world_words = set(re.findall(r"[a-z]+", look_world_text(brief).lower()))
+    for lighting, needs in ss.LIGHTING_NEEDS.items():  # a light needs a source in the world: tubes, neon, a fire (a sun-drenched creature was given fluorescent tubes)
+        if style.get("lighting") == lighting and not world_words & needs:
+            problems.append(f"the lighting '{lighting}' needs one of {sorted(needs)[:6]} in this world: choose the lighting of the sun, the sky or the fire this world really has")
+    return problems
+
+
+def run_look(brief: dict, params: dict, trend, llm) -> tuple[dict | None, dict]:
+    """The art direction of the video (palette, materials, lighting, grade, motif, what each kind of place always shows), written by the model from the WORLD it invented. None (the rules of
+    scripts/story_style.py are used instead) when there is no model or it never gives a valid one."""
+    if llm is None or not hasattr(trend, "LOOK_PROMPT"):
+        return None, {"source": "template", "attempts": 0, "problems": ["no model"]}
+    tags = look_tags(brief)
+    prompt = fill(trend.LOOK_PROMPT, {"hour": brief["world"].get("hour", "day"), "tags": ", ".join(tags) or "none", "world": look_world_text(brief)})
+    answer, problems, attempts = call_agent(llm, prompt, ss.STYLE_SCHEMA, lambda s: validate_look(s, brief), seed=params["seed"] + 5, soft=lambda p: p.startswith("the lighting"))
+    if answer is None:
+        return None, {"source": "template", "attempts": attempts, "problems": problems[:3]}
+    style = dict(answer)
+    if any(p.startswith("the lighting") for p in validate_look(style, brief)):  # one enum the model keeps getting wrong must not cost the whole art direction (it fell back on a concrete bunker): the lighting of the hour
+        words = set(re.findall(r"[a-z]+", look_world_text(brief).lower()))
+        sunny = bool(words & {"sun", "sunlit", "sunlight", "golden", "sunny", "amber", "honey", "sun-drenched"})
+        style["lighting"] = {"day": "golden hour backlight" if sunny else "overcast flat daylight", "night": "cold moonlit", "dusk": "dusk blue hour", "dawn": "overcast flat daylight"}.get(brief["world"].get("hour"), "overcast flat daylight")
+    style["name"] = ss.slug(style["name"])
+    forced = {k: v for k, v in (style.get("forced_elements") or {}).items() if k in tags}  # a key that is no tag of the story is never used
+    if brief["world"].get("hour") in ss.HOUR_SENTENCES:
+        forced["time"] = ss.HOUR_SENTENCES[brief["world"]["hour"]]  # the hour of the story, by code, in every picture
+    style["forced_elements"], style["tags"] = forced, tags
+    return style, {"source": "llm", "attempts": attempts}
 
 
 # ---------------------------------------------------------------------------------------------- stage 2: the planner
@@ -627,6 +677,9 @@ def clean_still(text: str, trend) -> str:
     """What a picture model must never be asked for (text, letters, a collage, panels) is taken out by code: even a negation ('not a collage') makes such a picture more likely, so the words go.
     A short clause that is only about it ('no text', 'split screen') is dropped whole; in a longer clause the word and its article are removed."""
     forbidden = re.compile(r"\b(?:" + "|".join(re.escape(w) for w in trend.FORBIDDEN_IN_PICTURES) + r")s?\b", re.I)
+    original = text
+    text = re.sub(r"\b\d{1,2}\s*:\s*\d{1,2}\b", "", text)  # a ratio such as 9:16 was painted as text on crates and walls, and even as a phone clock
+    text = re.sub(r"\b(?:vertical|portrait|tall)\s+(?:composition|format|framing|orientation|frame|aspect(?:\s+ratio)?)\b|\baspect ratio\b", "", text, flags=re.I)
     clauses = [c.strip() for c in text.split(",") if c.strip()]
     kept = []
     for clause in clauses:
@@ -643,7 +696,7 @@ def clean_still(text: str, trend) -> str:
         cleaned = re.sub(r"\b(?:with|of|and|or|a|an|the|on|in)\b\s*(?=,|\.|$)", "", cleaned)
         cleaned = re.sub(r"\b(?:with|of|and|or|a|an|the)\b\s+(?=(?:and|or|with|on|in|of)\b)", "", cleaned)
         cleaned = re.sub(r"\s{2,}", " ", re.sub(r"\s+,", ",", cleaned)).strip(" ,")
-    return cleaned or text
+    return cleaned or original
 
 
 def run_director(brief: dict, shots: list[dict], params: dict, trend, llm, examples: str) -> tuple[list[dict], dict]:
@@ -828,6 +881,7 @@ def make_plan(context: str | None = None, given: dict | None = None, seed: int |
         if is_auto(run_params):  # no fixed length: the creation decides it from the context, between the bounds of the trend
             run_params["target_seconds"], length_report = run_length(context, run_params, trend, llm)
         brief, report_a = run_analyst(context, run_params, trend, llm)
+        style, report_look = run_look(brief, run_params, trend, llm)
         counts = trend.budget(run_params["target_seconds"], run_params["branches"], run_params.get("shot_scale", 1.0))
         outline, report_p = run_planner(brief, counts, endings, run_params, trend, llm, outline_candidates)
         examples = library.examples_text(brief, k=2, exclude=exclude_examples)
@@ -841,7 +895,8 @@ def make_plan(context: str | None = None, given: dict | None = None, seed: int |
         problems = sw.validate_story(story, run_params, endings, location_ids)
         plan = finish_plan(story, brief, context, run_params, {**provenance, **({"target_seconds": "auto"} if length_report else {})}, endings, location_ids, voices)
         plan["idea"] = idea_report
-        plan["agents"] = {"trend": trend.NAME, "prompts": prompt_fingerprint(trend), "length": length_report, "analyst": report_a, "planner": report_p, "writer": report_w, "director": report_d, "rhythm": rhythm,
+        plan["style"] = style  # the art direction of THIS world (None = the pictures step uses the rules of story_style.py)
+        plan["agents"] = {"trend": trend.NAME, "prompts": prompt_fingerprint(trend), "length": length_report, "analyst": report_a, "look": report_look, "planner": report_p, "writer": report_w, "director": report_d, "rhythm": rhythm,
                           "problems_left": problems, "seconds": round(time.time() - started, 1)}
         plan["story_source"] = "chain: " + ", ".join(f"{n}={plan['agents'][n]['source']}" for n in ("analyst", "planner")) + ", writer=" + ("llm" if all(c["source"] == "llm" for c in report_w["chunks"]) else "partly template") \
             + ", director=" + ("llm" if all(c["source"] == "llm" for c in report_d["chunks"]) else "partly template")
