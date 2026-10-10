@@ -20,7 +20,7 @@ PROMPT = ("You look at ONE reference portrait of a fictional character made for 
           "artist can draw exactly the same person again:\n"
           "- eyes: the colour of the eyes (and anything unusual you see in them)\n- hair: colour, length, style\n- facial_hair: a beard, a moustache, stubble, or \"clean-shaven\"\n"
           "- scars_or_marks: a scar, a tattoo or a mark ON THE FACE, and where; the word \"none\" when there is none\n- skin: the skin tone\n- head_cover: a hood, a scarf, a hat or a helmet, or \"none\"\n"
-          "Never guess: write \"not visible\" for what you cannot see.")
+          "Each answer is at most five words. Never guess: write \"not visible\" for what you cannot see.")
 
 
 def describe(ask, image: Path, character: dict, seed: int = 0) -> dict:
@@ -38,7 +38,7 @@ def traits_text(traits: dict | None) -> str:
         return ""
     parts = []
     for key in FIELDS:
-        value = str(traits.get(key, "")).strip().rstrip(".")
+        value = " ".join(str(traits.get(key, "")).strip().rstrip(".").split()[:7])  # a short phrase: the model is asked for five words and sometimes writes a sentence
         if value.lower() in NOTHING:
             continue
         suffix = {"eyes": "eyes", "hair": "hair", "skin": "skin"}.get(key)
