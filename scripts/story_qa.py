@@ -102,6 +102,8 @@ def collect(project: Path) -> dict:
     facts = {"project": project.name, "script": script_facts(plan), "voice": voice_facts(project, plan), "stills": judge_facts(project, "stills_judge_*.json"),
              "identity": judge_facts(project, "identity_judge_*.json"), "steps_seconds": {k: v.get("seconds") for k, v in report["steps"].items()},
              "video_seconds": (report["steps"].get("render") or {}).get("seconds_of_video"), "clips": len(list((project / "run" / "clips").glob("*.mp4"))) if (project / "run" / "clips").exists() else 0}
+    cards = load(project / "cards" / "cards.json") or {"characters": {}}
+    facts["characters"] = {cid: {"name": c.get("name"), "observed_traits": c.get("traits_text", "")} for cid, c in cards["characters"].items()}
     facts["total_pipeline_seconds"] = round(sum(v for v in facts["steps_seconds"].values() if v), 1)
     facts["warnings"] = warnings_of(facts)
     return facts
@@ -137,6 +139,9 @@ def warnings_of(facts: dict) -> list[str]:
             out.append(f"VOICE: the level jumps from line to line (spread {voice['level_std']} dB)")
         if voice["lines"] and voice["exact_lines"] / voice["lines"] < EXACT_TEXT_MIN:
             out.append(f"VOICE: only {voice['exact_lines']} of {voice['lines']} lines are heard exactly as written")
+    unseen = [c["name"] for c in facts.get("characters", {}).values() if not c["observed_traits"]]
+    if unseen:
+        out.append(f"FACES: the reference close-ups of {unseen} were never looked at (no observed traits): the identity prompts have the wardrobe only, eyes, scars and hair can drift between scenes")
     for key, label in (("stills", "PICTURES"), ("identity", "FACES")):
         info = facts[key]
         if info and info["judged_last_round"] and len(info["flagged_after_last_round"]) / info["judged_last_round"] > FLAGGED_PICTURES_MAX:
@@ -159,6 +164,8 @@ def markdown(facts: dict) -> str:
         lines += ["", "## Voice", "", f"- {voice['lines']} lines, {voice['seconds']} s, {voice['passages']} passage(s); pace {voice['pace_mean']} words/s (spread {voice['pace_std']}, from {voice['pace_min']} to {voice['pace_max']}); level {voice['level_mean']} dB (spread {voice['level_std']} dB)",
                   f"- heard exactly as written: {voice['exact_lines']} of {voice['lines']}"]
         lines += [f"  - {d['id']}: written \"{d['written']}\" / heard \"{d['heard']}\"" for d in voice["different_lines"]]
+    if facts.get("characters"):
+        lines += ["", "## Characters (as observed on their reference close-up)", ""] + [f"- {c['name']}: {c['observed_traits'] or 'not observed'}" for c in facts["characters"].values()]
     for key, title in (("stills", "Pictures (vision judge)"), ("identity", "Faces (vision judge)")):
         info = facts[key]
         if info:

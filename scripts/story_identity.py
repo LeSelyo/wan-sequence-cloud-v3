@@ -11,16 +11,20 @@ Lab 2026-10-08: the SHORT prompt keeps the face; the clothes of the character mu
 """
 from __future__ import annotations
 
+import sys
 import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import story_traits as stt  # noqa: E402
 TWO_SHOT_ID = "two_shot"  # the picture of the offers and of the choice: both characters, c1 on the left, c2 on the right
 SINGLE = ("Put the {who} from Picture 2 into the scene of Picture 1 in place of the person who is there, with the same pose and the same action. "
           "{pronoun} is wearing {wardrobe}. Keep the place, the light, the camera angle and exactly the same framing and size of the person as in Picture 1 (a close-up stays a close-up).")
 TWO = ("Put the {first} from Picture 2 on the left and the {second} from Picture 3 on the right, side by side in the place of Picture 1, close together, both facing the camera, "
        "each one holding out one open hand toward the camera. Keep their faces, hair and clothes exactly as in Pictures 2 and 3. Same place, same light. "
        "On the left is {first_name} ({first_detail}); on the right is {second_name} ({second_detail}). Never swap them and never mix their faces or their clothes.")
+# the traits come from the reference close-ups AS OBSERVED (scripts/story_traits.py); the free text of the brief is never used here: it made a character's eyes pale and put a scar on a face that had none
 WITH_PEOPLE = ("narration", "pov", "twist", "rewind")
 
 
@@ -33,20 +37,21 @@ def reference_of(cards: dict, character_id: str) -> Path:
     return ROOT / (entry.get("closeup") or entry["portrait"])["file"]
 
 
-def prompt_single(character: dict) -> str:
+def prompt_single(character: dict, traits: str = "") -> str:
     wardrobe = (character.get("wardrobe") or "the clothes of Picture 2").rstrip(". ")
-    return SINGLE.format(who=person_word(character), pronoun="She" if character.get("gender") == "f" else "He", wardrobe=wardrobe[:1].lower() + wardrobe[1:])
+    prompt = SINGLE.format(who=person_word(character), pronoun="She" if character.get("gender") == "f" else "He", wardrobe=wardrobe[:1].lower() + wardrobe[1:])
+    return prompt + (f" Keep exactly the face and the head of Picture 2: {traits}." if traits else "")
 
 
-def detail_of(character: dict) -> str:
-    """What tells the two people apart for the edit model (two men looked alike and got each other's face and costume): age, face, wardrobe."""
+def detail_of(character: dict, traits: str = "") -> str:
+    """What tells the two people apart for the edit model (two men looked alike and got each other's face and costume): age, the traits OBSERVED on the reference close-up, wardrobe."""
     words = lambda text, n: " ".join((text or "").rstrip(". ").split()[:n]).lower()  # noqa: E731
-    return f"{character.get('age', '?')} years old, {words(character.get('look'), 10)}, wearing {words(character.get('wardrobe'), 10)}"
+    return ", ".join(part for part in (f"{character.get('age', '?')} years old", traits, f"wearing {words(character.get('wardrobe'), 10)}") if part)
 
 
-def prompt_two(first: dict, second: dict) -> str:
+def prompt_two(first: dict, second: dict, first_traits: str = "", second_traits: str = "") -> str:
     return TWO.format(first=person_word(first), second=person_word(second), first_name=first.get("name", "the first"), second_name=second.get("name", "the second"),
-                      first_detail=detail_of(first), second_detail=detail_of(second))
+                      first_detail=detail_of(first, first_traits), second_detail=detail_of(second, second_traits))
 
 
 def faces_seen(run: Path) -> dict[str, bool]:
@@ -68,17 +73,17 @@ def jobs(plan: dict, cards: dict, run: Path) -> list[dict]:
     first_offer = next((s for s in plan["shots"] if s["kind"] == "offer" and s.get("still")), None)
     if first_offer and offer_ids:
         c1, c2 = plan["characters"][0], plan["characters"][1]
-        made.append({"id": TWO_SHOT_ID, "scene": run / "stills" / f"{first_offer['id']}.png", "refs": [reference_of(cards, c1["id"]), reference_of(cards, c2["id"])], "prompt": prompt_two(c1, c2), "shots": offer_ids})
+        made.append({"id": TWO_SHOT_ID, "scene": run / "stills" / f"{first_offer['id']}.png", "refs": [reference_of(cards, c1["id"]), reference_of(cards, c2["id"])], "prompt": prompt_two(c1, c2, stt.of(cards, c1["id"]), stt.of(cards, c2["id"])), "shots": offer_ids})
     for shot in plan["shots"]:
         people = [i for i in shot.get("in_shot", []) if i in characters]
         if shot["kind"] not in WITH_PEOPLE or not shot.get("still") or not people or seen.get(shot["id"]) is False:
             continue
         if len(people) >= 2:
             first, second = characters[people[0]], characters[people[1]]
-            made.append({"id": shot["id"], "scene": run / "stills" / f"{shot['id']}.png", "refs": [reference_of(cards, first["id"]), reference_of(cards, second["id"])], "prompt": prompt_two(first, second), "shots": [shot["id"]]})
+            made.append({"id": shot["id"], "scene": run / "stills" / f"{shot['id']}.png", "refs": [reference_of(cards, first["id"]), reference_of(cards, second["id"])], "prompt": prompt_two(first, second, stt.of(cards, first["id"]), stt.of(cards, second["id"])), "shots": [shot["id"]]})
         else:
             who = characters[people[0]]
-            made.append({"id": shot["id"], "scene": run / "stills" / f"{shot['id']}.png", "refs": [reference_of(cards, who["id"])], "prompt": prompt_single(who), "shots": [shot["id"]]})
+            made.append({"id": shot["id"], "scene": run / "stills" / f"{shot['id']}.png", "refs": [reference_of(cards, who["id"])], "prompt": prompt_single(who, stt.of(cards, who["id"])), "shots": [shot["id"]]})
     return made
 
 

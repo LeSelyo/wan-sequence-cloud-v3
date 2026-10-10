@@ -48,6 +48,7 @@ import story_produce as sp  # noqa: E402
 import story_render as sr  # noqa: E402
 import still_judge as sj  # noqa: E402
 import story_stills as sst  # noqa: E402
+import story_traits as stt  # noqa: E402
 import story_writer as sw  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -217,7 +218,24 @@ class Pipeline:
             seed = int(chosen.stem.rsplit("_", 1)[1])
             sc.set_closeup(self.cards_dir, character["id"], seed)
             picks[character["id"]] = {"seed": seed, "face_found": best is not None, "face": {k: round(v, 2) for k, v in best[1].items()} if best else None}
+        picks["traits"] = self.observe_characters(args)
         return picks
+
+    def observe_characters(self, args) -> dict:
+        """What the chosen close-up of each character REALLY shows (eyes, hair, beard, scars or marks, skin, head cover), looked at once by the vision model and kept in cards.json: every later identity prompt
+        and every check uses this, never the free text of the brief. A model that cannot answer leaves the characters without traits (the report says so) and the run goes on."""
+        plan, cards = self.plan(), self.cards()
+        ask = sj.ollama_vision(args.model)
+        found = {}
+        try:
+            for character in plan["characters"]:
+                close = cards["characters"][character["id"]]
+                image = ROOT / (close.get("closeup") or close["portrait"])["file"]
+                found[character["id"]] = stt.describe(ask, image, character)
+        finally:
+            ask.unload()
+        stt.save(self.cards_dir, found)
+        return {cid: stt.traits_text(traits) for cid, traits in found.items()}
 
     def step_stills(self, args) -> dict:
         os.environ["WAN_API_TOKEN"] = self.api_token()
@@ -273,7 +291,7 @@ class Pipeline:
                     continue
                 shot = next(sh for sh in plan["shots"] if sh["id"] == job["shots"][0])
                 who = [characters[i] for i in (plan["characters"][0]["id"], plan["characters"][1]["id"])] if job["id"] == sid.TWO_SHOT_ID else [characters[i] for i in shot["in_shot"] if i in characters][:2]
-                people = "; ".join(f"{'on the left ' if k == 0 and len(who) == 2 else 'on the right ' if len(who) == 2 else ''}a {sid.person_word(c)} wearing {c.get('wardrobe', 'the clothes of the portrait').rstrip('. ')}" for k, c in enumerate(who))
+                people = "; ".join(f"{'on the left ' if k == 0 and len(who) == 2 else 'on the right ' if len(who) == 2 else ''}a {sid.person_word(c)} wearing {c.get('wardrobe', 'the clothes of the portrait').rstrip('. ')}" + (f", with {stt.of(cards, c['id'])}" if stt.of(cards, c["id"]) else "") for k, c in enumerate(who))
                 judged_shot = {**shot, "id": job["id"], "still": "Both characters side by side, facing the camera, each one holding out an open hand toward the viewer" if job["id"] == sid.TWO_SHOT_ID else shot["still"]}
                 items.append((picture, judged_shot, job["refs"], people))
             try:
